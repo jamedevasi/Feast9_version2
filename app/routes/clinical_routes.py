@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 
 from app import config as app_config
 from app import db
-from app.auth import current_actor, login_required
+from app.auth import current_actor, login_required, reauth_required, role_required
 from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
 from app.csrf import validate_csrf
 from app.validators import detect_upload_type, normalize_date, today_iso
@@ -83,19 +83,48 @@ def serve_attachment(attachment_id):
 
 @bp.route("/attachments/<int:attachment_id>/delete", methods=["POST"])
 @login_required
+@role_required("admin", "doctor")
+@reauth_required
 def delete_attachment(attachment_id):
     validate_csrf(request.form.get("csrf_token"))
     attachment = db.get_attachment(attachment_id)
     if not attachment:
         abort(404)
     case_id = attachment["case_id"]
-    filename = db.delete_attachment(attachment_id)
+    reason = request.form.get("reason", "").strip()
+    filename = db.delete_attachment(attachment_id, actor=current_actor(), reason=reason)
     if filename:
         try:
             os.remove(os.path.join(_uploads_dir(), filename))
         except FileNotFoundError:
             pass
     flash("Attachment deleted.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
+@bp.route("/cases/<int:case_id>/attachments/clear", methods=["POST"])
+@login_required
+@role_required("admin", "doctor")
+@reauth_required
+def clear_attachments(case_id):
+    """The practitioner's per-case retention/erasure choice — e.g. some cases must keep lab
+    reports/X-rays after closing, others don't, so this is deliberate and never automatic."""
+    validate_csrf(request.form.get("csrf_token"))
+    _get_case_or_404(case_id)
+
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        flash("A reason is required to clear all clinical documents for a case.", "warning")
+        return redirect(url_for("cases.detail", case_id=case_id))
+
+    filenames = db.clear_case_clinical_documents(case_id, reason, actor=current_actor())
+    for filename in filenames:
+        try:
+            os.remove(os.path.join(_uploads_dir(), filename))
+        except FileNotFoundError:
+            pass
+
+    flash(f"Cleared {len(filenames)} clinical document(s) for this case.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
 

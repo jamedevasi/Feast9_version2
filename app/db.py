@@ -816,14 +816,44 @@ def get_attachment(attachment_id):
     return dict(row) if row else None
 
 
-def delete_attachment(attachment_id):
+def delete_attachment(attachment_id, actor=None, reason=""):
     """Deletes the DB row and returns the on-disk filename so the caller can remove the file."""
     conn = get_db()
-    row = conn.execute("SELECT filename FROM case_attachments WHERE id = ?", (attachment_id,)).fetchone()
+    row = conn.execute(
+        "SELECT filename, case_id, file_type FROM case_attachments WHERE id = ?", (attachment_id,)
+    ).fetchone()
     conn.execute("DELETE FROM case_attachments WHERE id = ?", (attachment_id,))
+    if row:
+        summary = f"file_type={row['file_type']}"
+        if reason:
+            summary += f", reason={reason}"
+        _write_audit(conn, actor, "attachment_deleted", "case_attachment", attachment_id, before_summary=summary)
     conn.commit()
     conn.close()
     return row["filename"] if row else None
+
+
+def clear_case_clinical_documents(case_id, reason, actor=None):
+    """Deletes every attachment for a case in one go (the practitioner's retention/erasure
+    choice per case — e.g. some cases must keep lab reports/X-rays after closing, others
+    don't). Returns the on-disk filenames removed so the caller can delete the files."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT filename, file_type FROM case_attachments WHERE case_id = ?", (case_id,)
+    ).fetchall()
+    conn.execute("DELETE FROM case_attachments WHERE case_id = ?", (case_id,))
+    type_counts = {}
+    for r in rows:
+        type_counts[r["file_type"]] = type_counts.get(r["file_type"], 0) + 1
+    counts_summary = ", ".join(f"{t}:{c}" for t, c in sorted(type_counts.items()))
+    _write_audit(
+        conn, actor, "clinical_documents_cleared", "case", case_id,
+        before_summary=f"{len(rows)} document(s) ({counts_summary})" if rows else "0 documents",
+        after_summary=f"reason={reason}",
+    )
+    conn.commit()
+    conn.close()
+    return [r["filename"] for r in rows]
 
 
 # ── Lab Requisitions ─────────────────────────────────────────────────────

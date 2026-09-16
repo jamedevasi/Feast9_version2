@@ -109,3 +109,127 @@ def test_delete_attachment_removes_file_and_row(logged_in_client, patient_id):
     assert resp.status_code == 302
     assert db.list_attachments_for_case(case_id) == []
     assert not os.path.exists(file_path)
+
+
+def test_delete_attachment_writes_audit_entry(logged_in_client, patient_id):
+    case_id, case_url = _case_for(logged_in_client, patient_id)
+    _upload(logged_in_client, case_id, JPEG_BYTES, "xray.jpg")
+    attachment = db.list_attachments_for_case(case_id)[0]
+
+    token = get_csrf(logged_in_client, case_url)
+    logged_in_client.post(
+        f"/attachments/{attachment['id']}/delete",
+        data={"csrf_token": token, "reason": "Duplicate upload"},
+    )
+    entries = [e for e in db.list_audit_log() if e["action"] == "attachment_deleted"]
+    assert len(entries) == 1
+    assert "X-ray" in entries[0]["before_summary"]
+    assert "Duplicate upload" in entries[0]["before_summary"]
+
+
+def _make_receptionist(admin_client):
+    token = get_csrf(admin_client, "/users/new")
+    admin_client.post(
+        "/users/new",
+        data={
+            "username": "recep_attach", "password": "testpass123", "confirm": "testpass123",
+            "role": "receptionist", "security_question": "Q", "security_answer": "A",
+            "csrf_token": token,
+        },
+    )
+    token = get_csrf(admin_client, "/dashboard")
+    admin_client.post("/logout", data={"csrf_token": token})
+    token = get_csrf(admin_client, "/login")
+    admin_client.post(
+        "/login", data={"username": "recep_attach", "password": "testpass123", "csrf_token": token}
+    )
+
+
+def test_receptionist_cannot_delete_attachment(logged_in_client, patient_id):
+    case_id, case_url = _case_for(logged_in_client, patient_id)
+    _upload(logged_in_client, case_id, JPEG_BYTES, "xray.jpg")
+    attachment = db.list_attachments_for_case(case_id)[0]
+
+    token = get_csrf(logged_in_client, case_url)
+    _make_receptionist(logged_in_client)
+
+    resp = logged_in_client.post(f"/attachments/{attachment['id']}/delete", data={"csrf_token": token})
+    assert resp.status_code == 403
+    assert db.list_attachments_for_case(case_id) != []
+
+
+def test_case_detail_hides_delete_controls_from_receptionist(logged_in_client, patient_id):
+    case_id, case_url = _case_for(logged_in_client, patient_id)
+    _upload(logged_in_client, case_id, JPEG_BYTES, "xray.jpg")
+
+    _make_receptionist(logged_in_client)
+    resp = logged_in_client.get(case_url)
+    assert b"Clear All Clinical Documents" not in resp.data
+
+
+def test_clear_attachments_requires_reason(logged_in_client, patient_id):
+    case_id, case_url = _case_for(logged_in_client, patient_id)
+    _upload(logged_in_client, case_id, JPEG_BYTES, "xray.jpg")
+
+    token = get_csrf(logged_in_client, case_url)
+    resp = logged_in_client.post(f"/cases/{case_id}/attachments/clear", data={"csrf_token": token})
+    assert resp.status_code == 302
+    assert len(db.list_attachments_for_case(case_id)) == 1  # nothing deleted, no reason given
+
+
+def test_clear_attachments_deletes_all_files_and_logs_one_audit_entry(logged_in_client, patient_id):
+    case_id, case_url = _case_for(logged_in_client, patient_id)
+    _upload(logged_in_client, case_id, JPEG_BYTES, "xray.jpg", "X-ray")
+    _upload(logged_in_client, case_id, PDF_BYTES, "report.pdf", "Lab Report")
+    file_paths = [
+        os.path.join(app_config.DATA_DIR, "clinical_uploads", a["filename"])
+        for a in db.list_attachments_for_case(case_id)
+    ]
+    assert all(os.path.exists(p) for p in file_paths)
+
+    token = get_csrf(logged_in_client, case_url)
+    resp = logged_in_client.post(
+        f"/cases/{case_id}/attachments/clear",
+        data={"csrf_token": token, "reason": "Not required to be retained for this case"},
+    )
+    assert resp.status_code == 302
+    assert db.list_attachments_for_case(case_id) == []
+    assert not any(os.path.exists(p) for p in file_paths)
+
+    entries = [e for e in db.list_audit_log() if e["action"] == "clinical_documents_cleared"]
+    assert len(entries) == 1
+    assert "X-ray:1" in entries[0]["before_summary"]
+    assert "Lab Report:1" in entries[0]["before_summary"]
+    assert "Not required to be retained" in entries[0]["after_summary"]
+
+
+def test_receptionist_cannot_clear_attachments(logged_in_client, patient_id):
+    case_id, case_url = _case_for(logged_in_client, patient_id)
+    _upload(logged_in_client, case_id, JPEG_BYTES, "xray.jpg")
+
+    token = get_csrf(logged_in_client, case_url)
+    _make_receptionist(logged_in_client)
+
+    resp = logged_in_client.post(
+        f"/cases/{case_id}/attachments/clear",
+        data={"csrf_token": token, "reason": "trying anyway"},
+    )
+    assert resp.status_code == 403
+    assert len(db.list_attachments_for_case(case_id)) == 1
+
+
+def test_clear_attachments_requires_fresh_reauth(logged_in_client, patient_id):
+    case_id, case_url = _case_for(logged_in_client, patient_id)
+    _upload(logged_in_client, case_id, JPEG_BYTES, "xray.jpg")
+
+    with logged_in_client.session_transaction() as sess:
+        sess["reauth_at"] = "2020-01-01T00:00:00"
+
+    token = get_csrf(logged_in_client, case_url)
+    resp = logged_in_client.post(
+        f"/cases/{case_id}/attachments/clear",
+        data={"csrf_token": token, "reason": "stale session attempt"},
+    )
+    assert resp.status_code == 302
+    assert "/reauth" in resp.headers["Location"]
+    assert len(db.list_attachments_for_case(case_id)) == 1
