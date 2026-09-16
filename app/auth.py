@@ -60,3 +60,13 @@ def financial_access_required(view):
 
 def can_view_financial_data():
     return session.get("role") not in NON_FINANCIAL_ROLES
+
+
+def current_actor():
+    """Actor dict for db.py's audit-log writers — never store more than id/role/ip/UA."""
+    return {
+        "user_id": session.get("admin_id"),
+        "role": session.get("role", ""),
+        "ip": request.remote_addr or "",
+        "user_agent": (request.headers.get("User-Agent") or "")[:255],
+    }

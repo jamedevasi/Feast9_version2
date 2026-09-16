@@ -3,7 +3,7 @@ import json
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app import db
-from app.auth import login_required
+from app.auth import current_actor, login_required
 from app.constants import ALLERGY_DRUGS, MEDICAL_CONDITIONS, SEX_OPTIONS
 from app.csrf import validate_csrf
 from app.validators import compute_age, is_valid_mobile, normalize_date, now_iso, today_iso
@@ -136,7 +136,7 @@ def edit(patient_id):
                 data["dpdp_notice_accepted_at"] = now
             if data["comms_consent"] and not patient.get("comms_consent"):
                 data["comms_consent_at"] = now
-            db.update_patient(patient_id, data)
+            db.update_patient(patient_id, data, actor=current_actor())
             flash("Patient updated.", "success")
             return redirect(url_for("patients.detail", patient_id=patient_id))
         patient = {**patient, **data}

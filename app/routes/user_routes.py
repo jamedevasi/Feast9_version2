@@ -1,7 +1,7 @@
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app import db
-from app.auth import hash_password, login_required, role_required
+from app.auth import current_actor, hash_password, login_required, role_required
 from app.constants import ROLES
 from app.csrf import validate_csrf
 
@@ -54,6 +54,7 @@ def new():
                 role=role,
                 security_question=security_question,
                 security_answer_hash=hash_password(security_answer.lower()),
+                actor=current_actor(),
             )
             flash(f"User '{username}' created.", "success")
             return redirect(url_for("users.list_view"))
@@ -72,7 +73,7 @@ def deactivate(user_id):
     if target["role"] == "admin" and db.count_active_admins() <= 1:
         flash("Cannot deactivate the only active admin account.", "warning")
         return redirect(url_for("users.list_view"))
-    db.set_user_active(user_id, False)
+    db.set_user_active(user_id, False, actor=current_actor())
     flash(f"User '{target['username']}' deactivated.", "success")
     return redirect(url_for("users.list_view"))
 
@@ -85,6 +86,6 @@ def activate(user_id):
     target = db.get_user_by_id(user_id)
     if not target:
         abort(404)
-    db.set_user_active(user_id, True)
+    db.set_user_active(user_id, True, actor=current_actor())
     flash(f"User '{target['username']}' reactivated.", "success")
     return redirect(url_for("users.list_view"))

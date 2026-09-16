@@ -16,6 +16,7 @@
       <a href="{{ url_for('appointments.index') }}">Appointments</a>
       {% if session.get('role') == 'admin' %}
       <a href="{{ url_for('users.list_view') }}">Users</a>
+      <a href="{{ url_for('audit.list_view') }}">Audit Log</a>
       {% endif %}
     </nav>
     <form method="post" action="{{ url_for('auth.logout') }}" class="logout-form">

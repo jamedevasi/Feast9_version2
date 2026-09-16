@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — Feast9{% endblock %}
+{% block content %}
+<h1>Audit Log</h1>
+
+{% if entries %}
+<table class="data-table">
+  <thead>
+    <tr><th>Time (UTC)</th><th>User</th><th>Role</th><th>Action</th><th>Entity</th><th>Detail</th></tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td>{{ e.ts_utc }}</td>
+      <td>{{ e.actor_user_id or '—' }}</td>
+      <td>{{ e.role or '—' }}</td>
+      <td>{{ e.action }}</td>
+      <td>{{ e.entity }}{% if e.entity_id %} #{{ e.entity_id }}{% endif %}</td>
+      <td>
+        {% if e.before_summary %}{{ e.before_summary }} → {% endif %}{{ e.after_summary }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No audit entries yet.</p>
+{% endif %}
+{% endblock %}

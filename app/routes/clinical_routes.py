@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 
 from app import config as app_config
 from app import db
-from app.auth import login_required
+from app.auth import current_actor, login_required
 from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
 from app.csrf import validate_csrf
 from app.validators import detect_upload_type, normalize_date, today_iso
@@ -58,7 +58,7 @@ def upload_attachment(case_id):
     description = request.form.get("description", "").strip()
     original_name = secure_filename(upload.filename) or "upload"
 
-    db.add_attachment(case_id, filename, original_name, file_type, description)
+    db.add_attachment(case_id, filename, original_name, file_type, description, actor=current_actor())
     flash("Attachment uploaded.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
@@ -72,6 +72,10 @@ def serve_attachment(attachment_id):
     path = os.path.join(_uploads_dir(), attachment["filename"])
     if not os.path.exists(path):
         abort(404)
+    db.write_audit_now(
+        current_actor(), "attachment_downloaded", "case_attachment", attachment_id,
+        after_summary=f"file_type={attachment['file_type']}",
+    )
     ext = attachment["filename"].rsplit(".", 1)[-1].lower()
     mimetype = _EXT_TO_MIMETYPE.get(ext, "application/octet-stream")
     return send_file(path, mimetype=mimetype)

@@ -3,7 +3,7 @@ import json
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app import db
-from app.auth import can_view_financial_data, financial_access_required, login_required
+from app.auth import can_view_financial_data, current_actor, financial_access_required, login_required
 from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
 from app.csrf import validate_csrf
 from app.validators import normalize_date, today_iso
@@ -160,7 +160,7 @@ def add_visit_note(case_id):
     note = request.form.get("note", "").strip()
     visit_date = normalize_date(request.form.get("visit_date", "")) or today_iso()
     if note:
-        db.add_visit_note(case_id, case["patient_id"], note, visit_date)
+        db.add_visit_note(case_id, case["patient_id"], note, visit_date, actor=current_actor())
         flash("Visit note added.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
@@ -173,7 +173,7 @@ def add_prescription(case_id):
     rx_details = request.form.get("rx_details", "").strip()
     prescribed_date = normalize_date(request.form.get("prescribed_date", "")) or today_iso()
     if rx_details:
-        db.add_prescription(case_id, case["patient_id"], rx_details, prescribed_date)
+        db.add_prescription(case_id, case["patient_id"], rx_details, prescribed_date, actor=current_actor())
         flash("Prescription added.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
@@ -200,7 +200,7 @@ def add_payment(case_id):
     reference = request.form.get("reference", "").strip()
     notes = request.form.get("notes", "").strip()
 
-    db.add_payment(case_id, case["patient_id"], payment_date, amount, method, reference, notes)
+    db.add_payment(case_id, case["patient_id"], payment_date, amount, method, reference, notes, actor=current_actor())
     flash("Payment recorded.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
@@ -227,7 +227,7 @@ def revise_cost(case_id):
         flash("A reason is required when changing the case cost.", "warning")
         return redirect(url_for("cases.detail", case_id=case_id))
 
-    db.update_case_cost(case_id, new_cost, reason)
+    db.update_case_cost(case_id, new_cost, reason, actor=current_actor())
     flash("Cost updated.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
@@ -250,7 +250,7 @@ def record_consent(case_id):
     validate_csrf(request.form.get("csrf_token"))
     _get_case_or_404(case_id)
     notes = request.form.get("consent_notes", "").strip() or "Paper consent on file"
-    db.record_case_consent(case_id, notes)
+    db.record_case_consent(case_id, notes, actor=current_actor())
     flash("Consent recorded.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
@@ -261,6 +261,6 @@ def close(case_id):
     validate_csrf(request.form.get("csrf_token"))
     case = _get_case_or_404(case_id)
     if case["status"] == "Active":
-        db.close_case(case_id)
+        db.close_case(case_id, actor=current_actor())
         flash("Case closed.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))

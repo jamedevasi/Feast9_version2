@@ -225,10 +225,66 @@ def init_db():
             recur_interval TEXT NOT NULL DEFAULT '',
             recur_until TEXT NOT NULL DEFAULT ''
         );
+
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_user_id INTEGER,
+            role TEXT NOT NULL DEFAULT '',
+            ts_utc TEXT NOT NULL,
+            action TEXT NOT NULL,
+            entity TEXT NOT NULL,
+            entity_id INTEGER,
+            correlation_id TEXT NOT NULL DEFAULT '',
+            before_summary TEXT NOT NULL DEFAULT '',
+            after_summary TEXT NOT NULL DEFAULT '',
+            ip TEXT NOT NULL DEFAULT '',
+            user_agent TEXT NOT NULL DEFAULT '',
+            outcome TEXT NOT NULL DEFAULT 'success'
+        );
         """
     )
     conn.commit()
     _migrate_admin_roles(conn)
+    conn.close()
+
+
+# ── Audit log ────────────────────────────────────────────────────────────
+# _write_audit takes an already-open conn and does NOT commit/close — callers
+# insert it into their own write's transaction so the audit row and the action
+# it records live or die together. before/after summaries are field-level and
+# redacted by the caller — never pass raw clinical note/prescription text here.
+
+NO_ACTOR = {"user_id": None, "role": "", "ip": "", "user_agent": ""}
+
+
+def _write_audit(conn, actor, action, entity, entity_id,
+                  before_summary="", after_summary="", correlation_id="", outcome="success"):
+    actor = actor or NO_ACTOR
+    conn.execute(
+        """INSERT INTO audit_log
+           (actor_user_id, role, ts_utc, action, entity, entity_id,
+            correlation_id, before_summary, after_summary, ip, user_agent, outcome)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            actor.get("user_id"), actor.get("role") or "", now_iso(), action, entity, entity_id,
+            correlation_id, before_summary, after_summary,
+            actor.get("ip") or "", actor.get("user_agent") or "", outcome,
+        ),
+    )
+
+
+def list_audit_log(limit=200):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def write_audit_now(actor, action, entity, entity_id, before_summary="", after_summary="", outcome="success"):
+    """For actions with no other write to share a transaction with (e.g. a file download)."""
+    conn = get_db()
+    _write_audit(conn, actor, action, entity, entity_id, before_summary, after_summary, outcome=outcome)
+    conn.commit()
     conn.close()
 
 
@@ -300,14 +356,18 @@ def list_users():
     return [dict(r) for r in rows]
 
 
-def create_user(username, password_hash, role, security_question, security_answer_hash):
+def create_user(username, password_hash, role, security_question, security_answer_hash, actor=None):
     now = now_iso()
     conn = get_db()
-    conn.execute(
+    cur = conn.execute(
         """INSERT INTO admin
            (username, password_hash, security_question, security_answer_hash, role, is_active, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
         (username, password_hash, security_question, security_answer_hash, role, now, now),
+    )
+    _write_audit(
+        conn, actor, "user_created", "user", cur.lastrowid,
+        after_summary=f"username={username}, role={role}",
     )
     conn.commit()
     conn.close()
@@ -322,11 +382,14 @@ def count_active_admins():
     return row["c"]
 
 
-def set_user_active(user_id, is_active):
+def set_user_active(user_id, is_active, actor=None):
     conn = get_db()
     conn.execute(
         "UPDATE admin SET is_active = ?, updated_at = ? WHERE id = ?",
         (1 if is_active else 0, now_iso(), user_id),
+    )
+    _write_audit(
+        conn, actor, "user_activated" if is_active else "user_deactivated", "user", user_id,
     )
     conn.commit()
     conn.close()
@@ -435,17 +498,22 @@ def add_patient(data):
     return patient_id
 
 
-def update_patient(patient_id, data):
+def update_patient(patient_id, data, actor=None):
     row = {col: data[col] for col in _PATIENT_COLUMNS if col in data}
     for col in _PATIENT_BOOL_COLUMNS:
         if col in row:
             row[col] = int(bool(row[col]))
+    changed_fields = sorted(row.keys())
     row["updated_at"] = now_iso()
     row["id"] = patient_id
 
     set_clause = ", ".join(f"{k} = :{k}" for k in row if k != "id")
     conn = get_db()
     conn.execute(f"UPDATE patients SET {set_clause} WHERE id = :id", row)
+    _write_audit(
+        conn, actor, "patient_updated", "patient", patient_id,
+        after_summary=f"fields changed: {', '.join(changed_fields)}",
+    )
     conn.commit()
     conn.close()
 
@@ -497,12 +565,16 @@ def update_case(case_id, data):
     conn.close()
 
 
-def close_case(case_id):
+def close_case(case_id, actor=None):
     now = now_iso()
     conn = get_db()
     conn.execute(
         "UPDATE cases SET status = 'Closed', closed_at = ?, updated_at = ? WHERE id = ?",
         (now, now, case_id),
+    )
+    _write_audit(
+        conn, actor, "case_status_changed", "case", case_id,
+        before_summary="status=Active", after_summary="status=Closed",
     )
     conn.commit()
     conn.close()
@@ -533,12 +605,16 @@ _CASE_DEFAULTS = {"procedures_json": "[]", "custom_procedure": "", "doctor_id": 
 
 # ── Visit Notes (append-only clinical record — no edit/delete) ─────────────
 
-def add_visit_note(case_id, patient_id, note, visit_date):
+def add_visit_note(case_id, patient_id, note, visit_date, actor=None):
     conn = get_db()
     conn.execute(
         """INSERT INTO case_visit_notes (case_id, patient_id, note, visit_date, created_at)
            VALUES (?, ?, ?, ?, ?)""",
         (case_id, patient_id, note, visit_date, now_iso()),
+    )
+    _write_audit(
+        conn, actor, "visit_note_added", "case", case_id,
+        after_summary=f"visit note added ({len(note)} chars), visit_date={visit_date}",
     )
     conn.commit()
     conn.close()
@@ -556,12 +632,16 @@ def list_visit_notes_for_case(case_id):
 
 # ── Prescriptions (append-only clinical record — no edit/delete) ───────────
 
-def add_prescription(case_id, patient_id, rx_details, prescribed_date):
+def add_prescription(case_id, patient_id, rx_details, prescribed_date, actor=None):
     conn = get_db()
     conn.execute(
         """INSERT INTO prescriptions (case_id, patient_id, rx_details, prescribed_date, created_at)
            VALUES (?, ?, ?, ?, ?)""",
         (case_id, patient_id, rx_details, prescribed_date, now_iso()),
+    )
+    _write_audit(
+        conn, actor, "prescription_added", "case", case_id,
+        after_summary=f"prescription added ({len(rx_details)} chars), prescribed_date={prescribed_date}",
     )
     conn.commit()
     conn.close()
@@ -579,7 +659,7 @@ def list_prescriptions_for_case(case_id):
 
 # ── Clinical Attachments ────────────────────────────────────────────────
 
-def add_attachment(case_id, filename, original_name, file_type, description):
+def add_attachment(case_id, filename, original_name, file_type, description, actor=None):
     now = now_iso()
     conn = get_db()
     cur = conn.execute(
@@ -588,8 +668,12 @@ def add_attachment(case_id, filename, original_name, file_type, description):
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (case_id, filename, original_name, file_type, description, now, now),
     )
-    conn.commit()
     attachment_id = cur.lastrowid
+    _write_audit(
+        conn, actor, "attachment_uploaded", "case_attachment", attachment_id,
+        after_summary=f"file_type={file_type}",
+    )
+    conn.commit()
     conn.close()
     return attachment_id
 
@@ -710,12 +794,16 @@ def delete_referral(ref_id):
 
 # ── Payments (append-only financial ledger — no edit/delete) ───────────────
 
-def add_payment(case_id, patient_id, payment_date, amount, method, reference, notes):
+def add_payment(case_id, patient_id, payment_date, amount, method, reference, notes, actor=None):
     conn = get_db()
     conn.execute(
         """INSERT INTO payments (case_id, patient_id, payment_date, amount, method, reference, notes, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (case_id, patient_id, payment_date, amount, method, reference, notes, now_iso()),
+    )
+    _write_audit(
+        conn, actor, "payment_added", "case", case_id,
+        after_summary=f"amount={amount}, method={method or '—'}",
     )
     conn.commit()
     conn.close()
@@ -746,7 +834,7 @@ def get_case_balance(case_id):
 
 # ── Cost Revisions (append-only — total_cost only ever changes via this) ───
 
-def update_case_cost(case_id, new_cost, reason):
+def update_case_cost(case_id, new_cost, reason, actor=None):
     conn = get_db()
     case_row = conn.execute("SELECT total_cost FROM cases WHERE id = ?", (case_id,)).fetchone()
     if not case_row:
@@ -759,6 +847,10 @@ def update_case_cost(case_id, new_cost, reason):
             """INSERT INTO cost_revisions (case_id, old_cost, new_cost, reason, changed_at, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (case_id, old_cost, new_cost, reason, now, now),
+        )
+        _write_audit(
+            conn, actor, "cost_revised", "case", case_id,
+            before_summary=f"total_cost={old_cost}", after_summary=f"total_cost={new_cost}, reason={reason}",
         )
     conn.execute("UPDATE cases SET total_cost = ?, updated_at = ? WHERE id = ?", (new_cost, now, case_id))
     conn.commit()
@@ -788,13 +880,14 @@ def update_case_followup(case_id, follow_up_date, next_action_note):
     conn.close()
 
 
-def record_case_consent(case_id, notes):
+def record_case_consent(case_id, notes, actor=None):
     conn = get_db()
     conn.execute(
         """UPDATE cases SET consent_recorded = 1, consent_recorded_at = ?, consent_notes = ?, updated_at = ?
            WHERE id = ?""",
         (now_iso(), notes, now_iso(), case_id),
     )
+    _write_audit(conn, actor, "consent_recorded", "case", case_id, after_summary="consent_recorded=1")
     conn.commit()
     conn.close()
 
