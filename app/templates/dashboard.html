@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Feast9{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<p class="empty-state">
+  This is a placeholder landing page. Stat tiles, follow-up alerts, and today's appointments
+  arrive once Cases and Appointments are built in a later phase.
+</p>
+<p><a href="{{ url_for('patients.list_view') }}">Go to Patients →</a></p>
+{% endblock %}

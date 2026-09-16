@@ -1,0 +1,26 @@
+<section class="card">
+  <h2>Follow-up &amp; Next Action</h2>
+  {% if case.follow_up_date %}
+  <p>Follow-up on <strong>{{ case.follow_up_date }}</strong>{% if case.next_action_note %}: {{ case.next_action_note }}{% endif %}</p>
+  <p class="hint">This is a dashboard reminder, not a calendar appointment.</p>
+  {% else %}
+  <p class="empty-state">No follow-up set.</p>
+  {% endif %}
+
+  <p><a class="button" href="{{ url_for('appointments.new', clear_followup=case.id) }}">📅 Book Appointment</a></p>
+
+  <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Follow-up Date<input type="date" name="follow_up_date" value="{{ case.follow_up_date or '' }}"></label>
+    <label>Next Action Note<input type="text" name="next_action_note" value="{{ case.next_action_note or '' }}"></label>
+    <button type="submit">Save Follow-up</button>
+  </form>
+  {% if case.follow_up_date %}
+  <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="follow_up_date" value="">
+    <input type="hidden" name="next_action_note" value="">
+    <button type="submit" class="button button-secondary">Clear Follow-up</button>
+  </form>
+  {% endif %}
+</section>

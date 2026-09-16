@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if editing else 'New' }} Appointment — Feast9{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('appointments.index') }}">← Calendar</a></p>
+<h1>{{ 'Edit Appointment' if editing else 'New Appointment' }}</h1>
+
+{% if errors %}
+<ul class="errors">
+  {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="clear_followup" value="{{ clear_followup }}">
+
+  {% if prefill_patient %}
+  <input type="hidden" name="patient_locked" value="1">
+  <input type="hidden" name="patient_id" value="{{ prefill_patient.id }}">
+  <p><strong>Patient:</strong> {{ prefill_patient.name }}</p>
+  {% elif editing %}
+  <p><strong>Patient:</strong> {{ appt.patient_name }}</p>
+  {% else %}
+  <label>Patient
+    <select name="patient_id" required>
+      <option value="">Select…</option>
+      {% for p in patients %}
+      <option value="{{ p.id }}" {% if appt.patient_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
+
+  <label>Doctor
+    <select name="doctor_id" required>
+      <option value="">Select…</option>
+      {% for d in doctors %}
+      <option value="{{ d.id }}" {% if appt.doctor_id == d.id %}selected{% endif %}>{{ d.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>Date<input type="date" name="appt_date" value="{{ prefill_date }}" required></label>
+  <label>Start Time<input type="time" name="start_time" value="{{ appt.start_time or '' }}" required></label>
+  <label>End Time<input type="time" name="end_time" value="{{ appt.end_time or '' }}"></label>
+  <label>Title<input type="text" name="title" value="{{ appt.title or '' }}" placeholder="e.g. Follow-up scaling"></label>
+  <label>Notes<textarea name="notes">{{ appt.notes or '' }}</textarea></label>
+
+  {% if editing %}
+  <label>Status
+    <select name="status">
+      {% for s in statuses %}
+      <option value="{{ s }}" {% if appt.status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
+
+  <button type="submit">{{ 'Save Changes' if editing else 'Book Appointment' }}</button>
+</form>
+
+{% if editing %}
+<section class="card">
+  <h2>Reminder Text</h2>
+  <p class="hint">Click to copy, then paste into WhatsApp or SMS.</p>
+  <div class="reminder-copy"
+       onclick="this.nextElementSibling.style.display='block';
+                navigator.clipboard&&navigator.clipboard.writeText(this.textContent.trim());
+                setTimeout(()=>this.nextElementSibling.style.display='none',2000)">
+    Dear {{ appt.patient_name }}, your appointment at {{ appt.start_time }} on {{ appt.appt_date }} with {{ appt.doctor_name }} is confirmed.
+  </div>
+  <span class="reminder-copied" style="display:none;">✓ Copied</span>
+</section>
+
+<form method="post" action="{{ url_for('appointments.delete', appt_id=appt.id) }}"
+      onsubmit="return confirm('Delete this appointment?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="button button-secondary">Delete Appointment</button>
+</form>
+{% endif %}
+{% endblock %}

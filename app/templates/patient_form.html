@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if editing else 'New' }} Patient — Feast9{% endblock %}
+{% block content %}
+<h1>{{ 'Edit Patient' if editing else 'Register Patient' }}</h1>
+
+{% if errors %}
+<ul class="errors">
+  {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<form method="post" id="patient-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <fieldset>
+    <legend>Basic Details</legend>
+    <label>Full Name<input type="text" name="name" value="{{ patient.name or '' }}" required></label>
+    <label>Date of Birth
+      <input type="date" name="date_of_birth" id="dob" value="{{ patient.date_of_birth or '' }}" max="{{ today }}">
+    </label>
+    <label>Age
+      <input type="number" name="age" id="age-field" min="0" max="120"
+             value="{{ patient.age if patient.age is not none else '' }}">
+    </label>
+    <p class="hint">Age auto-fills from Date of Birth. Leave Date of Birth blank and enter Age manually for historic records.</p>
+    <label>Sex
+      <select name="sex" required>
+        <option value="">Select…</option>
+        {% for opt in sex_options %}
+        <option value="{{ opt }}" {% if patient.sex == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Mobile<input type="text" name="mobile" value="{{ patient.mobile or '' }}"></label>
+    <label>Email<input type="email" name="email" value="{{ patient.email or '' }}"></label>
+    <label>Address<textarea name="address">{{ patient.address or '' }}</textarea></label>
+  </fieldset>
+
+  <fieldset id="guardian-section" hidden>
+    <legend>Guardian Details (required for patients under 18)</legend>
+    <label>Guardian Name<input type="text" name="guardian_name" value="{{ patient.guardian_name or '' }}"></label>
+    <label>Relation<input type="text" name="guardian_relation" value="{{ patient.guardian_relation or '' }}"></label>
+    <label>Guardian Mobile<input type="text" name="guardian_mobile" value="{{ patient.guardian_mobile or '' }}"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Medical History</legend>
+    <div class="checklist">
+      {% for c in medical_conditions %}
+      <label class="checkbox"><input type="checkbox" name="medical_conditions" value="{{ c }}" {% if c in patient.medical_conditions %}checked{% endif %}> {{ c }}</label>
+      {% endfor %}
+    </div>
+    <label>Other medical conditions<input type="text" name="medical_conditions_other" value="{{ patient.medical_conditions_other or '' }}"></label>
+    <label class="checkbox"><input type="checkbox" name="is_pregnant" {% if patient.is_pregnant %}checked{% endif %}> Currently pregnant</label>
+    <label class="checkbox"><input type="checkbox" name="is_nursing" {% if patient.is_nursing %}checked{% endif %}> Currently nursing</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Allergies</legend>
+    <div class="checklist">
+      {% for a in allergy_drugs %}
+      <label class="checkbox"><input type="checkbox" name="allergies" value="{{ a }}" {% if a in patient.allergies %}checked{% endif %}> {{ a }}</label>
+      {% endfor %}
+    </div>
+    <label>Other allergies<input type="text" name="allergies_other" value="{{ patient.allergies_other or '' }}"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Emergency Contact</legend>
+    <label>Name<input type="text" name="emergency_contact_name" value="{{ patient.emergency_contact_name or '' }}"></label>
+    <label>Relation<input type="text" name="emergency_contact_relation" value="{{ patient.emergency_contact_relation or '' }}"></label>
+    <label>Number<input type="text" name="emergency_contact_number" value="{{ patient.emergency_contact_number or '' }}"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Privacy &amp; Consent</legend>
+    <div class="dpdp-notice">
+      <p><strong>Data Processing Notice.</strong> We collect and store your personal and clinical data solely to
+      provide dental care, maintain treatment records, and comply with applicable law under the Digital Personal
+      Data Protection Act, 2023 (DPDP Act). Your data is not shared with third parties except where required for
+      treatment or by law. You may request access, correction, or erasure of your data, or withdraw consent for
+      communications, at any time by contacting the clinic.</p>
+    </div>
+    <label class="checkbox">
+      <input type="checkbox" name="dpdp_notice_accepted" {% if patient.dpdp_notice_accepted %}checked{% endif %}>
+      I have read and understood the Data Processing Notice
+    </label>
+    <label class="checkbox">
+      <input type="checkbox" name="comms_consent" {% if patient.comms_consent %}checked{% endif %}>
+      I consent to receive appointment reminders and communications from the clinic
+    </label>
+  </fieldset>
+
+  <button type="submit">{{ 'Save Changes' if editing else 'Register Patient' }}</button>
+</form>
+
+<script src="{{ url_for('static', filename='patient_form.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if editing else 'New' }} Case — Feast9{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
+<h1>{{ 'Edit Case' if editing else 'New Case' }} for {{ patient.name }}</h1>
+
+{% if errors %}
+<ul class="errors">
+  {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <fieldset>
+    <legend>Case Details</legend>
+    <label>Title<input type="text" name="title" value="{{ case.title or '' }}" required placeholder="e.g. Root Canal — Tooth 36"></label>
+    <label>Doctor
+      <select name="doctor_id" required>
+        <option value="">Select…</option>
+        {% for d in doctors %}
+        <option value="{{ d.id }}" {% if case.doctor_id == d.id %}selected{% endif %}>{{ d.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="checklist">
+      {% for p in procedure_types %}
+      <label class="checkbox"><input type="checkbox" name="procedures" value="{{ p.name }}" {% if p.name in case.procedures %}checked{% endif %}> {{ p.name }}</label>
+      {% endfor %}
+    </div>
+    <label>Other procedure<input type="text" name="custom_procedure" value="{{ case.custom_procedure or '' }}"></label>
+    {% if not editing %}
+    <label>Estimated Cost (₹)<input type="number" name="total_cost" min="0" step="0.01" value="{{ case.total_cost if case.total_cost is not none else '0' }}"></label>
+    {% endif %}
+  </fieldset>
+
+  <button type="submit">{{ 'Save Changes' if editing else 'Create Case' }}</button>
+</form>
+{% endblock %}

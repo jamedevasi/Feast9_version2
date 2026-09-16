@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ case.title }} — Feast9{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
+
+<div class="page-header">
+  <div>
+    <h1>{{ case.title }}</h1>
+    <span class="badge badge-{{ 'active' if case.status == 'Active' else 'closed' }}">{{ case.status }}</span>
+  </div>
+  <div class="case-actions">
+    {% if case.status == 'Active' %}
+    <a class="button" href="{{ url_for('cases.edit', case_id=case.id) }}">Edit</a>
+    <form method="post" action="{{ url_for('cases.close', case_id=case.id) }}" onsubmit="return confirm('Close this case? This cannot be undone from the UI.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="button button-secondary">Close Case</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<section class="card">
+  <dl>
+    <dt>Doctor</dt><dd>{{ doctor.name if doctor else '—' }}</dd>
+    <dt>Procedures</dt>
+    <dd>
+      {%- set proc_list = case.procedures + ([case.custom_procedure] if case.custom_procedure else []) -%}
+      {{ proc_list | join(', ') if proc_list else '—' }}
+    </dd>
+    <dt>Estimated Cost</dt><dd>₹{{ '%.2f'|format(case.total_cost or 0) }}</dd>
+    {% if case.closed_at %}
+    <dt>Closed</dt><dd>{{ case.closed_at }}</dd>
+    {% endif %}
+  </dl>
+</section>
+
+{% include "case_sections/consent.html" %}
+{% include "case_sections/visit_notes.html" %}
+{% include "case_sections/prescriptions.html" %}
+{% include "case_sections/attachments.html" %}
+{% include "case_sections/lab_reqs.html" %}
+{% include "case_sections/referrals.html" %}
+{% include "case_sections/payments.html" %}
+{% include "case_sections/followup.html" %}
+{% include "case_sections/cost_history.html" %}
+
+<script src="{{ url_for('static', filename='referrals.js') }}"></script>
+{% endblock %}

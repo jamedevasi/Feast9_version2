@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ patient.name }} — Feast9{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ patient.name }}</h1>
+  <a class="button" href="{{ url_for('patients.edit', patient_id=patient.id) }}">Edit</a>
+</div>
+
+<section class="card">
+  <h2>Medical Alerts</h2>
+  {% if patient.medical_conditions or patient.medical_conditions_other or patient.allergies or patient.allergies_other or patient.is_pregnant or patient.is_nursing %}
+  <ul class="alert-list">
+    {% for c in patient.medical_conditions %}<li>⚠ {{ c }}</li>{% endfor %}
+    {% if patient.medical_conditions_other %}<li>⚠ {{ patient.medical_conditions_other }}</li>{% endif %}
+    {% if patient.is_pregnant %}<li>⚠ Currently pregnant</li>{% endif %}
+    {% if patient.is_nursing %}<li>⚠ Currently nursing</li>{% endif %}
+    {% for a in patient.allergies %}<li>🚫 Allergy: {{ a }}</li>{% endfor %}
+    {% if patient.allergies_other %}<li>🚫 Allergy: {{ patient.allergies_other }}</li>{% endif %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No medical alerts recorded.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="page-header">
+    <h2>Active Treatment Cases</h2>
+    <a class="button" href="{{ url_for('cases.new', patient_id=patient.id) }}">+ New Case</a>
+  </div>
+  {% if cases %}
+  <ul class="case-list">
+    {% for c in cases %}
+    <li>
+      <a href="{{ url_for('cases.detail', case_id=c.id) }}">{{ c.title }}</a>
+      <span class="badge badge-{{ 'active' if c.status == 'Active' else 'closed' }}">{{ c.status }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No treatment cases yet.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="page-header">
+    <h2>Appointments</h2>
+    <a class="button" href="{{ url_for('appointments.new', patient_id=patient.id) }}">+ New Appointment</a>
+  </div>
+  {% if appointments %}
+  <ul class="entry-list">
+    {% for a in appointments %}
+    <li>
+      <span class="entry-date">{{ a.appt_date }} {{ a.start_time }}</span>
+      <span class="badge badge-status-{{ a.status|lower|replace(' ', '-') }}">{{ a.status }}</span>
+      <a href="{{ url_for('appointments.edit', appt_id=a.id) }}">{{ a.title or 'Appointment' }}</a>
+      {% if a.doctor_name %}<span class="hint">with {{ a.doctor_name }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No appointments yet.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Contact Details &amp; DPDP Status</h2>
+  <dl>
+    <dt>Date of Birth</dt>
+    <dd>{{ patient.date_of_birth or '—' }}{% if patient.computed_age is not none %} (Age {{ patient.computed_age }}){% endif %}</dd>
+    <dt>Sex</dt><dd>{{ patient.sex or '—' }}</dd>
+    <dt>Mobile</dt><dd>{{ patient.mobile or '—' }}</dd>
+    <dt>Email</dt><dd>{{ patient.email or '—' }}</dd>
+    <dt>Address</dt><dd>{{ patient.address or '—' }}</dd>
+    <dt>Emergency Contact</dt>
+    <dd>{{ patient.emergency_contact_name or '—' }} ({{ patient.emergency_contact_relation or '—' }}) {{ patient.emergency_contact_number or '' }}</dd>
+    {% if patient.guardian_name %}
+    <dt>Guardian</dt>
+    <dd>{{ patient.guardian_name }} ({{ patient.guardian_relation or '—' }}) {{ patient.guardian_mobile or '' }}</dd>
+    {% endif %}
+    <dt>DPDP Notice</dt>
+    <dd>{{ 'Accepted at ' + patient.dpdp_notice_accepted_at if patient.dpdp_notice_accepted else 'Not accepted' }}</dd>
+    <dt>Communications Consent</dt>
+    <dd>{{ 'Opted in at ' + patient.comms_consent_at if patient.comms_consent else 'Opted out' }}</dd>
+  </dl>
+</section>
+{% endblock %}

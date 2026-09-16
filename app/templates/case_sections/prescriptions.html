@@ -1,0 +1,29 @@
+<section class="card">
+  <h2>Prescriptions</h2>
+  {% if patient.allergies or patient.allergies_other %}
+  <div class="allergy-alert">
+    🚫 Allergy alert:
+    {{ (patient.allergies + ([patient.allergies_other] if patient.allergies_other else [])) | join(', ') }}
+  </div>
+  {% endif %}
+
+  {% if prescriptions %}
+  <ul class="entry-list">
+    {% for rx in prescriptions %}
+    <li>
+      <span class="entry-date">{{ rx.prescribed_date }}</span>
+      <p>{{ rx.rx_details }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No prescriptions recorded yet.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('cases.add_prescription', case_id=case.id) }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Date<input type="date" name="prescribed_date" value="{{ today }}" max="{{ today }}"></label>
+    <label>Prescription<textarea name="rx_details" required placeholder="Drug, dose, frequency, duration"></textarea></label>
+    <button type="submit">Add Prescription</button>
+  </form>
+</section>

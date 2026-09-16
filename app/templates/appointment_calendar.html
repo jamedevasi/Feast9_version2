@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Appointments — Feast9{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ month_name }} {{ year }}</h1>
+  <a class="button" href="{{ url_for('appointments.new', date=today) }}">+ New Appointment</a>
+</div>
+
+<div class="calendar-nav">
+  <a href="{{ url_for('appointments.view_calendar', year=prev_year, month=prev_month) }}">← Previous</a>
+  <a href="{{ url_for('appointments.view_calendar', year=next_year, month=next_month) }}">Next →</a>
+</div>
+
+<div class="calendar-scroll">
+<table class="calendar-table">
+  <thead>
+    <tr>
+      <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for week in weeks %}
+    <tr>
+      {% for day in week %}
+      {% if day is none %}
+      <td class="calendar-cell calendar-cell-empty"></td>
+      {% else %}
+      {% set iso_date = "%04d-%02d-%02d" % (year, month, day) %}
+      <td class="calendar-cell {% if iso_date == today %}calendar-cell-today{% endif %}">
+        <div class="calendar-day-header">
+          <span>{{ day }}</span>
+          <a href="{{ url_for('appointments.new', date=iso_date) }}" title="New appointment">+</a>
+        </div>
+        {% for a in appts_by_day.get(iso_date, []) %}
+        <a class="calendar-appt badge-status-{{ a.status|lower|replace(' ', '-') }}" href="{{ url_for('appointments.edit', appt_id=a.id) }}"
+           style="border-left-color: {{ a.doctor_color or '#adb5bd' }};">
+          {{ a.start_time }} {{ a.patient_name }}
+        </a>
+        {% endfor %}
+      </td>
+      {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<p class="hint">Coloured bar shows the doctor. Badge colour shows status — Scheduled (blue), Completed (green), Cancelled (grey), No-show (red).</p>
+{% endblock %}

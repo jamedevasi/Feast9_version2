@@ -1,0 +1,27 @@
+<section class="card">
+  <h2>Cost History &amp; Revisions</h2>
+  <p>Current estimated cost: <strong>₹{{ '%.2f'|format(case.total_cost or 0) }}</strong></p>
+
+  {% if cost_revisions %}
+  <ul class="entry-list">
+    {% for r in cost_revisions %}
+    <li>
+      <span class="entry-date">{{ r.changed_at }}</span>
+      ₹{{ '%.2f'|format(r.old_cost) }} → ₹{{ '%.2f'|format(r.new_cost) }}
+      <p>{{ r.reason }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No cost revisions yet.</p>
+  {% endif %}
+
+  {% if case.status == 'Active' %}
+  <form method="post" action="{{ url_for('cases.revise_cost', case_id=case.id) }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>New Cost (₹)<input type="number" name="new_cost" min="0" step="0.01" required value="{{ case.total_cost }}"></label>
+    <label>Reason<input type="text" name="reason" required placeholder="e.g. Added crown to treatment plan"></label>
+    <button type="submit">Revise Cost</button>
+  </form>
+  {% endif %}
+</section>

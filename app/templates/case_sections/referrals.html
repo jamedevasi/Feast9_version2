@@ -1,0 +1,34 @@
+<section class="card">
+  <details id="referrals-details" data-case-id="{{ case.id }}" {% if referrals %}open{% endif %}>
+    <summary>Referral Notes <span class="referral-toggle-icon">{{ '▼ Hide' if referrals else '▶ Show' }}</span></summary>
+
+    {% if referrals %}
+    <ul class="entry-list">
+      {% for r in referrals %}
+      <li>
+        <strong>{{ r.referred_to }}</strong>{% if r.speciality %} ({{ r.speciality }}){% endif %}
+        <span class="entry-date">{{ r.referral_date }}</span>
+        <p>{{ r.reason }}</p>
+        {% if r.notes %}<p>{{ r.notes }}</p>{% endif %}
+        <form method="post" action="{{ url_for('clinical.delete_referral', ref_id=r.id) }}" onsubmit="return confirm('Delete this referral?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="button button-secondary">Delete</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">No referrals recorded yet.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('clinical.add_referral', case_id=case.id) }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Referral Date<input type="date" name="referral_date" value="{{ today }}" max="{{ today }}"></label>
+      <label>Referred To<input type="text" name="referred_to" required></label>
+      <label>Speciality<input type="text" name="speciality"></label>
+      <label>Reason<textarea name="reason" required></textarea></label>
+      <label>Notes<input type="text" name="notes"></label>
+      <button type="submit">Add Referral</button>
+    </form>
+  </details>
+</section>

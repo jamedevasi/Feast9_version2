@@ -1,0 +1,48 @@
+<section class="card">
+  <h2>Lab Requisitions</h2>
+  {% if lab_reqs %}
+  <ul class="entry-list">
+    {% for r in lab_reqs %}
+    <li>
+      <div class="lab-req-row">
+        <div>
+          <strong>{{ r.work_description }}</strong>
+          {% if r.lab_name %}— {{ r.lab_name }}{% endif %}
+          <span class="badge badge-lab-{{ r.status|lower }}">{{ r.status }}</span>
+        </div>
+      </div>
+      <span class="entry-date">Sent {{ r.sent_date }}{% if r.expected_return %} · Expected {{ r.expected_return }}{% endif %}{% if r.received_date %} · Received {{ r.received_date }}{% endif %}</span>
+      {% if r.notes %}<p>{{ r.notes }}</p>{% endif %}
+
+      <form method="post" action="{{ url_for('clinical.update_lab_req', req_id=r.id) }}" class="lab-req-update-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="status">
+          {% for s in lab_req_statuses %}
+          <option value="{{ s }}" {% if r.status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        <input type="date" name="received_date" value="{{ r.received_date }}" max="{{ today }}" placeholder="Received date">
+        <input type="text" name="notes" value="{{ r.notes }}" placeholder="Notes">
+        <button type="submit">Update</button>
+      </form>
+      <form method="post" action="{{ url_for('clinical.delete_lab_req', req_id=r.id) }}" onsubmit="return confirm('Delete this lab requisition?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="button button-secondary">Delete</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No lab requisitions yet.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('clinical.add_lab_req', case_id=case.id) }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Lab Name<input type="text" name="lab_name"></label>
+    <label>Work Description<input type="text" name="work_description" required placeholder="e.g. Crown fabrication"></label>
+    <label>Sent Date<input type="date" name="sent_date" value="{{ today }}" max="{{ today }}"></label>
+    <label>Expected Return<input type="date" name="expected_return"></label>
+    <label>Notes<input type="text" name="notes"></label>
+    <button type="submit">Add Lab Requisition</button>
+  </form>
+</section>

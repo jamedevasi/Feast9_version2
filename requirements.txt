@@ -1,0 +1,7 @@
+# Linux / Mac / Python 3.11 or 3.12
+# NOTE: this is Phase 1 (Foundation + Patients) of the feast9_v2_agents.md spec.
+# reportlab / openpyxl / Pillow will be added when PDF generation, Excel import,
+# and branding are built in later phases.
+Flask==3.1.3
+Werkzeug==3.1.7
+gunicorn==23.0.0

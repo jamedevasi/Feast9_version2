@@ -1,0 +1,22 @@
+<section class="card">
+  <h2>Visit Notes</h2>
+  {% if visit_notes %}
+  <ul class="entry-list">
+    {% for n in visit_notes %}
+    <li>
+      <span class="entry-date">{{ n.visit_date }}</span>
+      <p>{{ n.note }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No visit notes recorded yet.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('cases.add_visit_note', case_id=case.id) }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Visit Date<input type="date" name="visit_date" value="{{ today }}" max="{{ today }}"></label>
+    <label>Note<textarea name="note" required placeholder="What happened at this visit?"></textarea></label>
+    <button type="submit">Add Visit Note</button>
+  </form>
+</section>

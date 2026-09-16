@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Setup — Feast9{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>Welcome to Feast9</h1>
+  <p>Create the administrator account to get started.</p>
+
+  {% if errors %}
+  <ul class="errors">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Username<input type="text" name="username" required></label>
+    <label>Password<input type="password" name="password" required minlength="8"></label>
+    <label>Confirm Password<input type="password" name="confirm" required minlength="8"></label>
+    <label>Security Question<input type="text" name="security_question" placeholder="e.g. What street did you grow up on?" required></label>
+    <label>Security Answer<input type="text" name="security_answer" required></label>
+    <button type="submit">Create Admin Account</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+<section class="card{% if case.status == 'Active' and not case.consent_recorded %} card-warning{% endif %}">
+  <h2>Consent Forms</h2>
+  {% if case.consent_recorded %}
+  <p>✅ Consent recorded on {{ case.consent_recorded_at }}.</p>
+  {% if case.consent_notes %}<p>{{ case.consent_notes }}</p>{% endif %}
+  {% elif case.status == 'Active' %}
+  <p><strong>⚠ No consent recorded for this active case.</strong></p>
+  <form method="post" action="{{ url_for('cases.record_consent', case_id=case.id) }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Notes<input type="text" name="consent_notes" placeholder="Paper consent on file"></label>
+    <button type="submit">Mark Consent Recorded</button>
+  </form>
+  {% else %}
+  <p class="empty-state">No consent recorded.</p>
+  {% endif %}
+</section>

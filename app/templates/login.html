@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Login — Feast9{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>Feast9</h1>
+  <p class="tagline">Patient &amp; case management — please log in.</p>
+
+  {% if errors %}
+  <ul class="errors">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Username<input type="text" name="username" required autofocus></label>
+    <label>Password<input type="password" name="password" required></label>
+    <button type="submit">Log In</button>
+  </form>
+
+  <div class="verse-block">
+    "I will restore you to health and heal your wounds."
+    <span class="verse-ref">— Jeremiah 30:17</span>
+  </div>
+</div>
+{% endblock %}
