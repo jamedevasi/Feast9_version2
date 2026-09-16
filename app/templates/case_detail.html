@@ -27,7 +27,9 @@
       {%- set proc_list = case.procedures + ([case.custom_procedure] if case.custom_procedure else []) -%}
       {{ proc_list | join(', ') if proc_list else '—' }}
     </dd>
+    {% if can_view_financial %}
     <dt>Estimated Cost</dt><dd>₹{{ '%.2f'|format(case.total_cost or 0) }}</dd>
+    {% endif %}
     {% if case.closed_at %}
     <dt>Closed</dt><dd>{{ case.closed_at }}</dd>
     {% endif %}

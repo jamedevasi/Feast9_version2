@@ -26,3 +26,9 @@ ATTACHMENT_TYPES = ["X-ray", "Clinical Photo", "Lab Report", "Other"]
 LAB_REQ_STATUSES = ["Sent", "Received", "Delayed"]
 
 APPOINTMENT_STATUSES = ["Scheduled", "Completed", "Cancelled", "No-show"]
+
+# Admin: full access. Doctor: full clinical + financial access. Receptionist:
+# zero access to financial data (payments, costs/balances) — enforced server-side,
+# see app/auth.py:financial_access_required.
+ROLES = ["admin", "doctor", "receptionist"]
+NON_FINANCIAL_ROLES = ["receptionist"]

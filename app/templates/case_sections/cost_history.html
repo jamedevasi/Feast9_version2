@@ -1,5 +1,6 @@
 <section class="card">
   <h2>Cost History &amp; Revisions</h2>
+  {% if can_view_financial %}
   <p>Current estimated cost: <strong>₹{{ '%.2f'|format(case.total_cost or 0) }}</strong></p>
 
   {% if cost_revisions %}
@@ -23,5 +24,8 @@
     <label>Reason<input type="text" name="reason" required placeholder="e.g. Added crown to treatment plan"></label>
     <button type="submit">Revise Cost</button>
   </form>
+  {% endif %}
+  {% else %}
+  <p class="empty-state">Restricted — financial data is not available to your role.</p>
   {% endif %}
 </section>

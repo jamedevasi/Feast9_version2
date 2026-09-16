@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}New User — Feast9{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('users.list_view') }}">← Users</a></p>
+<h1>New User</h1>
+
+{% if errors %}
+<ul class="errors">
+  {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<form method="post" class="auth-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Username<input type="text" name="username" value="{{ user.username }}" required></label>
+  <label>Role
+    <select name="role" required>
+      <option value="">Select…</option>
+      {% for r in roles %}
+      <option value="{{ r }}" {% if user.role == r %}selected{% endif %}>{{ r|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Password<input type="password" name="password" required minlength="8"></label>
+  <label>Confirm Password<input type="password" name="confirm" required minlength="8"></label>
+  <label>Security Question<input type="text" name="security_question" placeholder="e.g. What street did you grow up on?" required></label>
+  <label>Security Answer<input type="text" name="security_answer" required></label>
+  <button type="submit">Create User</button>
+</form>
+{% endblock %}

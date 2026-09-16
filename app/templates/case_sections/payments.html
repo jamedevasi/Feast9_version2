@@ -1,5 +1,6 @@
 <section class="card">
   <h2>Payment Log</h2>
+  {% if can_view_financial %}
   <p class="balance-line">Balance due: <strong>₹{{ '%.2f'|format(balance or 0) }}</strong></p>
 
   {% if payments %}
@@ -27,4 +28,7 @@
     <label>Notes<input type="text" name="notes"></label>
     <button type="submit">Record Payment</button>
   </form>
+  {% else %}
+  <p class="empty-state">Restricted — financial data is not available to your role.</p>
+  {% endif %}
 </section>

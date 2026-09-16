@@ -56,8 +56,7 @@ def setup():
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
-    admin = db.get_admin()
-    if admin is None:
+    if db.get_admin() is None:
         return redirect(url_for("auth.setup"))
 
     errors = []
@@ -70,11 +69,13 @@ def login():
         else:
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
-            if username == admin["username"] and check_password(admin["password_hash"], password):
+            user = db.get_user_by_username(username)
+            if user and check_password(user["password_hash"], password):
                 db.clear_failed_logins(ip)
                 session.clear()
-                session["admin_id"] = admin["id"]
-                session["username"] = admin["username"]
+                session["admin_id"] = user["id"]
+                session["username"] = user["username"]
+                session["role"] = user["role"]
                 next_url = request.args.get("next") or url_for("dashboard.index")
                 return redirect(next_url)
             db.record_failed_login(ip)

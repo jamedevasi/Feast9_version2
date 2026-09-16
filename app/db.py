@@ -41,6 +41,16 @@ def get_db():
     return conn
 
 
+def _migrate_admin_roles(conn):
+    """Additive migration: admin rows predate roles — every existing row is a full Admin."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(admin)")}
+    if "role" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")
+    if "is_active" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    conn.commit()
+
+
 def init_db():
     conn = get_db()
     conn.executescript(
@@ -218,6 +228,7 @@ def init_db():
         """
     )
     conn.commit()
+    _migrate_admin_roles(conn)
     conn.close()
 
 
@@ -251,6 +262,73 @@ def update_admin_password(password_hash):
             (password_hash, now_iso(), admin["id"]),
         )
         conn.commit()
+    conn.close()
+
+
+# ── Multi-user accounts (admin / doctor / receptionist) ────────────────────
+# The `admin` table now holds every login, not just the bootstrap admin —
+# `role` distinguishes them. Kept the table name to avoid an unnecessary
+# rename; every account (any role) lives here.
+
+def get_user_by_username(username):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM admin WHERE username = ? AND is_active = 1", (username,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM admin WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def username_exists(username):
+    conn = get_db()
+    row = conn.execute("SELECT 1 FROM admin WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def list_users():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM admin ORDER BY id").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def create_user(username, password_hash, role, security_question, security_answer_hash):
+    now = now_iso()
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO admin
+           (username, password_hash, security_question, security_answer_hash, role, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+        (username, password_hash, security_question, security_answer_hash, role, now, now),
+    )
+    conn.commit()
+    conn.close()
+
+
+def count_active_admins():
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) AS c FROM admin WHERE role = 'admin' AND is_active = 1"
+    ).fetchone()
+    conn.close()
+    return row["c"]
+
+
+def set_user_active(user_id, is_active):
+    conn = get_db()
+    conn.execute(
+        "UPDATE admin SET is_active = ?, updated_at = ? WHERE id = ?",
+        (1 if is_active else 0, now_iso(), user_id),
+    )
+    conn.commit()
     conn.close()
 
 

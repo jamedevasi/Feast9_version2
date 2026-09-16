@@ -3,7 +3,7 @@ import json
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app import db
-from app.auth import login_required
+from app.auth import can_view_financial_data, financial_access_required, login_required
 from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
 from app.csrf import validate_csrf
 from app.validators import normalize_date, today_iso
@@ -57,6 +57,8 @@ def new(patient_id):
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
         data = _collect_case_form(request.form)
+        if not can_view_financial_data():
+            data["total_cost"] = 0  # receptionist has zero access to financial data — enforced here, not just hidden in the form
         form_state = data
         errors = _validate_case(data)
         if not errors:
@@ -89,9 +91,17 @@ def detail(case_id):
     attachments = db.list_attachments_for_case(case_id)
     lab_reqs = db.list_lab_reqs_for_case(case_id)
     referrals = db.list_referrals_for_case(case_id)
-    payments = db.list_payments_for_case(case_id)
-    balance = db.get_case_balance(case_id)
-    cost_revisions = db.list_cost_revisions_for_case(case_id)
+
+    can_view_financial = can_view_financial_data()
+    if can_view_financial:
+        payments = db.list_payments_for_case(case_id)
+        balance = db.get_case_balance(case_id)
+        cost_revisions = db.list_cost_revisions_for_case(case_id)
+    else:
+        # Receptionist: zero access to financial data — never sent to the client, not just hidden.
+        case["total_cost"] = None
+        payments, balance, cost_revisions = [], None, []
+
     return render_template(
         "case_detail.html",
         case=case,
@@ -107,6 +117,7 @@ def detail(case_id):
         payments=payments,
         balance=balance,
         cost_revisions=cost_revisions,
+        can_view_financial=can_view_financial,
         today=today_iso(),
     )
 
@@ -169,6 +180,7 @@ def add_prescription(case_id):
 
 @bp.route("/cases/<int:case_id>/payments", methods=["POST"])
 @login_required
+@financial_access_required
 def add_payment(case_id):
     validate_csrf(request.form.get("csrf_token"))
     case = _get_case_or_404(case_id)
@@ -195,6 +207,7 @@ def add_payment(case_id):
 
 @bp.route("/cases/<int:case_id>/revise-cost", methods=["POST"])
 @login_required
+@financial_access_required
 def revise_cost(case_id):
     validate_csrf(request.form.get("csrf_token"))
     _get_case_or_404(case_id)

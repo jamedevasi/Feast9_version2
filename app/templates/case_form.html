@@ -30,7 +30,7 @@
       {% endfor %}
     </div>
     <label>Other procedure<input type="text" name="custom_procedure" value="{{ case.custom_procedure or '' }}"></label>
-    {% if not editing %}
+    {% if not editing and session.get('role') != 'receptionist' %}
     <label>Estimated Cost (₹)<input type="number" name="total_cost" min="0" step="0.01" value="{{ case.total_cost if case.total_cost is not none else '0' }}"></label>
     {% endif %}
   </fieldset>
