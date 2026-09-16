@@ -356,3 +356,5 @@ details[open] summary { margin-bottom: 0.75rem; }
 
 .error-page { text-align: center; padding: 3rem 1rem; }
 .error-page h1 { font-size: 3rem; margin-bottom: 0; color: var(--brand); }
+
+.qr-code svg { width: 220px; height: 220px; }

@@ -9,7 +9,7 @@
 {% if users %}
 <table class="data-table">
   <thead>
-    <tr><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
+    <tr><th>Username</th><th>Role</th><th>Status</th><th>2FA</th><th>Created</th><th></th></tr>
   </thead>
   <tbody>
     {% for u in users %}
@@ -17,6 +17,7 @@
       <td>{{ u.username }}</td>
       <td>{{ u.role|capitalize }}</td>
       <td>{{ 'Active' if u.is_active else 'Deactivated' }}</td>
+      <td>{{ 'Enabled' if u.totp_enabled else 'Off' }}</td>
       <td>{{ u.created_at }}</td>
       <td>
         {% if u.is_active %}
@@ -28,6 +29,12 @@
         <form method="post" action="{{ url_for('users.activate', user_id=u.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="link-button">Reactivate</button>
+        </form>
+        {% endif %}
+        {% if u.totp_enabled %}
+        <form method="post" action="{{ url_for('users.reset_totp', user_id=u.id) }}" onsubmit="return confirm('Reset 2FA for this user? They will need to set it up again.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link-button">Reset 2FA</button>
         </form>
         {% endif %}
       </td>

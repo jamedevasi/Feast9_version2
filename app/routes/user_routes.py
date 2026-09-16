@@ -1,7 +1,7 @@
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app import db
-from app.auth import current_actor, hash_password, login_required, role_required
+from app.auth import current_actor, hash_password, login_required, reauth_required, role_required
 from app.constants import ROLES
 from app.csrf import validate_csrf
 
@@ -18,6 +18,7 @@ def list_view():
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
 @role_required("admin")
+@reauth_required
 def new():
     errors = []
     form_state = {"username": "", "role": ""}
@@ -65,6 +66,7 @@ def new():
 @bp.route("/<int:user_id>/deactivate", methods=["POST"])
 @login_required
 @role_required("admin")
+@reauth_required
 def deactivate(user_id):
     validate_csrf(request.form.get("csrf_token"))
     target = db.get_user_by_id(user_id)
@@ -81,6 +83,7 @@ def deactivate(user_id):
 @bp.route("/<int:user_id>/activate", methods=["POST"])
 @login_required
 @role_required("admin")
+@reauth_required
 def activate(user_id):
     validate_csrf(request.form.get("csrf_token"))
     target = db.get_user_by_id(user_id)
@@ -88,4 +91,18 @@ def activate(user_id):
         abort(404)
     db.set_user_active(user_id, True, actor=current_actor())
     flash(f"User '{target['username']}' reactivated.", "success")
+    return redirect(url_for("users.list_view"))
+
+
+@bp.route("/<int:user_id>/reset-totp", methods=["POST"])
+@login_required
+@role_required("admin")
+@reauth_required
+def reset_totp(user_id):
+    validate_csrf(request.form.get("csrf_token"))
+    target = db.get_user_by_id(user_id)
+    if not target:
+        abort(404)
+    db.reset_totp(user_id, actor=current_actor())
+    flash(f"Two-factor authentication reset for '{target['username']}'.", "success")
     return redirect(url_for("users.list_view"))

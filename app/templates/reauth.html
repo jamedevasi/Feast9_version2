@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Confirm It's You — Feast9{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>Confirm It's You</h1>
+  <p class="tagline">This action requires re-entering your password{% if totp_enabled %} and authentication code{% endif %}.</p>
+
+  {% if errors %}
+  <ul class="errors">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Password<input type="password" name="password" required autofocus></label>
+    {% if totp_enabled %}
+    <label>Authentication Code<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"></label>
+    {% endif %}
+    <button type="submit">Confirm</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Recovery Codes — Feast9{% endblock %}
+{% block content %}
+<h1>Save Your Recovery Codes</h1>
+<p class="errors">Two-factor authentication is now enabled. Save these one-time recovery codes somewhere safe —
+  each can be used once to log in if you lose access to your authenticator app. <strong>They will not be shown again.</strong></p>
+
+<section class="card">
+  <ul class="entry-list">
+    {% for c in codes %}
+    <li><code>{{ c }}</code></li>
+    {% endfor %}
+  </ul>
+</section>
+
+<a class="button" href="{{ url_for('dashboard.index') }}">I've saved these — continue</a>
+{% endblock %}

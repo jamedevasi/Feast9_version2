@@ -1,7 +1,15 @@
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from app import db
-from app.auth import check_password, hash_password, is_rate_limited, login_required
+from app.auth import (
+    check_password,
+    check_recovery_code,
+    hash_password,
+    is_rate_limited,
+    login_required,
+    mark_reauthenticated,
+    verify_totp_code,
+)
 from app.csrf import validate_csrf
 
 bp = Blueprint("auth", __name__)
@@ -72,16 +80,91 @@ def login():
             user = db.get_user_by_username(username)
             if user and check_password(user["password_hash"], password):
                 db.clear_failed_logins(ip)
+                next_url = request.args.get("next") or url_for("dashboard.index")
+                if user["totp_enabled"]:
+                    session.clear()
+                    session["totp_pending_user_id"] = user["id"]
+                    session["totp_pending_next"] = next_url
+                    return redirect(url_for("auth.login_totp"))
                 session.clear()
                 session["admin_id"] = user["id"]
                 session["username"] = user["username"]
                 session["role"] = user["role"]
-                next_url = request.args.get("next") or url_for("dashboard.index")
+                mark_reauthenticated()
                 return redirect(next_url)
             db.record_failed_login(ip)
             errors.append("Invalid username or password.")
 
     return render_template("login.html", errors=errors)
+
+
+@bp.route("/login/totp", methods=["GET", "POST"])
+def login_totp():
+    pending_id = session.get("totp_pending_user_id")
+    if not pending_id:
+        return redirect(url_for("auth.login"))
+    user = db.get_user_by_id(pending_id)
+    if not user or not user["totp_enabled"]:
+        session.clear()
+        return redirect(url_for("auth.login"))
+
+    errors = []
+    if request.method == "POST":
+        validate_csrf(request.form.get("csrf_token"))
+        ip = request.remote_addr or "unknown"
+
+        if is_rate_limited(ip):
+            errors.append("Too many failed attempts. Please try again in 15 minutes.")
+        else:
+            code = request.form.get("code", "").strip()
+            recovery_code = request.form.get("recovery_code", "").strip()
+            verified = bool(code) and verify_totp_code(user["totp_secret"], code)
+            if not verified and recovery_code:
+                verified = db.consume_recovery_code(
+                    user["id"], lambda h: check_recovery_code(h, recovery_code)
+                )
+
+            if verified:
+                db.clear_failed_logins(ip)
+                next_url = session.get("totp_pending_next") or url_for("dashboard.index")
+                session.clear()
+                session["admin_id"] = user["id"]
+                session["username"] = user["username"]
+                session["role"] = user["role"]
+                mark_reauthenticated()
+                return redirect(next_url)
+            db.record_failed_login(ip)
+            errors.append("Invalid authentication code or recovery code.")
+
+    return render_template("login_totp.html", errors=errors)
+
+
+@bp.route("/reauth", methods=["GET", "POST"])
+@login_required
+def reauth():
+    user = db.get_user_by_id(session["admin_id"])
+    errors = []
+    if request.method == "POST":
+        validate_csrf(request.form.get("csrf_token"))
+        ip = request.remote_addr or "unknown"
+        if is_rate_limited(ip):
+            errors.append("Too many failed attempts. Please try again in 15 minutes.")
+        else:
+            password = request.form.get("password", "")
+            code = request.form.get("code", "").strip()
+            if not check_password(user["password_hash"], password):
+                db.record_failed_login(ip)
+                errors.append("Incorrect password.")
+            elif user["totp_enabled"] and not verify_totp_code(user["totp_secret"], code):
+                db.record_failed_login(ip)
+                errors.append("Invalid authentication code.")
+            else:
+                db.clear_failed_logins(ip)
+                mark_reauthenticated()
+                next_url = session.pop("reauth_next", None) or url_for("dashboard.index")
+                return redirect(next_url)
+
+    return render_template("reauth.html", errors=errors, totp_enabled=bool(user["totp_enabled"]))
 
 
 @bp.route("/logout", methods=["POST"])

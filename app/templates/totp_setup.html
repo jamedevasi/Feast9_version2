@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Set Up 2FA — Feast9{% endblock %}
+{% block content %}
+<h1>Set Up Two-Factor Authentication</h1>
+<p>Scan this QR code with an authenticator app (Google Authenticator, Authy, etc.), or enter the key manually.</p>
+
+{% if errors %}
+<ul class="errors">
+  {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<section class="card">
+  <div class="qr-code">{{ qr_svg | safe }}</div>
+  <p>Manual entry key: <code>{{ secret }}</code></p>
+
+  <form method="post" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Enter the 6-digit code from your app to confirm<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus></label>
+    <button type="submit">Enable Two-Factor Authentication</button>
+  </form>
+</section>
+{% endblock %}

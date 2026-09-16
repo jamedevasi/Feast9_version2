@@ -1,4 +1,5 @@
 """The only module that touches sqlite3 directly. All schema and CRUD live here."""
+import json
 import os
 import sqlite3
 from datetime import datetime, timedelta
@@ -48,6 +49,12 @@ def _migrate_admin_roles(conn):
         conn.execute("ALTER TABLE admin ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")
     if "is_active" not in columns:
         conn.execute("ALTER TABLE admin ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    if "totp_secret" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN totp_secret TEXT NOT NULL DEFAULT ''")
+    if "totp_enabled" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0")
+    if "totp_recovery_codes_json" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN totp_recovery_codes_json TEXT NOT NULL DEFAULT '[]'")
     conn.commit()
 
 
@@ -393,6 +400,66 @@ def set_user_active(user_id, is_active, actor=None):
     )
     conn.commit()
     conn.close()
+
+
+# ── TOTP 2FA ─────────────────────────────────────────────────────────────
+# totp_secret is set (pending) as soon as setup starts but totp_enabled stays 0
+# until the user proves they can generate a valid code with it — see
+# app.routes.totp_routes. Recovery codes are stored hashed, never in plaintext.
+
+def set_pending_totp_secret(user_id, secret):
+    conn = get_db()
+    conn.execute(
+        "UPDATE admin SET totp_secret = ?, updated_at = ? WHERE id = ?",
+        (secret, now_iso(), user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def enable_totp(user_id, recovery_code_hashes, actor=None):
+    conn = get_db()
+    conn.execute(
+        "UPDATE admin SET totp_enabled = 1, totp_recovery_codes_json = ?, updated_at = ? WHERE id = ?",
+        (json.dumps(recovery_code_hashes), now_iso(), user_id),
+    )
+    _write_audit(conn, actor, "totp_enabled", "user", user_id)
+    conn.commit()
+    conn.close()
+
+
+def reset_totp(user_id, actor=None):
+    """Admin-controlled reset, or self-service disable — clears secret/codes, turns 2FA off."""
+    conn = get_db()
+    conn.execute(
+        "UPDATE admin SET totp_secret = '', totp_enabled = 0, totp_recovery_codes_json = '[]', updated_at = ? WHERE id = ?",
+        (now_iso(), user_id),
+    )
+    _write_audit(conn, actor, "totp_reset", "user", user_id)
+    conn.commit()
+    conn.close()
+
+
+def consume_recovery_code(user_id, code_hash_matcher):
+    """code_hash_matcher(stored_hash) -> bool. Removes the matched hash (one-time use). Returns True if consumed."""
+    conn = get_db()
+    row = conn.execute("SELECT totp_recovery_codes_json FROM admin WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        conn.close()
+        return False
+    hashes = json.loads(row["totp_recovery_codes_json"] or "[]")
+    for h in hashes:
+        if code_hash_matcher(h):
+            hashes.remove(h)
+            conn.execute(
+                "UPDATE admin SET totp_recovery_codes_json = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(hashes), now_iso(), user_id),
+            )
+            conn.commit()
+            conn.close()
+            return True
+    conn.close()
+    return False
 
 
 # ── Login rate limiting (DB-backed, survives restarts) ─────────────────────

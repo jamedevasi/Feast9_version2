@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Verify — Feast9{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>Two-Factor Verification</h1>
+  <p class="tagline">Enter the 6-digit code from your authenticator app.</p>
+
+  {% if errors %}
+  <ul class="errors">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Authentication Code<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" autofocus></label>
+    <label>Or a Recovery Code<input type="text" name="recovery_code" placeholder="XXXX-XXXX"></label>
+    <button type="submit">Verify</button>
+  </form>
+</div>
+{% endblock %}

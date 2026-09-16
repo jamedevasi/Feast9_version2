@@ -14,6 +14,7 @@
       <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
       <a href="{{ url_for('patients.list_view') }}">Patients</a>
       <a href="{{ url_for('appointments.index') }}">Appointments</a>
+      <a href="{{ url_for('totp.setup') }}">2FA</a>
       {% if session.get('role') == 'admin' %}
       <a href="{{ url_for('users.list_view') }}">Users</a>
       <a href="{{ url_for('audit.list_view') }}">Audit Log</a>
