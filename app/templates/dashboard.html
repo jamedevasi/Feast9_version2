@@ -2,6 +2,9 @@
 {% block title %}Dashboard — Feast9{% endblock %}
 {% block content %}
 <h1>Dashboard</h1>
+{% if backup_warning %}
+<p class="allergy-alert">⚠ {{ backup_warning }} <a href="{{ url_for('backup.list_view') }}">View backups</a></p>
+{% endif %}
 <p class="empty-state">
   This is a placeholder landing page. Stat tiles, follow-up alerts, and today's appointments
   arrive once Cases and Appointments are built in a later phase.

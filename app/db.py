@@ -248,6 +248,17 @@ def init_db():
             user_agent TEXT NOT NULL DEFAULT '',
             outcome TEXT NOT NULL DEFAULT 'success'
         );
+
+        CREATE TABLE IF NOT EXISTS backup_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'running',
+            file_path TEXT NOT NULL DEFAULT '',
+            file_size INTEGER NOT NULL DEFAULT 0,
+            offsite_status TEXT NOT NULL DEFAULT '',
+            error_message TEXT NOT NULL DEFAULT ''
+        );
         """
     )
     conn.commit()
@@ -293,6 +304,49 @@ def write_audit_now(actor, action, entity, entity_id, before_summary="", after_s
     _write_audit(conn, actor, action, entity, entity_id, before_summary, after_summary, outcome=outcome)
     conn.commit()
     conn.close()
+
+
+# ── Backup log ───────────────────────────────────────────────────────────
+
+def start_backup_log():
+    conn = get_db()
+    cur = conn.execute("INSERT INTO backup_log (started_at, status) VALUES (?, 'running')", (now_iso(),))
+    conn.commit()
+    backup_id = cur.lastrowid
+    conn.close()
+    return backup_id
+
+
+def finish_backup_log(backup_id, status, file_path="", file_size=0, offsite_status="", error_message=""):
+    conn = get_db()
+    conn.execute(
+        """UPDATE backup_log SET finished_at = ?, status = ?, file_path = ?, file_size = ?,
+           offsite_status = ?, error_message = ? WHERE id = ?""",
+        (now_iso(), status, file_path, file_size, offsite_status, error_message, backup_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_backup_log(limit=100):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM backup_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_backup_log(backup_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM backup_log WHERE id = ?", (backup_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def latest_backup_log():
+    conn = get_db()
+    row = conn.execute("SELECT * FROM backup_log ORDER BY id DESC LIMIT 1").fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 # ── Admin ────────────────────────────────────────────────────────────────

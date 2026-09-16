@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Backups — Feast9{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Backups</h1>
+  <form method="post" action="{{ url_for('backup.run') }}" onsubmit="return confirm('Run a backup now?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="button">Run Backup Now</button>
+  </form>
+</div>
+
+{% if entries %}
+<table class="data-table">
+  <thead>
+    <tr><th>Started</th><th>Finished</th><th>Status</th><th>Size</th><th>Off-site</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td>{{ e.started_at }}</td>
+      <td>{{ e.finished_at or '—' }}</td>
+      <td>{{ e.status }}{% if e.error_message %} — {{ e.error_message }}{% endif %}</td>
+      <td>{{ '%.1f KB'|format(e.file_size / 1024) if e.file_size else '—' }}</td>
+      <td>{{ e.offsite_status or '—' }}</td>
+      <td>
+        {% if e.status == 'success' %}
+        <a href="{{ url_for('backup.download', backup_id=e.id) }}">Download</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No backups yet.</p>
+{% endif %}
+{% endblock %}

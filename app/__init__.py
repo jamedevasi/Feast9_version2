@@ -27,6 +27,7 @@ def create_app():
     from app.routes.appointment_routes import bp as appointment_bp
     from app.routes.audit_routes import bp as audit_bp
     from app.routes.auth_routes import bp as auth_bp
+    from app.routes.backup_routes import bp as backup_bp
     from app.routes.case_routes import bp as case_bp
     from app.routes.clinical_routes import bp as clinical_bp
     from app.routes.dashboard_routes import bp as dashboard_bp
@@ -43,6 +44,7 @@ def create_app():
     app.register_blueprint(user_bp)
     app.register_blueprint(audit_bp)
     app.register_blueprint(totp_bp)
+    app.register_blueprint(backup_bp)
 
     app.jinja_env.globals["csrf_token"] = generate_csrf_token
 
