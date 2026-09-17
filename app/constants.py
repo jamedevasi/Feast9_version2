@@ -75,6 +75,11 @@ CHART_STATUSES = ["Existing", "Planned", "Completed"]
 DEFAULT_LOGIN_HEADING = "Feast9"
 DEFAULT_LOGIN_TAGLINE = "Patient & case management — please log in."
 
+# Clinic Details (§4 "settings (key-value)" schema, §5.13 Settings section) — clinic_name
+# falls back to the app name everywhere it's shown (nav bar brand, PDF letterheads);
+# address/phone/email have no fallback and are simply omitted when blank.
+DEFAULT_CLINIC_NAME = "Feast9"
+
 # Presentation only (SVG is a presentation layer, never the source of truth — feast9_v2_agents.md §14).
 CHART_FINDING_COLORS = {
     "Sound": "#e9f7ef",

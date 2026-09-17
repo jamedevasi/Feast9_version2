@@ -78,6 +78,11 @@ def _register_context_processors(app):
         return {"current_year": date.today().year}
 
     @app.context_processor
+    def inject_clinic_name():
+        from app.constants import DEFAULT_CLINIC_NAME
+        return {"clinic_name_nav": db_module.get_setting("clinic_name", "") or DEFAULT_CLINIC_NAME}
+
+    @app.context_processor
     def inject_pending_data_requests():
         # feast9_v2_agents.md §5.11: "count_pending_data_requests() injected into every page"
         from flask import session

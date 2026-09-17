@@ -117,9 +117,13 @@ def login():
             db.record_failed_login(ip)
             errors.append("Invalid username or password.")
 
+    # No custom heading set -> fall back to the clinic's own name (Settings > Clinic
+    # Details) before the generic app-name default, so a configured clinic shows its
+    # own name here without needing to duplicate it into login_heading too.
+    login_heading = db.get_setting("login_heading", "") or db.get_setting("clinic_name", "") or DEFAULT_LOGIN_HEADING
     return render_template(
         "login.html", errors=errors,
-        login_heading=db.get_setting("login_heading", DEFAULT_LOGIN_HEADING),
+        login_heading=login_heading,
         login_tagline=db.get_setting("login_tagline", DEFAULT_LOGIN_TAGLINE),
     )
 

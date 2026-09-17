@@ -28,36 +28,58 @@ bp = Blueprint("settings", __name__, url_prefix="/settings")
 def index():
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
-        if request.form.get("form") == "login_screen":
+        form = request.form.get("form")
+        if form == "clinic_details":
+            _save_clinic_details()
+        elif form == "clinic_logo":
+            _save_clinic_logo()
+        elif form == "login_screen":
             _save_login_screen()
         return redirect(url_for("settings.index"))
 
     return render_template(
         "settings.html",
+        clinic_name=db.get_setting("clinic_name", ""),
+        clinic_address=db.get_setting("clinic_address", ""),
+        clinic_phone=db.get_setting("clinic_phone", ""),
+        clinic_email=db.get_setting("clinic_email", ""),
         login_heading=db.get_setting("login_heading", DEFAULT_LOGIN_HEADING),
         login_tagline=db.get_setting("login_tagline", DEFAULT_LOGIN_TAGLINE),
-        login_image_filename=db.get_setting("login_image_filename", ""),
     )
 
 
+def _save_clinic_details():
+    actor = current_actor()
+    db.set_setting("clinic_name", request.form.get("clinic_name", "").strip(), actor=actor)
+    db.set_setting("clinic_address", request.form.get("clinic_address", "").strip(), actor=actor)
+    db.set_setting("clinic_phone", request.form.get("clinic_phone", "").strip(), actor=actor)
+    db.set_setting("clinic_email", request.form.get("clinic_email", "").strip(), actor=actor)
+    flash("Clinic details updated.", "success")
+
+
+def _save_clinic_logo():
+    upload = request.files.get("clinic_logo")
+    if not upload or not upload.filename:
+        flash("Choose an image to upload.", "warning")
+        return
+
+    content = upload.read()
+    detected = detect_image_upload_type(content[:16])
+    if detected is None:
+        flash("Unsupported or corrupted image — only JPG, PNG, GIF, and WEBP are accepted.", "warning")
+        return
+
+    _mimetype, ext = detected
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    branding_dir = pathlib.Path(app_config.branding_dir())
+    branding_dir.mkdir(parents=True, exist_ok=True)
+    (branding_dir / filename).write_bytes(content)
+    db.set_setting("login_image_filename", filename, actor=current_actor())
+    flash("Clinic logo updated — used on the login page and in the navigation bar.", "success")
+
+
 def _save_login_screen():
-    heading = request.form.get("login_heading", "").strip()
-    tagline = request.form.get("login_tagline", "").strip()
-    db.set_setting("login_heading", heading, actor=current_actor())
-    db.set_setting("login_tagline", tagline, actor=current_actor())
-
-    upload = request.files.get("login_image")
-    if upload and upload.filename:
-        content = upload.read()
-        detected = detect_image_upload_type(content[:16])
-        if detected is None:
-            flash("Unsupported or corrupted image — only JPG, PNG, GIF, and WEBP are accepted.", "warning")
-            return
-        _mimetype, ext = detected
-        filename = f"{uuid.uuid4().hex}.{ext}"
-        branding_dir = pathlib.Path(app_config.branding_dir())
-        branding_dir.mkdir(parents=True, exist_ok=True)
-        (branding_dir / filename).write_bytes(content)
-        db.set_setting("login_image_filename", filename, actor=current_actor())
-
+    actor = current_actor()
+    db.set_setting("login_heading", request.form.get("login_heading", "").strip(), actor=actor)
+    db.set_setting("login_tagline", request.form.get("login_tagline", "").strip(), actor=actor)
     flash("Login screen updated.", "success")

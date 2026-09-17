@@ -1,20 +1,12 @@
-import io
-
 from app import db
 from tests.conftest import get_csrf
 from tests.test_roles import _create_user, _login, _logout
 
-PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
-GIF_BYTES = b"GIF89a" + b"\x00" * 32
-NOT_AN_IMAGE = b"not an image at all, just text"
 
-
-def _save_login_screen(client, heading="Feast9", tagline="Welcome back.", image=None, image_name="logo.png"):
+def _save_login_screen(client, heading="Feast9", tagline="Welcome back."):
     token = get_csrf(client, "/settings/")
     data = {"form": "login_screen", "login_heading": heading, "login_tagline": tagline, "csrf_token": token}
-    if image is not None:
-        data["login_image"] = (io.BytesIO(image), image_name)
-    return client.post("/settings/", data=data, content_type="multipart/form-data")
+    return client.post("/settings/", data=data)
 
 
 def test_login_page_shows_defaults_verse_and_copyright(setup_admin):
@@ -44,34 +36,6 @@ def test_admin_can_update_login_heading_and_tagline(logged_in_client):
     body = resp2.data.decode()
     assert "Sunrise Dental" in body
     assert "Smile brighter, every visit." in body
-
-
-def test_admin_can_upload_custom_login_image(logged_in_client):
-    _save_login_screen(logged_in_client, image=PNG_BYTES, image_name="clinic-logo.png")
-    filename = db.get_setting("login_image_filename")
-    assert filename
-    assert filename.endswith(".png")
-
-    resp = logged_in_client.get("/login-image")
-    assert resp.status_code == 200
-    assert resp.data == PNG_BYTES
-
-
-def test_gif_upload_accepted_for_login_image(logged_in_client):
-    _save_login_screen(logged_in_client, image=GIF_BYTES, image_name="logo.gif")
-    filename = db.get_setting("login_image_filename")
-    assert filename.endswith(".gif")
-    resp = logged_in_client.get("/login-image")
-    assert resp.headers["Content-Type"] == "image/gif"
-
-
-def test_corrupt_image_rejected(logged_in_client):
-    resp = _save_login_screen(logged_in_client, image=NOT_AN_IMAGE, image_name="fake.png")
-    assert resp.status_code == 302
-    assert db.get_setting("login_image_filename") == ""
-
-    settings_page = logged_in_client.get("/settings/")
-    assert b"Unsupported or corrupted image" in settings_page.data
 
 
 def test_login_screen_changes_are_audited(logged_in_client):

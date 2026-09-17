@@ -10,6 +10,8 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from app import db
+from app.constants import DEFAULT_CLINIC_NAME
 from app.validators import compute_age
 
 _styles = getSampleStyleSheet()
@@ -58,8 +60,26 @@ def _build(story):
     return buf.getvalue()
 
 
+def _clinic_letterhead():
+    """(name, contact_line) from Settings > Clinic Details — falls back to the app name
+    when unset, and simply omits the contact line rather than showing empty separators."""
+    name = db.get_setting("clinic_name", "") or DEFAULT_CLINIC_NAME
+    contact_bits = [
+        b for b in (
+            db.get_setting("clinic_address", ""),
+            db.get_setting("clinic_phone", ""),
+            db.get_setting("clinic_email", ""),
+        ) if b
+    ]
+    return name, " · ".join(contact_bits)
+
+
 def _header(title, subtitle=""):
-    story = [Paragraph("Feast9 — Dental Clinic", MUTED), P(title, TITLE)]
+    clinic_name, clinic_contact = _clinic_letterhead()
+    story = [P(clinic_name, MUTED)]
+    if clinic_contact:
+        story.append(P(clinic_contact, MUTED))
+    story.append(P(title, TITLE))
     if subtitle:
         story.append(P(subtitle, SUBTITLE))
     else:
