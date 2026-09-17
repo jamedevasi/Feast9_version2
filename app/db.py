@@ -2,9 +2,10 @@
 import json
 import os
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from app import config as app_config
+from app.constants import MAX_RECURRING_OCCURRENCES
 from app.validators import compute_age, now_iso
 
 _PATIENT_COLUMNS = [
@@ -65,6 +66,14 @@ def _migrate_patients_dpdp(conn):
         conn.execute("ALTER TABLE patients ADD COLUMN is_anonymized INTEGER NOT NULL DEFAULT 0")
     if "anonymized_at" not in columns:
         conn.execute("ALTER TABLE patients ADD COLUMN anonymized_at TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+
+
+def _migrate_appointments_recurring(conn):
+    """Additive migration: groups a recurring series' generated rows together."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(appointments)")}
+    if "series_id" not in columns:
+        conn.execute("ALTER TABLE appointments ADD COLUMN series_id INTEGER REFERENCES appointments(id)")
     conn.commit()
 
 
@@ -287,6 +296,7 @@ def init_db():
     conn.commit()
     _migrate_admin_roles(conn)
     _migrate_patients_dpdp(conn)
+    _migrate_appointments_recurring(conn)
     conn.close()
 
 
@@ -1283,3 +1293,118 @@ def list_appointments_for_month(year, month):
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── Recurring appointments (§14 item) ───────────────────────────────────────
+# A bounded set of real appointment rows is generated up front — not a virtual/computed
+# series — so per-occurrence no-show handling, editing one occurrence, and "exceptions"
+# (delete or edit a single generated row) all fall out of the normal appointment machinery.
+
+def _add_months(d, n):
+    month = d.month - 1 + n
+    year = d.year + month // 12
+    month = month % 12 + 1
+    day = min(d.day, [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28,
+                       31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1])
+    return date(year, month, day)
+
+
+def _step_date(d, interval):
+    if interval == "Weekly":
+        return d + timedelta(days=7)
+    if interval == "Biweekly":
+        return d + timedelta(days=14)
+    return _add_months(d, 1)  # Monthly
+
+
+def _times_overlap(start_a, end_a, start_b, end_b):
+    end_a = end_a or start_a
+    end_b = end_b or start_b
+    return start_a < end_b and start_b < end_a
+
+
+def _find_conflicts(conn, doctor_id, appt_date, start_time, end_time):
+    rows = conn.execute(
+        """SELECT id, start_time, end_time FROM appointments
+           WHERE doctor_id = ? AND appt_date = ? AND status != 'Cancelled'""",
+        (doctor_id, appt_date),
+    ).fetchall()
+    return [r["id"] for r in rows if _times_overlap(start_time, end_time, r["start_time"], r["end_time"])]
+
+
+def add_recurring_appointments(patient_id, case_id, doctor_id, start_date, start_time, end_time,
+                                title, notes, status, interval, until_date, skip_sundays=True):
+    """Generates occurrences from start_date through until_date (inclusive), stepping by
+    interval, capped at MAX_RECURRING_OCCURRENCES. Returns (created_ids, conflict_warnings) —
+    conflict_warnings lists dates where another appointment already exists for that doctor at
+    an overlapping time; the occurrence is still created (a warning, not a hard block)."""
+    dates = []
+    d = date.fromisoformat(start_date)
+    until = date.fromisoformat(until_date)
+    while d <= until and len(dates) < MAX_RECURRING_OCCURRENCES:
+        if not (skip_sundays and d.weekday() == 6):
+            dates.append(d)
+        d = _step_date(d, interval)
+
+    conn = get_db()
+    now = now_iso()
+    created_ids = []
+    conflict_warnings = []
+    series_id = None
+    for occurrence_date in dates:
+        iso_date = occurrence_date.isoformat()
+        conflicts = _find_conflicts(conn, doctor_id, iso_date, start_time, end_time)
+        if conflicts:
+            conflict_warnings.append(f"{iso_date} {start_time} already has another appointment for this doctor")
+
+        cur = conn.execute(
+            """INSERT INTO appointments
+                   (patient_id, case_id, doctor_id, appt_date, start_time, end_time, title, notes, status,
+                    created_at, updated_at, is_recurring, recur_interval, recur_until, series_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+            (patient_id, case_id, doctor_id, iso_date, start_time, end_time, title, notes, status,
+             now, now, interval, until_date, series_id),
+        )
+        new_id = cur.lastrowid
+        created_ids.append(new_id)
+        if series_id is None:
+            series_id = new_id
+            conn.execute("UPDATE appointments SET series_id = ? WHERE id = ?", (series_id, new_id))
+
+    conn.commit()
+    conn.close()
+    return created_ids, conflict_warnings
+
+
+def list_appointments_for_series(series_id):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM appointments WHERE series_id = ? ORDER BY appt_date, start_time", (series_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_appointment_series(series_id, doctor_id, start_time, end_time, title, notes):
+    """Applies shared fields to every not-yet-resolved occurrence in a series — deliberately
+    excludes appt_date and status, which stay per-occurrence."""
+    conn = get_db()
+    conn.execute(
+        """UPDATE appointments SET doctor_id = ?, start_time = ?, end_time = ?, title = ?, notes = ?,
+           updated_at = ? WHERE series_id = ? AND status = 'Scheduled'""",
+        (doctor_id, start_time, end_time, title, notes, now_iso(), series_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def cancel_appointment_series(series_id):
+    """Cancels every not-yet-resolved occurrence in a series — leaves Completed/No-show/
+    already-Cancelled history untouched."""
+    conn = get_db()
+    conn.execute(
+        "UPDATE appointments SET status = 'Cancelled', updated_at = ? WHERE series_id = ? AND status = 'Scheduled'",
+        (now_iso(), series_id),
+    )
+    conn.commit()
+    conn.close()

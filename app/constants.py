@@ -27,6 +27,14 @@ LAB_REQ_STATUSES = ["Sent", "Received", "Delayed"]
 
 APPOINTMENT_STATUSES = ["Scheduled", "Completed", "Cancelled", "No-show"]
 
+# Recurring appointments (§14 item). Schema direction is fixed (is_recurring/recur_interval/
+# recur_until columns), but the interaction design was explicitly left open (§15) — a bounded
+# set of real appointment rows is generated up front, each tagged with the same series_id, so
+# exceptions/no-shows/conflict-detection all fall out of the existing per-appointment machinery
+# for free instead of needing a separate virtual-recurrence engine.
+RECURRENCE_INTERVALS = ["Weekly", "Biweekly", "Monthly"]
+MAX_RECURRING_OCCURRENCES = 52
+
 # Admin: full access. Doctor: full clinical + financial access. Receptionist:
 # zero access to financial data (payments, costs/balances) — enforced server-side,
 # see app/auth.py:financial_access_required.

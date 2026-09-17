@@ -6,7 +6,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 
 from app import db
 from app.auth import login_required
-from app.constants import APPOINTMENT_STATUSES
+from app.constants import APPOINTMENT_STATUSES, RECURRENCE_INTERVALS
 from app.csrf import validate_csrf
 from app.validators import normalize_date, today_iso
 
@@ -48,6 +48,28 @@ def _validate_appointment(data):
         errors.append("A valid appointment date is required.")
     if not data["start_time"]:
         errors.append("Start time is required.")
+    return errors
+
+
+def _collect_recurrence_form(form):
+    return {
+        "is_recurring": form.get("is_recurring") == "on",
+        "recur_interval": form.get("recur_interval", ""),
+        "recur_until": normalize_date(form.get("recur_until", "")),
+        "skip_sundays": form.get("skip_sundays") == "on",
+    }
+
+
+def _validate_recurrence(recurrence, appt_date):
+    errors = []
+    if not recurrence["is_recurring"]:
+        return errors
+    if recurrence["recur_interval"] not in RECURRENCE_INTERVALS:
+        errors.append("Select a valid recurrence interval.")
+    if not recurrence["recur_until"]:
+        errors.append("An end date is required for a recurring appointment.")
+    elif appt_date and recurrence["recur_until"] <= appt_date:
+        errors.append("The recurrence end date must be after the first appointment's date.")
     return errors
 
 
@@ -136,27 +158,40 @@ def new():
         clear_followup = request.form.get("clear_followup", "")
         patient_locked = request.form.get("patient_locked") == "1"
         data = _collect_appointment_form(request.form)
-        errors = _validate_appointment(data)
+        recurrence = _collect_recurrence_form(request.form)
+        errors = _validate_appointment(data) + _validate_recurrence(recurrence, data["appt_date"])
 
         if not errors:
             case_id = int(clear_followup) if clear_followup.isdigit() else None
-            db.add_appointment(
-                data["patient_id"], case_id, data["doctor_id"], data["appt_date"],
-                data["start_time"], data["end_time"], data["title"], data["notes"], data["status"],
-            )
+            if recurrence["is_recurring"]:
+                _created_ids, conflicts = db.add_recurring_appointments(
+                    data["patient_id"], case_id, data["doctor_id"], data["appt_date"],
+                    data["start_time"], data["end_time"], data["title"], data["notes"], data["status"],
+                    recurrence["recur_interval"], recurrence["recur_until"], recurrence["skip_sundays"],
+                )
+                flash(f"{len(_created_ids)} recurring appointments booked.", "success")
+                for warning in conflicts:
+                    flash(f"Possible conflict: {warning}.", "warning")
+            else:
+                db.add_appointment(
+                    data["patient_id"], case_id, data["doctor_id"], data["appt_date"],
+                    data["start_time"], data["end_time"], data["title"], data["notes"], data["status"],
+                )
+                flash("Appointment booked.", "success")
             if case_id:
                 db.update_case_followup(case_id, "", "")
             if data["status"] == "No-show":
                 _handle_noshow_followup(data["patient_id"], data["appt_date"])
-            flash("Appointment booked.", "success")
             return _redirect_to_calendar_for(data["appt_date"])
 
         patient = db.get_patient(data["patient_id"]) if data["patient_id"] else None
         form_state = {
             **data,
+            **recurrence,
             "id": None,
             "arrived_at": "",
             "seen_at": "",
+            "series_id": None,
             "patient_name": patient["name"] if patient else "",
             "doctor_name": "",
         }
@@ -165,6 +200,7 @@ def new():
             appt=form_state,
             doctors=db.list_doctors(),
             statuses=APPOINTMENT_STATUSES,
+            recurrence_intervals=RECURRENCE_INTERVALS,
             prefill_date=data["appt_date"],
             prefill_patient=patient if patient_locked else None,
             patients=[] if patient_locked else db.list_patients(),
@@ -195,6 +231,11 @@ def new():
         "status": "Scheduled",
         "arrived_at": "",
         "seen_at": "",
+        "series_id": None,
+        "is_recurring": False,
+        "recur_interval": "",
+        "recur_until": "",
+        "skip_sundays": True,
         "patient_name": prefill_patient["name"] if prefill_patient else "",
         "doctor_name": "",
     }
@@ -204,6 +245,7 @@ def new():
         appt=form_state,
         doctors=db.list_doctors(),
         statuses=APPOINTMENT_STATUSES,
+        recurrence_intervals=RECURRENCE_INTERVALS,
         prefill_date=prefill_date,
         prefill_patient=prefill_patient,
         patients=[] if prefill_patient else db.list_patients(),
@@ -229,10 +271,20 @@ def edit(appt_id):
 
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
+        scope = request.form.get("scope", "this")
         data = _collect_appointment_form(request.form)
         data["patient_id"] = appt["patient_id"]  # patient is fixed once an appointment exists
         errors = _validate_appointment(data)
         if not errors:
+            if scope == "series" and appt["series_id"]:
+                # Shared fields only — each occurrence keeps its own date and status.
+                db.update_appointment_series(
+                    appt["series_id"], data["doctor_id"], data["start_time"], data["end_time"],
+                    data["title"], data["notes"],
+                )
+                flash("Updated this and every other not-yet-completed occurrence in the series.", "success")
+                return _redirect_to_calendar_for(appt["appt_date"])
+
             prev_status = appt["status"]
             db.update_appointment(
                 appt_id, data["patient_id"], appt["case_id"], data["doctor_id"], data["appt_date"],
@@ -271,4 +323,16 @@ def delete(appt_id):
     response = _redirect_to_calendar_for(appt["appt_date"])
     db.delete_appointment(appt_id)
     flash("Appointment deleted.", "success")
+    return response
+
+
+@bp.route("/<int:appt_id>/cancel-series", methods=["POST"])
+@login_required
+def cancel_series(appt_id):
+    validate_csrf(request.form.get("csrf_token"))
+    appt = _get_appointment_or_404(appt_id)
+    response = _redirect_to_calendar_for(appt["appt_date"])
+    if appt["series_id"]:
+        db.cancel_appointment_series(appt["series_id"])
+        flash("Cancelled every not-yet-completed occurrence in this series.", "success")
     return response

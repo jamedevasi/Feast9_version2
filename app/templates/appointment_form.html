@@ -54,9 +54,31 @@
       {% endfor %}
     </select>
   </label>
+  {% else %}
+  <fieldset>
+    <legend>Recurrence (optional)</legend>
+    <label class="checkbox"><input type="checkbox" name="is_recurring" {% if appt.is_recurring %}checked{% endif %}> Repeat this appointment</label>
+    <label>Every
+      <select name="recur_interval">
+        <option value="">Select…</option>
+        {% for i in recurrence_intervals %}
+        <option value="{{ i }}" {% if appt.recur_interval == i %}selected{% endif %}>{{ i }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Until<input type="date" name="recur_until" value="{{ appt.recur_until or '' }}"></label>
+    <label class="checkbox"><input type="checkbox" name="skip_sundays" {% if appt.skip_sundays is not defined or appt.skip_sundays %}checked{% endif %}> Skip Sundays</label>
+    <p class="hint">Generates a real, bounded set of appointments (capped at 52) — each one can be edited, cancelled, or marked no-show individually afterward.</p>
+  </fieldset>
   {% endif %}
 
+  {% if editing and appt.series_id %}
+  <p class="hint">Part of a recurring series ({{ appt.recur_interval }}, until {{ appt.recur_until }}).</p>
+  <button type="submit" name="scope" value="this">Save (this occurrence only)</button>
+  <button type="submit" name="scope" value="series">Save doctor/time/title/notes for the whole series</button>
+  {% else %}
   <button type="submit">{{ 'Save Changes' if editing else 'Book Appointment' }}</button>
+  {% endif %}
 </form>
 
 {% if editing %}
@@ -77,5 +99,13 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit" class="button button-secondary">Delete Appointment</button>
 </form>
+
+{% if appt.series_id %}
+<form method="post" action="{{ url_for('appointments.cancel_series', appt_id=appt.id) }}"
+      onsubmit="return confirm('Cancel every not-yet-completed appointment in this series? This cannot be undone.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="button button-secondary">Cancel Entire Series</button>
+</form>
+{% endif %}
 {% endif %}
 {% endblock %}

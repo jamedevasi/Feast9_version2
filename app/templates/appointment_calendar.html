@@ -34,7 +34,7 @@
         {% for a in appts_by_day.get(iso_date, []) %}
         <a class="calendar-appt badge-status-{{ a.status|lower|replace(' ', '-') }}" href="{{ url_for('appointments.edit', appt_id=a.id) }}"
            style="border-left-color: {{ a.doctor_color or '#adb5bd' }};">
-          {{ a.start_time }} {{ a.patient_name }}
+          {% if a.series_id %}🔁{% endif %}{{ a.start_time }} {{ a.patient_name }}
         </a>
         {% endfor %}
       </td>
