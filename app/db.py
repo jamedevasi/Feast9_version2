@@ -1653,6 +1653,177 @@ def get_patient_retention(months=6):
     }
 
 
+# ── Analytics (§5.10) — separate tab from Reports; the monthly revenue chart lives
+# here, not in Reports, per the spec's explicit instruction. Everything is scoped to a
+# single selected year, unlike Reports' free date range.
+
+def get_analytics_years():
+    """Years with any recorded activity, for the year selector — always includes the
+    current year even before anything has happened in it yet."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT DISTINCT substr(created_at, 1, 4) AS y FROM cases WHERE created_at != ''
+           UNION SELECT DISTINCT substr(created_at, 1, 4) FROM patients WHERE created_at != ''
+           UNION SELECT DISTINCT substr(appt_date, 1, 4) FROM appointments WHERE appt_date != ''"""
+    ).fetchall()
+    conn.close()
+    years = {int(r["y"]) for r in rows if r["y"] and r["y"].isdigit()}
+    years.add(date.today().year)
+    return sorted(years, reverse=True)
+
+
+def get_analytics_kpis(year):
+    start, end = f"{year}-01-01", f"{year}-12-31"
+    conn = get_db()
+    revenue = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS n FROM payments WHERE payment_date BETWEEN ? AND ?", (start, end)
+    ).fetchone()["n"]
+    new_patients = conn.execute(
+        "SELECT COUNT(*) AS n FROM patients WHERE DATE(created_at) BETWEEN ? AND ?", (start, end)
+    ).fetchone()["n"]
+    case_stats = conn.execute(
+        """SELECT COUNT(*) AS n, COALESCE(AVG(total_cost), 0) AS avg_cost
+           FROM cases WHERE DATE(created_at) BETWEEN ? AND ?""",
+        (start, end),
+    ).fetchone()
+    closed = conn.execute(
+        "SELECT COUNT(*) AS n FROM cases WHERE closed_at != '' AND DATE(closed_at) BETWEEN ? AND ?",
+        (start, end),
+    ).fetchone()["n"]
+    appt_stats = conn.execute(
+        """SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'No-show' THEN 1 ELSE 0 END) AS no_shows
+           FROM appointments WHERE appt_date BETWEEN ? AND ?""",
+        (start, end),
+    ).fetchone()
+    conn.close()
+    total_appts = appt_stats["total"] or 0
+    no_shows = appt_stats["no_shows"] or 0
+    return {
+        "revenue_collected": revenue,
+        "new_patients": new_patients,
+        "new_cases": case_stats["n"],
+        "cases_closed": closed,
+        "avg_case_value": case_stats["avg_cost"],
+        "no_show_rate": (no_shows / total_appts * 100) if total_appts else 0,
+    }
+
+
+def get_monthly_revenue(year):
+    """12 values, Jan..Dec — THE monthly revenue chart (belongs in Analytics, never
+    Reports, per §5.10's explicit instruction)."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT CAST(substr(payment_date, 6, 2) AS INTEGER) AS m, COALESCE(SUM(amount), 0) AS total
+           FROM payments WHERE substr(payment_date, 1, 4) = ? GROUP BY m""",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    by_month = {r["m"]: r["total"] for r in rows}
+    return [by_month.get(m, 0) for m in range(1, 13)]
+
+
+def get_monthly_new_patients(year):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT CAST(substr(created_at, 6, 2) AS INTEGER) AS m, COUNT(*) AS n
+           FROM patients WHERE substr(created_at, 1, 4) = ? GROUP BY m""",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    by_month = {r["m"]: r["n"] for r in rows}
+    return [by_month.get(m, 0) for m in range(1, 13)]
+
+
+def get_monthly_new_cases(year):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT CAST(substr(created_at, 6, 2) AS INTEGER) AS m, COUNT(*) AS n
+           FROM cases WHERE substr(created_at, 1, 4) = ? GROUP BY m""",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    by_month = {r["m"]: r["n"] for r in rows}
+    return [by_month.get(m, 0) for m in range(1, 13)]
+
+
+def get_monthly_appointments(year):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT CAST(substr(appt_date, 6, 2) AS INTEGER) AS m, COUNT(*) AS n
+           FROM appointments WHERE substr(appt_date, 1, 4) = ? GROUP BY m""",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    by_month = {r["m"]: r["n"] for r in rows}
+    return [by_month.get(m, 0) for m in range(1, 13)]
+
+
+def get_case_status_breakdown(year):
+    """Active vs. Closed among cases opened in the selected year."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT status, COUNT(*) AS n FROM cases WHERE substr(created_at, 1, 4) = ? GROUP BY status",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    counts = {r["status"]: r["n"] for r in rows}
+    return {"Active": counts.get("Active", 0), "Closed": counts.get("Closed", 0)}
+
+
+def get_appointment_status_breakdown(year):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT status, COUNT(*) AS n FROM appointments WHERE substr(appt_date, 1, 4) = ? GROUP BY status",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    counts = {r["status"]: r["n"] for r in rows}
+    return {s: counts.get(s, 0) for s in ("Scheduled", "Completed", "Cancelled", "No-show")}
+
+
+def get_doctor_revenue_share(year):
+    """Collected (not billed) per doctor, for cases opened in the year — a doctor
+    with nothing collected that year is left out rather than padding the chart with
+    zero-width bars."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT d.id AS doctor_id, d.name AS doctor_name, d.color AS doctor_color,
+                  COALESCE((SELECT SUM(pay.amount) FROM payments pay
+                            WHERE pay.case_id IN (
+                                SELECT id FROM cases WHERE doctor_id = d.id AND substr(created_at, 1, 4) = ?
+                            )), 0) AS collected
+           FROM doctors d
+           ORDER BY d.name""",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows if r["collected"] > 0]
+
+
+def get_procedure_popularity(year, limit=8):
+    """Tally of procedures across cases opened in the year. procedures_json is a
+    JSON array of procedure-type names (see _collect_case_form) — parsed in Python,
+    not SQL, same as the dental-chart entries."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT procedures_json, custom_procedure FROM cases WHERE substr(created_at, 1, 4) = ?",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    counts = {}
+    for r in rows:
+        try:
+            procedures = json.loads(r["procedures_json"] or "[]")
+        except ValueError:
+            procedures = []
+        for p in procedures:
+            counts[p] = counts.get(p, 0) + 1
+        if r["custom_procedure"]:
+            counts[r["custom_procedure"]] = counts.get(r["custom_procedure"], 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+    return [{"name": name, "count": n} for name, n in ranked]
+
+
 # ── Dental charting (§14 item) ──────────────────────────────────────────────
 # Append-only, like visit notes/prescriptions — a correction is a new entry, never an edit of
 # an old one; "current state" is derived (latest entry per tooth+surface), and the append-only

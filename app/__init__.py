@@ -24,6 +24,7 @@ def create_app():
 
     app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024  # 15 MB — clinical attachments are small files
 
+    from app.routes.analytics_routes import bp as analytics_bp
     from app.routes.appointment_routes import bp as appointment_bp
     from app.routes.audit_routes import bp as audit_bp
     from app.routes.auth_routes import bp as auth_bp
@@ -51,6 +52,7 @@ def create_app():
     app.register_blueprint(dpdp_bp)
     app.register_blueprint(dental_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(analytics_bp)
 
     app.jinja_env.globals["csrf_token"] = generate_csrf_token
 

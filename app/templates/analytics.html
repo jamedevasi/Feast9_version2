@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Analytics — Feast9{% endblock %}
+{% block content %}
+<h1>Analytics</h1>
+
+<form method="get" action="{{ url_for('analytics.view_analytics') }}" class="search-form" id="year-form">
+  <label>Year
+    <select name="year" id="year-select">
+      {% for y in years %}
+      <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">Apply</button>
+</form>
+
+<div class="stat-grid">
+  <div class="stat-tile">
+    <span class="stat-label">Revenue Collected</span>
+    <span class="stat-value">₹{{ '%.2f'|format(kpis.revenue_collected) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">New Patients</span>
+    <span class="stat-value">{{ kpis.new_patients }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">New Cases</span>
+    <span class="stat-value">{{ kpis.new_cases }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">Cases Closed</span>
+    <span class="stat-value">{{ kpis.cases_closed }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">Average Case Value</span>
+    <span class="stat-value">₹{{ '%.2f'|format(kpis.avg_case_value) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">No-show Rate</span>
+    <span class="stat-value">{{ '%.1f'|format(kpis.no_show_rate) }}%</span>
+  </div>
+</div>
+
+<div class="chart-grid">
+  <section class="card chart-card">
+    <h2>Monthly Revenue</h2>
+    <canvas id="chart-monthly-revenue" role="img" aria-label="Monthly revenue collected for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Monthly New Patients</h2>
+    <canvas id="chart-monthly-patients" role="img" aria-label="New patients registered per month for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Monthly New Cases</h2>
+    <canvas id="chart-monthly-cases" role="img" aria-label="New cases opened per month for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Monthly Appointments</h2>
+    <canvas id="chart-monthly-appointments" role="img" aria-label="Appointments booked per month for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Case Status</h2>
+    <canvas id="chart-case-status" role="img" aria-label="Active vs closed cases opened in {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Appointment Status</h2>
+    <canvas id="chart-appointment-status" role="img" aria-label="Appointment status breakdown for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Doctor-wise Revenue Share</h2>
+    {% if chart_data.doctor_revenue %}
+    <canvas id="chart-doctor-revenue" role="img" aria-label="Revenue collected per doctor for {{ year }}"></canvas>
+    {% else %}
+    <p class="empty-state">No revenue collected against any doctor in {{ year }}.</p>
+    {% endif %}
+  </section>
+  <section class="card chart-card">
+    <h2>Procedure Popularity</h2>
+    {% if chart_data.procedure_popularity %}
+    <canvas id="chart-procedure-popularity" role="img" aria-label="Most common procedures for {{ year }}"></canvas>
+    {% else %}
+    <p class="empty-state">No procedures recorded on any case opened in {{ year }}.</p>
+    {% endif %}
+  </section>
+</div>
+
+<script type="application/json" id="analytics-data">{{ chart_data|tojson }}</script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='analytics.js') }}"></script>
+{% endblock %}

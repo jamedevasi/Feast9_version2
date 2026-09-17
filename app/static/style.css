@@ -408,3 +408,11 @@ details[open] summary { margin-bottom: 0.75rem; }
 @media print {
   .no-print { display: none; }
 }
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+}
+.chart-card { height: 320px; display: flex; flex-direction: column; position: relative; }
+.chart-card canvas { flex: 1; min-height: 0; }
