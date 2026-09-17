@@ -64,6 +64,9 @@
 
 <section class="card">
   <h2>Contact Details &amp; DPDP Status</h2>
+  {% if patient.is_anonymized %}
+  <p class="allergy-alert">⚠ This patient's contact details were erased on {{ patient.anonymized_at }} per a DPDP Erasure request. Clinical and financial records are preserved.</p>
+  {% endif %}
   <dl>
     <dt>Date of Birth</dt>
     <dd>{{ patient.date_of_birth or '—' }}{% if patient.computed_age is not none %} (Age {{ patient.computed_age }}){% endif %}</dd>
@@ -82,5 +85,38 @@
     <dt>Communications Consent</dt>
     <dd>{{ 'Opted in at ' + patient.comms_consent_at if patient.comms_consent else 'Opted out' }}</dd>
   </dl>
+
+  <h3>Data-Rights Requests</h3>
+  {% if data_requests %}
+  <ul class="entry-list">
+    {% for r in data_requests %}
+    <li>
+      <span class="entry-date">{{ r.requested_at }}</span>
+      <a href="{{ url_for('dpdp.detail', request_id=r.id) }}">{{ r.request_type }}</a>
+      <span class="badge badge-status-{{ r.status|lower|replace(' ', '-') }}">{{ r.status }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No data-rights requests for this patient.</p>
+  {% endif %}
+  <a class="button" href="{{ url_for('dpdp.new_data_request', patient_id=patient.id) }}">+ New Data-Rights Request</a>
+</section>
+
+<section class="card">
+  <h2>Prescription History</h2>
+  {% if prescriptions %}
+  <ul class="entry-list">
+    {% for rx in prescriptions %}
+    <li>
+      <span class="entry-date">{{ rx.prescribed_date }}</span>
+      <a href="{{ url_for('cases.detail', case_id=rx.case_id) }}">{{ rx.case_title }}</a>
+      <p>{{ rx.rx_details }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No prescriptions recorded yet.</p>
+  {% endif %}
 </section>
 {% endblock %}

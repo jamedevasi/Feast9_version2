@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}New Data-Rights Request — Feast9{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
+<h1>New Data-Rights Request for {{ patient.name }}</h1>
+
+{% if errors %}
+<ul class="errors">
+  {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<form method="post" class="auth-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Request Type
+    <select name="request_type" required>
+      <option value="">Select…</option>
+      {% for t in request_types %}
+      <option value="{{ t }}" {% if request_state.request_type == t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Description<textarea name="description" required placeholder="What is the patient asking for?">{{ request_state.description }}</textarea></label>
+  <button type="submit">Log Request</button>
+</form>
+<p class="hint">A 90-day resolution deadline is set automatically from today.</p>
+{% endblock %}

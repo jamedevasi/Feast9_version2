@@ -115,7 +115,12 @@ def detail(patient_id):
     patient["allergies"] = json.loads(patient.get("allergies_json") or "[]")
     cases = db.list_cases_for_patient(patient_id)
     appointments = db.list_appointments_for_patient(patient_id)
-    return render_template("patient_detail.html", patient=patient, cases=cases, appointments=appointments)
+    data_requests = db.list_data_requests_for_patient(patient_id)
+    prescriptions = db.list_prescriptions_for_patient(patient_id)
+    return render_template(
+        "patient_detail.html", patient=patient, cases=cases, appointments=appointments,
+        data_requests=data_requests, prescriptions=prescriptions,
+    )
 
 
 @bp.route("/<int:patient_id>/edit", methods=["GET", "POST"])

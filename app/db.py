@@ -58,6 +58,16 @@ def _migrate_admin_roles(conn):
     conn.commit()
 
 
+def _migrate_patients_dpdp(conn):
+    """Additive migration for DPDP Phase 2 erasure support."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(patients)")}
+    if "is_anonymized" not in columns:
+        conn.execute("ALTER TABLE patients ADD COLUMN is_anonymized INTEGER NOT NULL DEFAULT 0")
+    if "anonymized_at" not in columns:
+        conn.execute("ALTER TABLE patients ADD COLUMN anonymized_at TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+
+
 def init_db():
     conn = get_db()
     conn.executescript(
@@ -259,10 +269,24 @@ def init_db():
             offsite_status TEXT NOT NULL DEFAULT '',
             error_message TEXT NOT NULL DEFAULT ''
         );
+
+        CREATE TABLE IF NOT EXISTS data_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER NOT NULL REFERENCES patients(id),
+            request_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'Pending',
+            description TEXT NOT NULL DEFAULT '',
+            resolution_note TEXT NOT NULL DEFAULT '',
+            requested_at TEXT NOT NULL,
+            deadline_at TEXT NOT NULL,
+            resolved_at TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()
     _migrate_admin_roles(conn)
+    _migrate_patients_dpdp(conn)
     conn.close()
 
 
@@ -778,6 +802,19 @@ def list_prescriptions_for_case(case_id):
     return [dict(r) for r in rows]
 
 
+def list_prescriptions_for_patient(patient_id):
+    """All prescriptions across every case for a patient — feast9_v2_agents.md §14 'Prescription history'."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT rx.*, c.title AS case_title FROM prescriptions rx
+           JOIN cases c ON c.id = rx.case_id
+           WHERE rx.patient_id = ? ORDER BY rx.prescribed_date DESC, rx.id DESC""",
+        (patient_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 # ── Clinical Attachments ────────────────────────────────────────────────
 
 def add_attachment(case_id, filename, original_name, file_type, description, actor=None):
@@ -1057,6 +1094,121 @@ def list_patients(search="", limit=200):
         rows = conn.execute("SELECT * FROM patients ORDER BY name LIMIT ?", (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ── DPDP Phase 2 — data-rights requests (feast9_v2_agents.md §5.11) ────────
+# Four types: Access | Correction | Erasure | Withdraw Consent. Erasure soft-anonymises
+# PII on the patient row and preserves every clinical/financial record attached to it —
+# it is never a hard delete of the patient or their cases.
+
+_ANONYMIZE_FIELDS = {
+    "mobile": "", "email": "", "address": "", "date_of_birth": "",
+    "emergency_contact_name": "", "emergency_contact_relation": "", "emergency_contact_number": "",
+    "guardian_name": "", "guardian_relation": "", "guardian_mobile": "",
+}
+
+
+def create_data_request(patient_id, request_type, description, actor=None):
+    now = now_iso()
+    deadline = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    cur = conn.execute(
+        """INSERT INTO data_requests
+           (patient_id, request_type, status, description, requested_at, deadline_at, created_at)
+           VALUES (?, ?, 'Pending', ?, ?, ?, ?)""",
+        (patient_id, request_type, description, now, deadline, now),
+    )
+    request_id = cur.lastrowid
+    _write_audit(
+        conn, actor, "dpdp_request_created", "data_request", request_id,
+        after_summary=f"type={request_type}",
+    )
+    conn.commit()
+    conn.close()
+    return request_id
+
+
+def get_data_request(request_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM data_requests WHERE id = ?", (request_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_data_requests(status=None):
+    conn = get_db()
+    query = "SELECT dr.*, p.name AS patient_name FROM data_requests dr JOIN patients p ON p.id = dr.patient_id"
+    if status:
+        rows = conn.execute(f"{query} WHERE dr.status = ? ORDER BY dr.deadline_at", (status,)).fetchall()
+    else:
+        rows = conn.execute(f"{query} ORDER BY dr.deadline_at").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def list_data_requests_for_patient(patient_id):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM data_requests WHERE patient_id = ? ORDER BY requested_at DESC", (patient_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def count_pending_data_requests():
+    conn = get_db()
+    row = conn.execute("SELECT COUNT(*) AS c FROM data_requests WHERE status = 'Pending'").fetchone()
+    conn.close()
+    return row["c"]
+
+
+def resolve_data_request(request_id, new_status, resolution_note, confirm_name="", actor=None):
+    """Updates a request's status and, when completing it, applies the request type's
+    real-world effect in the SAME transaction: Erasure soft-anonymises the patient (requires
+    confirm_name to exactly match the patient's current name — the spec's confirmation
+    safeguard for an irreversible action); Withdraw Consent clears comms consent. Raises
+    ValueError (no writes made) if an Erasure completion's confirm_name doesn't match."""
+    conn = get_db()
+    request = conn.execute("SELECT * FROM data_requests WHERE id = ?", (request_id,)).fetchone()
+    if not request:
+        conn.close()
+        raise ValueError("No such data request.")
+
+    if new_status == "Completed" and request["request_type"] == "Erasure":
+        patient = conn.execute("SELECT name FROM patients WHERE id = ?", (request["patient_id"],)).fetchone()
+        if not patient or confirm_name.strip() != patient["name"]:
+            conn.close()
+            raise ValueError("Typed name does not match the patient's name — erasure not performed.")
+
+    now = now_iso()
+    resolved_at = now if new_status in ("Completed", "Rejected") else ""
+    conn.execute(
+        "UPDATE data_requests SET status = ?, resolution_note = ?, resolved_at = ? WHERE id = ?",
+        (new_status, resolution_note, resolved_at, request_id),
+    )
+    _write_audit(
+        conn, actor, "dpdp_request_status_changed", "data_request", request_id,
+        before_summary=f"status={request['status']}", after_summary=f"status={new_status}",
+    )
+
+    if new_status == "Completed":
+        if request["request_type"] == "Erasure":
+            set_clause = ", ".join(f"{k} = ?" for k in _ANONYMIZE_FIELDS)
+            conn.execute(
+                f"""UPDATE patients SET {set_clause}, name = ?, is_anonymized = 1,
+                    anonymized_at = ?, comms_consent = 0, updated_at = ? WHERE id = ?""",
+                (*_ANONYMIZE_FIELDS.values(), f"Erased Patient #{request['patient_id']}", now, now, request["patient_id"]),
+            )
+            _write_audit(conn, actor, "patient_anonymized", "patient", request["patient_id"])
+        elif request["request_type"] == "Withdraw Consent":
+            conn.execute(
+                "UPDATE patients SET comms_consent = 0, comms_consent_at = '', updated_at = ? WHERE id = ?",
+                (now, request["patient_id"]),
+            )
+            _write_audit(conn, actor, "comms_consent_withdrawn", "patient", request["patient_id"])
+
+    conn.commit()
+    conn.close()
 
 
 # ── Appointments ─────────────────────────────────────────────────────────

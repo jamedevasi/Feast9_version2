@@ -32,3 +32,8 @@ APPOINTMENT_STATUSES = ["Scheduled", "Completed", "Cancelled", "No-show"]
 # see app/auth.py:financial_access_required.
 ROLES = ["admin", "doctor", "receptionist"]
 NON_FINANCIAL_ROLES = ["receptionist"]
+
+# DPDP Phase 2 (feast9_v2_agents.md §5.11) — data-rights requests.
+DATA_REQUEST_TYPES = ["Access", "Correction", "Erasure", "Withdraw Consent"]
+DATA_REQUEST_STATUSES = ["Pending", "In Progress", "Completed", "Rejected"]
+DATA_REQUEST_DEADLINE_DAYS = 90
