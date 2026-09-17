@@ -13,7 +13,18 @@ A dental clinic practice management system for a single practitioner and their r
 - No build step — plain Python, runs with `python run.py` locally or `gunicorn wsgi:app` in production
 - One SQLite file, one DATA_DIR — zero external dependencies for data
 - DPDP Act 2023 compliance must never be diluted
-- Pillow is optional — app boots and works without it
+
+**Correction (2026-09-17, PDF generation phase):** "Pillow is optional — app boots and works
+without it" is no longer true and is removed from this list. `reportlab` (required for §10's
+PDF generators, themselves non-optional) lists Pillow as a hard install dependency, so it
+became a transitive requirement the moment PDF generation shipped — before any code in this
+app touched `PIL` directly. Signature capture (§5.4/§10) and the generated login-screen
+placeholder logo later added *direct* `PIL` imports on top of that, but the guarantee was
+already gone by then. TOTP's QR codes (§14) deliberately used `qrcode.image.svg.SvgPathImage`
+specifically to avoid a Pillow dependency at the time — a correct call in isolation, just one
+later overtaken by PDF generation. If a future rebuild needs Pillow to stay optional, PDF
+generation would have to be built without `reportlab`'s raster-image support, which isn't
+recommended.
 
 ---
 
@@ -27,32 +38,50 @@ A dental clinic practice management system for a single practitioner and their r
 | WSGI Linux/Mac | Gunicorn 23.x | 2 workers |
 | WSGI Windows | Waitress | Use requirements-win-py314.txt |
 | PDF | ReportLab | Returns bytes — never writes to disk |
-| Excel | openpyxl | Reports + Plan B backup |
-| Images | Pillow ≥ 10.0.0 | Optional — wrapped in try/except everywhere |
+| Excel | openpyxl | Reports + Plan B backup + bulk patient import (§14) |
+| Images | Pillow | Transitive via reportlab, not optional — see §1's correction |
 | Frontend | Jinja2 + vanilla JS | No React, no Vue, no build step |
 | Charts | Chart.js 4.x, vendored locally in `static/` | Analytics tab only — not loaded from CDN, keeps CSP `script-src` self-only |
+| TOTP 2FA | `pyotp` + `qrcode` (SVG factory) | §14 — QR codes never touch Pillow even though it's present elsewhere |
+| Backup encryption | `cryptography` (Fernet) | §14 — key independent of `SECRET_KEY` |
+| Google sign-in | `Authlib` + `requests` | §14 — OIDC client; feature-flagged off when unconfigured |
 
-### requirements.txt (Linux / Mac / Python 3.11 or 3.12)
+### requirements.txt (Linux / Mac / Python 3.11 or 3.12) — as actually built
 ```
 Flask==3.1.3
 Werkzeug==3.1.7
-openpyxl==3.1.5
-reportlab==4.4.10
 gunicorn==23.0.0
-Pillow>=10.0.0
+pyotp==2.10.0
+qrcode==8.2
+cryptography==50.0.1
+openpyxl==3.1.5
+reportlab==4.4.4
+Authlib==1.6.5
+requests==2.32.5
 ```
 
-### requirements-win-py314.txt (Windows + Python 3.14)
+### requirements-win-py314.txt (Windows + Python 3.14) — as actually built
 ```
 Flask==3.1.3
 Werkzeug==3.1.7
-openpyxl==3.1.5
-reportlab==4.4.10
 waitress>=3.0.0
-Pillow>=11.1.0
+pyotp==2.10.0
+qrcode==8.2
+cryptography==50.0.1
+openpyxl==3.1.5
+reportlab==4.4.4
+Authlib==1.6.5
+requests==2.32.5
 ```
 
-Two files exist because: gunicorn does not run on Windows (use waitress), and Pillow 3.14 needs a newer version. Always use requirements.txt on Linux/Mac servers.
+Two files exist because: gunicorn does not run on Windows (use waitress). Always use
+requirements.txt on Linux/Mac servers. **Pillow has no explicit pin in either file** — it
+arrives transitively via `reportlab`'s own dependency (see §1's correction above); this is
+intentional, not an oversight, since pinning it separately would just risk it drifting out of
+sync with whatever version `reportlab` actually needs. `pyotp`/`qrcode`/`cryptography` (TOTP +
+backup encryption, §14), `Authlib`/`requests` (Google sign-in, §14) were added as those phases
+shipped — none were in the original stack table above, which now undercounts the real
+dependency list; treat this block, not §2's table, as current.
 
 ### Local setup — Windows PowerShell
 ```powershell
@@ -151,7 +180,9 @@ comms_consent INTEGER DEFAULT 0,
 comms_consent_at TEXT DEFAULT '',
 guardian_name TEXT DEFAULT '',
 guardian_relation TEXT DEFAULT '',
-guardian_mobile TEXT DEFAULT ''
+guardian_mobile TEXT DEFAULT '',
+is_anonymized INTEGER NOT NULL DEFAULT 0,   -- additive, DPDP Phase 2 (§5.11) — set by an Erasure request
+anonymized_at TEXT NOT NULL DEFAULT ''
 ```
 
 ### cases
@@ -167,7 +198,11 @@ total_cost REAL DEFAULT 0,
 next_action_note TEXT DEFAULT '',
 follow_up_date TEXT DEFAULT '',             -- YYYY-MM-DD; Dashboard reminder ONLY — not a calendar booking
 created_at TEXT, updated_at TEXT,
-closed_at TEXT DEFAULT ''                   -- set ONLY when doctor explicitly marks Closed; uses now_iso()
+closed_at TEXT DEFAULT '',                  -- set ONLY when doctor explicitly marks Closed; uses now_iso()
+consent_recorded INTEGER DEFAULT 0,         -- not in original §4 DDL — needed for the "red border if no consent" rule
+consent_recorded_at TEXT DEFAULT '',
+consent_notes TEXT DEFAULT '',
+consent_signature_filename TEXT NOT NULL DEFAULT ''  -- additive — captured signature PNG, embedded in the consent PDF (§10)
 ```
 
 ### appointments
@@ -185,12 +220,141 @@ status TEXT NOT NULL DEFAULT 'Scheduled',  -- Scheduled | Completed | Cancelled 
 created_at TEXT, updated_at TEXT,
 arrived_at TEXT NOT NULL DEFAULT '',        -- kept in schema; not used in UI (wait time removed)
 seen_at TEXT NOT NULL DEFAULT '',           -- kept in schema; not used in UI (wait time removed)
-is_recurring INTEGER NOT NULL DEFAULT 0,   -- schema ready; UI not built
+is_recurring INTEGER NOT NULL DEFAULT 0,   -- legacy columns from the original design; superseded — see note below
 recur_interval TEXT NOT NULL DEFAULT '',
-recur_until TEXT NOT NULL DEFAULT ''
+recur_until TEXT NOT NULL DEFAULT '',
+series_id INTEGER REFERENCES appointments(id)  -- additive, self-referential — ties every occurrence (incl. the first) of a recurring series together; §14
 ```
 
+**Note on is_recurring / recur_interval / recur_until:** the built recurring-appointments feature (§14) does
+not use these three columns — it generates a bounded set of real appointment rows up front and ties them
+together via `series_id` instead, rather than storing a recurrence rule on one row and computing occurrences
+virtually. Kept in the schema, additive-only, harmless; do not build new logic on top of them.
+
 **Note on arrived_at / seen_at:** These columns exist in the database from an earlier feature (wait time tracking) that was removed. Keep them — removing columns from SQLite is disruptive and the data is harmless. Do not build any UI on top of them.
+
+### admin — not in original §4, built during Phase 1 (auth was always required but had no defined schema)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+username TEXT NOT NULL UNIQUE,
+password_hash TEXT NOT NULL,           -- PBKDF2
+security_question TEXT NOT NULL,
+security_answer_hash TEXT NOT NULL,
+created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+role TEXT NOT NULL DEFAULT 'admin',    -- additive, Phase 4a (§14) — 'admin' | 'doctor' | 'receptionist'
+is_active INTEGER NOT NULL DEFAULT 1,  -- additive, Phase 4a
+totp_secret TEXT NOT NULL DEFAULT '',              -- additive, Phase 4c (§14 TOTP 2FA)
+totp_enabled INTEGER NOT NULL DEFAULT 0,
+totp_recovery_codes_json TEXT NOT NULL DEFAULT '[]',  -- hashed at rest, same as passwords
+google_sub TEXT NOT NULL DEFAULT '',   -- additive — Google sign-in (§14), partial UNIQUE index WHERE google_sub != ''
+google_email TEXT NOT NULL DEFAULT '',
+google_linked_at TEXT NOT NULL DEFAULT ''
+```
+Holds every user account (admin/doctor/receptionist), not just the bootstrap admin — table name kept as-is (see CLAUDE.md) to avoid a pointless rename once roles were added.
+
+### login_attempts — not in original §4
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+ip TEXT NOT NULL,
+attempted_at TEXT NOT NULL
+```
+Backs DB-backed rate limiting on `/login` (no in-memory limiter, since gunicorn/waitress may run multiple workers/processes).
+
+### case_visit_notes — not in original §4
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+patient_id INTEGER NOT NULL,
+note TEXT NOT NULL,
+visit_date TEXT NOT NULL,
+created_at TEXT NOT NULL
+```
+Append-only — no edit/delete route. A correction is a new note, never an edit of an old one.
+
+### prescriptions — not in original §4
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+patient_id INTEGER NOT NULL,
+rx_details TEXT NOT NULL,
+prescribed_date TEXT NOT NULL,
+created_at TEXT NOT NULL
+```
+Append-only. `db.list_prescriptions_for_patient` (§14 "Prescription history") joins this to `cases` for a cross-case, most-recent-first view, shown as a 5th section on patient detail appended after the 4 order-fixed §5.2/§5.3 sections.
+
+### payments — not in original §4
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+patient_id INTEGER NOT NULL,
+payment_date TEXT NOT NULL,
+amount REAL NOT NULL,
+method TEXT NOT NULL DEFAULT '',
+reference TEXT NOT NULL DEFAULT '',
+notes TEXT NOT NULL DEFAULT '',
+created_at TEXT NOT NULL
+```
+Append-only, financial — `role_required`/`financial_access_required` blocks the receptionist role on every read and write.
+
+### cost_revisions — not in original §4
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+old_cost REAL NOT NULL,
+new_cost REAL NOT NULL,
+reason TEXT NOT NULL DEFAULT '',
+changed_at TEXT NOT NULL,
+created_at TEXT NOT NULL
+```
+`cases.total_cost` only ever changes via `db.update_case_cost()`, which inserts a row here automatically whenever the value actually changes — never `UPDATE cases SET total_cost` directly.
+
+### audit_log — not in original §4, Phase 4b (§14)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+actor_user_id INTEGER,
+role TEXT NOT NULL DEFAULT '',
+ts_utc TEXT NOT NULL,
+action TEXT NOT NULL,
+entity TEXT NOT NULL,
+entity_id INTEGER,
+correlation_id TEXT NOT NULL DEFAULT '',
+before_summary TEXT NOT NULL DEFAULT '',   -- field-level/redacted by construction — clinical text/values never logged
+after_summary TEXT NOT NULL DEFAULT '',
+ip TEXT NOT NULL DEFAULT '',
+user_agent TEXT NOT NULL DEFAULT '',
+outcome TEXT NOT NULL DEFAULT 'success'
+```
+Written in the same transaction as the action it records (`db._write_audit`, no commit/close) for every instrumented write; `db.write_audit_now()` is the one standalone-commit exception (attachment downloads, which have no other write to piggyback on). Admin-only viewer at `/audit-log`.
+
+### backup_log — not in original §4, automated off-server backup (§14)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+started_at TEXT NOT NULL,
+finished_at TEXT NOT NULL DEFAULT '',
+status TEXT NOT NULL DEFAULT 'running',
+file_path TEXT NOT NULL DEFAULT '',
+file_size INTEGER NOT NULL DEFAULT 0,
+offsite_status TEXT NOT NULL DEFAULT '',
+error_message TEXT NOT NULL DEFAULT ''
+```
+Backs the admin-only `/backup` history/on-demand-run/download UI; dashboard shows a warning banner if the last backup failed, never ran, or is >26h stale.
+
+### dental_chart_entries — not in original §4, dental charting (§14, "biggest clinical gap")
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+patient_id INTEGER NOT NULL REFERENCES patients(id),
+case_id INTEGER REFERENCES cases(id),
+tooth_id TEXT NOT NULL,           -- FDI/ISO 3950 notation, e.g. '11', '85'
+dentition TEXT NOT NULL,          -- 'Permanent' | 'Primary' — both always chartable, no per-patient setting
+surface TEXT NOT NULL DEFAULT 'Whole Tooth',
+finding TEXT NOT NULL,            -- Sound/Caries/Restoration/Crown/Root Canal/Implant/Missing-Extracted/Fracture/Other
+status TEXT NOT NULL DEFAULT 'Existing',  -- Existing | Planned | Completed
+notes TEXT NOT NULL DEFAULT '',
+recorded_by INTEGER,
+recorded_at TEXT NOT NULL,
+created_at TEXT NOT NULL
+```
+Append-only, like visit notes/prescriptions — a correction is a new entry, never an edit of an old one; the log itself is the correction/version history. `db.get_current_dental_chart` derives current per-tooth state as the latest entry per (tooth, surface), except a tooth whose overall-latest entry is Missing/Extracted, which shows only that.
 
 ### case_attachments
 ```sql
@@ -238,9 +402,11 @@ clinic_name
 clinic_address
 clinic_phone
 clinic_email
-login_heading          -- caption below login screen image; blank = "St Apollonia — pray for us."
-login_tagline          -- subtitle under clinic name on login; blank = default text
-login_image_filename   -- filename in DATA_DIR/branding/; blank = use saint_apollonia.png
+login_heading          -- blank falls back to clinic_name, then DEFAULT_LOGIN_HEADING = "Feast9"
+                        -- (no devotional-caption default was ever implemented — see §5.12 correction)
+login_tagline          -- subtitle under clinic name on login; blank = DEFAULT_LOGIN_TAGLINE
+login_image_filename   -- filename in DATA_DIR/branding/; also reused as "Clinic Logo" (Settings) —
+                        -- one key, two Settings entry points, no separate clinic-logo key
 ```
 
 ### data_requests
@@ -269,9 +435,27 @@ id, name TEXT, is_active INTEGER DEFAULT 1, created_at TEXT
 ## 5. Features
 
 ### 5.1 Authentication
-- Single admin account, PBKDF2 password hash (Werkzeug)
-- Security question for self-service password reset — no email needed
+- **Multi-user, role-based** (§14, built) — the `admin` table holds every account, not just the
+  bootstrap admin. Three roles: `admin`, `doctor`, `receptionist`. `role_required(*roles)` and
+  `financial_access_required` (blocks receptionist) enforce access server-side on every route,
+  never UI-only. Admin-only `/users` list/create/deactivate/reactivate; the last active admin
+  cannot be deactivated.
+- PBKDF2 password hash (Werkzeug)
+- Security question for self-service password reset — no email needed. Self-service
+  Change Password / Security Question at `/account` (§5.13 correction — open to every role,
+  not gated behind the admin-only `/settings`).
 - `reset_admin_password.py` for emergency CLI recovery
+- **TOTP 2FA** (§14, built) — `pyotp` + `qrcode` (SVG factory, no Pillow dependency). Self-service
+  enrollment at `/totp/setup`; one-time recovery codes shown once, hashed at rest. Login becomes
+  two-step when enabled (`/login/totp`, code or a recovery code).
+- **Step-up re-authentication** (§14, built) — `reauth_required`: a session's `reauth_at` must be
+  within 10 minutes or the user is sent to `/reauth` before continuing. Applied to user
+  management, TOTP reset, clinical-document deletion, and backup actions.
+- **Google sign-in** (§14, built, optional/secondary per spec) — Authlib OIDC. Only *links* to an
+  already-authenticated local session (`/account/link-google`); a Google identity that was never
+  linked cannot sign in or create an account. Feature-flagged off (routes 404, button hidden)
+  when `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` aren't set. Local password (+TOTP) remains the
+  required baseline regardless.
 - CSRF token on every POST via `validate_csrf(request.form.get('csrf_token'))`
 - Rate limiting: 8 failed login attempts per 15 minutes per IP (DB-backed, survives restarts)
 - Security headers on every response: X-Frame-Options: DENY, X-Content-Type-Options, CSP, Referrer-Policy
@@ -369,6 +553,15 @@ Use HTML `<details>` element. Auto-opens if referrals already exist. localStorag
   - PDF: `data[:4] == b'%PDF'`
 - Filenames are UUID-based to prevent collisions and path traversal
 - `ATTACHMENT_TYPES = ["X-ray", "Clinical Photo", "Lab Report", "Other"]`
+- **Retention / deletion (added 2026-09-16, not in original spec — practitioner-only, non-negotiable)**:
+  retention needs vary per case — some cases must keep lab reports/X-rays/photos after closing,
+  others don't — so purging is a deliberate, per-case choice for the practitioner, never automatic
+  and never available to the receptionist role. `clinical.delete_attachment` (single file) is
+  `role_required("admin", "doctor")` + `reauth_required`, reason optional, audited
+  (`attachment_deleted` — file type + reason, never file content). `clinical.clear_attachments`
+  (bulk, `db.clear_case_clinical_documents`) is the same role/reauth gating plus a **required**
+  reason, one `clinical_documents_cleared` audit row summarizing count + file types. Both actions
+  are hidden from the receptionist role in the template, not just blocked server-side.
 
 ### 5.5 Lab Requisitions
 - `LAB_REQ_STATUSES = ["Sent", "Received", "Delayed"]`
@@ -532,9 +725,27 @@ Three configurable settings (stored in `settings` table):
 
 | Key | Default fallback | Description |
 |---|---|---|
-| `login_heading` | "St Apollonia — pray for us." | Caption below login image |
-| `login_tagline` | "Patient & case management — please log in." | Subtitle under clinic name |
-| `login_image_filename` | (uses `static/img/saint_apollonia.png`) | Custom image filename in DATA_DIR/branding/ |
+| `login_heading` | `clinic_name`, then `DEFAULT_LOGIN_HEADING = "Feast9"` | H1 on the login page — no devotional-caption default was ever built (see correction below) |
+| `login_tagline` | `DEFAULT_LOGIN_TAGLINE` | Subtitle under clinic name |
+| `login_image_filename` | (uses `static/img/saint_apollonia.png`) | Custom image filename in DATA_DIR/branding/; also reused as "Clinic Logo" (§5.13) |
+
+**Correction (2026-09-17, login redesign + Clinic Details phase):** this section's original example table and
+code below describe the *first-draft* shape of the feature; the actually-built version differs in three ways,
+kept here rather than silently rewritten so the history is legible:
+1. `login_heading`'s fallback chain is `clinic_name` → `DEFAULT_LOGIN_HEADING` (`"Feast9"`), not a hardcoded
+   devotional caption — setting just the Clinic Name (§5.13) is enough to have it appear on login without
+   also filling in `login_heading`; an explicit `login_heading` still wins if both are set.
+2. `static/img/saint_apollonia.png` is a **generated placeholder** (a plain "F9" monogram in the app's brand
+   blue, made with Pillow), not an actual devotional image — swap it or upload a real clinic logo via
+   Settings whenever one is available.
+3. The Bible verse was changed from the placeholder Jeremiah 30:17 text to **Exodus 15:26** at the user's
+   explicit request (2026-09-17) — see the updated block below. It remains hardcoded, non-configurable, and
+   never exposed in the Settings UI, exactly as originally specified.
+
+The login page also gained a visual pass not in the original spec: `body.auth-page` (shared by login/setup/
+2FA-verify/forgot-password, via a `body_class` Jinja block in `base.html`) — soft gradient background, card
+shadow, rounded logo badge — and a `© {{ current_year }} Feast9` footer. Scope was deliberately kept to the
+auth flow, not an app-wide redesign.
 
 **Five critical implementation rules:**
 
@@ -578,8 +789,8 @@ def login_image():
 **Bible verse — hardcoded in login.html, never configurable, never in Settings UI:**
 ```html
 <div class="verse-block">
-  "I will restore you to health and heal your wounds."
-  <span class="verse-ref">— Jeremiah 30:17</span>
+  "...for I am the LORD, who heals you."
+  <span class="verse-ref">— Exodus 15:26</span>
 </div>
 ```
 
@@ -749,16 +960,18 @@ assert data[:2] == b'\xff\xd8'        # JPG
 assert data[:8] == b'\x89PNG\r\n\x1a\n'  # PNG
 assert data[:4] == b'%PDF'            # PDF
 
-# settings_routes.py — this import is REQUIRED at module level:
-from app.config import DATA_DIR
-# Missing this causes NameError → 500 on any image upload operation.
-
 # login_image route must NOT have @login_required
 # Use pathlib for cross-platform paths:
 import pathlib
 path = pathlib.Path(DATA_DIR) / "branding" / filename
 return send_file(str(path), mimetype=mt)
 ```
+
+**Correction (as built):** `from app.config import DATA_DIR` as a flat module-level constant is the pattern to
+**avoid**, not follow — `DATA_DIR`-relative storage dirs (`app_config.branding_dir()`, `backups_dir()`,
+`uploads_dir()`) are read fresh, as **functions**, inside each view instead, specifically so
+`monkeypatch.setattr(app_config, "DATA_DIR", ...)` in tests doesn't go stale against a constant captured at
+import time. The same function-not-constant pattern was reused for `google_signin_enabled()`.
 
 **Environment variables:**
 
@@ -768,6 +981,9 @@ return send_file(str(path), mimetype=mt)
 | DATA_DIR | Yes | Persistent directory for DB, uploads, branding, backups |
 | SESSION_COOKIE_SECURE | Production only | Set to `1` when HTTPS is active |
 | FLASK_DEBUG | Must be `0` | Never `1` in production |
+| BACKUP_ENCRYPTION_KEY | Required to run backups (§14) | Fernet key, deliberately independent of SECRET_KEY — `create_backup()` refuses to run at all if unset rather than ever writing an unencrypted backup |
+| BACKUP_OFFSITE_COMMAND | Optional (§14) | Pluggable shell command, `{file}` placeholder — provider choice (S3/B2/second server) stays a deferred operational decision per §15 |
+| GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET | Optional (§14) | Unset means Google sign-in is feature-flagged off — routes 404, no button renders, zero added attack surface |
 
 ---
 
@@ -808,7 +1024,7 @@ DATA_DIR/
 
 `clinical_uploads/` is created automatically on first file upload. Safe to pre-create: `os.makedirs(os.path.join(DATA_DIR, "clinical_uploads"), exist_ok=True)`.
 
-**Backup validity:** A backup is only trusted once it has been restored successfully into a separate, clean environment. v2 does not yet automate this (see §14, Automated off-server backup) — until then, treat a periodic manual restore test as a required checklist item, not optional.
+**Backup validity:** A backup is only trusted once it has been restored successfully into a separate, clean environment. Automated nightly backup + on-demand admin backup are built (§14, Automated off-server backup — `app/backup.py`, `BACKUP.md`), but restore-testing itself is still a manual, periodic checklist item — `restore_backup.py` is CLI-only, never a web route, and there is no automated restore-test job.
 
 ### Upgrade from v1 → v2
 1. Run `patch_v2_migrate.py` first (creates `.bak` backup, adds columns/tables)
@@ -866,7 +1082,7 @@ import seed_demo_data; seed_demo_data.run()
 18. Login screen: heading and tagline save and appear on login page
 19. Login screen heading and tagline inputs are INSIDE the form tag
 20. Image upload saves to DATA_DIR/branding/ and filename saved to DB
-21. Bible verse (Jeremiah 30:17) always present on login page
+21. Bible verse (Exodus 15:26) always present on login page
 22. DOB field auto-computes age in patient form
 23. Patient list full-text search returns match from visit notes
 24. Clinical attachment upload validates magic bytes
@@ -890,21 +1106,27 @@ Seed must call `db.add_patient(...)` with `date_of_birth` parameter.
 
 ## 14. Remaining Build Scope (Security, Governance & Advanced Clinical)
 
-These are not a deferred "v3" — they are part of this build's scope and belong in the overall plan alongside Appointments/Dashboard/Reports/Analytics/DPDP Phase 2/Branding/PDFs. "v3" language elsewhere in this doc is historical from earlier drafts; treat every row below as work still to be sequenced into the build, not work to skip.
+**Status as of 2026-09-17:** every row below has been built except two, which the user explicitly decided
+(2026-09-17) to put **out of scope for now** rather than sequence into this build: **Patient portal** and
+**DPDP Phase 3**. Everything else in this table is done — see `CLAUDE.md`'s build log for the concrete
+implementation of each (files, routes, tests). This is a real change from earlier drafts of this document,
+which framed the whole table as "unsequenced, not out of scope" — that framing no longer applies to those
+two rows specifically; it still applies to nothing else remaining, since nothing else remains.
 
-| Feature | Notes |
+| Feature | Status |
 |---|---|
-| Multi-user roles | Three roles: Admin, Doctor, Receptionist. **Requirement, not optional:** the receptionist has zero access to financial data — payments, costs/balances, revenue reports, financial PDFs, exports, backups — enforced server-side on every route/response, never hidden by navigation alone. Requires `role` column in `users`, role checks in `@login_required` plus record-level checks, automated tests proving a receptionist session gets `403` on every financial route/export/PDF/backup path. |
-| Audit log | Table: `audit_log(id, actor_user_id, role, ts_utc, action, entity, entity_id, correlation_id, before_summary, after_summary, ip, user_agent, outcome)`. Use redacted/field-level before/after summaries — never dump full clinical notes into a row. Commit the audit entry in the **same transaction** as the action it records. Log at minimum: patient edits/anonymisation/exports, consent changes, case status changes, clinical note/prescription changes, attachment upload/download, payments/cost changes, DPDP requests, user/role/password/TOTP changes, backup/restore operations. |
-| TOTP 2FA | `pyotp` library, `users.totp_secret` column, QR setup page, one-time recovery codes, admin-controlled reset. Require re-authentication (not just an active session) before high-risk actions: user management, backup download/restore, bulk import/export, TOTP reset, erasure. |
-| Google sign-in (optional, secondary) | Already-decided design, not an open question: OpenID Connect for identity only (`openid`, `email`, `profile` scopes — never Gmail/Drive/Calendar/contacts). Must link to an existing admin-approved local user via verified email + explicit first-time link step. Must never be the *only* path in — local password + TOTP + recovery codes remain the required baseline and break-glass path. Admin can unlink/disable/revoke sessions. Validate issuer, audience, signature, expiry, nonce, state, redirect URI server-side. Log link/unlink/sign-in events. |
-| Recurring appointments | Schema columns ready (is_recurring, recur_interval, recur_until). Needs: recurrence pattern, end date/occurrence count, exception dates, edit-one-vs-edit-series, cancellation behaviour, conflict detection, closed-days/holidays, per-occurrence no-show handling. Generate a bounded set of occurrences (each referencing its series) — not unlimited appointments. |
-| Dental charting | Not just an SVG per case — biggest clinical gap in the system. Model as structured data: tooth/region identifier, dentition type, surface/finding, condition/status, procedure association, notes, recorded-by, recorded-at, correction/version history. SVG is a presentation layer over that data, not the source of truth. Initial scope: adult + primary dentition, missing/extracted teeth, caries, restorations, crowns, root canals, implants, planned-vs-completed treatment. |
-| Patient portal | Self-service data access + DPDP request submission. **Identity verification must be designed before any portal UI is built** — password-only access to a health record portal is insufficient. Must not expose internal/staff notes, audit logs, or financial data. |
-| Automated off-server backup | Nightly rclone/rsync to S3, Backblaze B2, or a second server, encrypted. Retain backup status/failures, alert admin on failure. Restore-tested in a clean environment is the acceptance bar (see §11, Backup validity) — a backup that has never been restore-tested is not considered valid. |
-| Prescription history | All prescriptions across all cases shown on patient detail tab. |
-| DPDP Phase 3 | Breach incident log, configurable (not hard-coded) data-retention policy, legal hold to block deletion, automated retention sweep with dry-run reports and admin approval before irreversible actions, soft anonymisation with evidence of what was anonymised and why. |
-| Threat model | Not yet written — needed once the receptionist role exists. Cover: receptionist misuse of scheduling-only access, export/PDF paths, shared front-desk devices, stolen sessions, backup file exposure, uploaded clinical files. |
+| Multi-user roles | ✅ Built (Phase 4a). Three roles: Admin, Doctor, Receptionist. `admin.role`/`is_active` columns, `role_required`/`financial_access_required` enforced server-side on every route — receptionist gets `403`, financial data is redacted out of the render context entirely, never CSS-hidden. See `tests/test_roles.py`. |
+| Audit log | ✅ Built (Phase 4b). `audit_log` table exactly as specified. `db._write_audit` commits in the same transaction as the action it records; `db.write_audit_now()` is the one standalone-commit exception (attachment downloads). Admin-only viewer at `/audit-log`. See `tests/test_audit_log.py`. |
+| TOTP 2FA | ✅ Built (Phase 4c). `pyotp` + `qrcode` (SVG factory), self-service enrollment, one-time recovery codes, admin-controlled reset. `reauth_required` (10-minute step-up window) gates user management, TOTP reset, clinical-document deletion, and backup actions. See `tests/test_totp.py`. |
+| Google sign-in (optional, secondary) | ✅ Built. Authlib OIDC, `openid email profile` scope only. Can only *link* an already-authenticated local session — never creates a new account, never signs in an unlinked identity. Feature-flagged off (routes 404, no button) when unconfigured. Local password (+TOTP) remains the required baseline. See `tests/test_google_signin.py`. |
+| Recurring appointments | ✅ Built. A bounded set of real appointment rows (capped at `MAX_RECURRING_OCCURRENCES` = 52), tied together by `appointments.series_id`. Edit-one-vs-edit-series (§14's own literal framing), same-doctor/overlap conflicts flagged (not blocked), per-occurrence no-show handling reuses the existing single-appointment machinery. See `tests/test_appointments.py`. |
+| Dental charting | ✅ Built. `dental_chart_entries`, append-only, structured data as the source of truth (tooth/dentition/surface/finding/status/case/notes/recorded-by/recorded-at), FDI/ISO 3950 notation, both permanent and primary dentition always chartable. SVG chart is a presentation layer over `db.get_current_dental_chart`, not a separate data source. See `tests/test_dental_chart.py`. |
+| **Patient portal** | ❌ **Out of scope (2026-09-17 product decision, deferred indefinitely, not just unsequenced).** Self-service identity verification for a health-record portal was never solved (password-only access is insufficient, and Google sign-in doesn't solve it either — OIDC proves email ownership, not that a claimed identity maps to a specific patient record). Decision: the existing staff-verifies-identity-in-person model plus a **DPDP Access-request PDF export** (`/data-requests/<id>/access.pdf`, §10) is the accepted substitute — DPDP's right-to-access obligation is about the patient receiving their data within statutory timelines, not about the delivery channel being self-service. Revisit only if a real identity-verification design is proposed. |
+| Automated off-server backup | ✅ Built. `app/backup.py`, SQLite backup API (WAL-safe) + `clinical_uploads/`, Fernet-encrypted (`BACKUP_ENCRYPTION_KEY`, independent of `SECRET_KEY`, refuses to run unset). Off-site push is a pluggable shell command — provider choice stays deferred per §15. Admin-only `/backup`, both actions `reauth_required` + audited. See `tests/test_backup.py`, `BACKUP.md`. |
+| Prescription history | ✅ Built. `db.list_prescriptions_for_patient`, cross-case most-recent-first view, 5th section on patient detail appended after the 4 order-fixed sections. See `tests/test_prescriptions.py`. |
+| **DPDP Phase 3** | ❌ **Out of scope (2026-09-17 product decision, deferred indefinitely, alongside Patient portal).** Breach incident log, configurable retention policy, legal hold, automated retention sweep — none needed for the current single-clinic scale and none blocking any other shipped feature. Revisit if regulatory obligations or data volume change. |
+| Threat model | ✅ Built. `THREAT_MODEL.md` covers all six named areas with file references; two residual gaps flagged as follow-up recommendations rather than fixed inline (no idle/absolute session timeout, no session revocation on deactivation/TOTP-reset) — revisit if PDF generation, Excel import, Google sign-in, or the patient portal change (first three now shipped; portal is out of scope). |
+| Clinical document retention/deletion (added 2026-09-16, not originally in this table) | ✅ Built. Practitioner-only (`role_required("admin","doctor")` + `reauth_required`) single-file delete (reason optional) and bulk clear (reason required), both audited, both hidden from the receptionist role client-side too. See §5.4, `tests/test_attachments.py`. |
 
 ---
 
@@ -912,16 +1134,21 @@ These are not a deferred "v3" — they are part of this build's scope and belong
 
 These are genuinely open — don't treat them as settled just because they're absent from the anti-patterns list:
 
-- Off-site backup provider (S3 vs Backblaze B2 vs a second server) — operational/cost decision, not architectural.
+- Off-site backup provider (S3 vs Backblaze B2 vs a second server) — operational/cost decision, not architectural. `BACKUP_OFFSITE_COMMAND` is built to be provider-agnostic (pluggable shell command) precisely so this choice stays deferred.
 - Approved communication channel for appointment reminders (WhatsApp Business API vs SMS gateway vs manual copy-paste, which is what's built today) — may be automated later; not required.
 - Payment gateway integration, if any — payments are treated as manually logged records, not processed transactions, throughout this build. Adding a live gateway is a separate decision with its own PCI/compliance surface.
-- Exact recurring-appointment UI/UX (calendar view of a series vs list) — schema direction is set (§14), interaction design is not.
-- Build sequencing of §14 items relative to the rest of the roadmap (Appointments/Dashboard/Reports/Analytics/Branding/PDFs) — all are in scope; order is a standing decision to revisit each time a new phase starts.
+- Real identity-verification design for a future patient portal, should the 2026-09-17 out-of-scope decision (§14) ever be revisited.
+
+Resolved since earlier drafts (moved out of "genuinely open"):
+- Exact recurring-appointment UI/UX — resolved as a bounded set of real appointment rows (`series_id`), not a virtual/computed series; edit-one-vs-edit-series per §14's literal framing. See §14, Recurring appointments.
+- Build sequencing of §14 items — resolved: every §14 item is now built except Patient portal and DPDP Phase 3, which are explicitly out of scope (see §14's status note), not merely unsequenced.
 
 Settled and **not** open for re-litigation, despite appearing in earlier drafts of related planning docs:
 - Sex field is Male/Female only (§5.2) — clinic requirement, not pending review.
 - Receptionist has no financial access whatsoever (§14, Multi-user roles) — clinic requirement, not a configurable option.
 - DPDP Phase 1/2 rules as documented in §5.11 do not require external counsel review before proceeding.
+- Clinical document deletion/retention is a practitioner-only decision (added 2026-09-16, §5.4) — the receptionist role must never delete a clinical attachment, single or bulk, enforced server-side; there is no automatic purge-on-close.
+- Patient portal and DPDP Phase 3 are out of scope for now (2026-09-17 product decision, §14) — not a configurable option, not pending review; revisit only on a fresh, explicit decision to re-open them.
 
 ---
 
@@ -936,7 +1163,7 @@ Settled and **not** open for re-litigation, despite appearing in earlier drafts 
 6. `closed_at` only set when doctor explicitly closes
 7. No-show logic: in `_save_appointment` via `_handle_noshow_followup()` — NOT in any separate status route
 8. Reports: `DATE()` wrapper on `created_at`/`closed_at`, explicit form action
-9. Login screen: inputs INSIDE form tag, `DATA_DIR` imported in settings_routes
+9. Login screen: inputs INSIDE form tag; storage dirs read via `app_config.branding_dir()`-style functions, never a flat `DATA_DIR` constant, in settings_routes
 10. Referral notes: `<details>` element, collapsed by default, localStorage per case
 11. Dashboard appointments: status badges from `appointment.status` only
 12. Patient retention: always render, never hide on 0 lapsed
@@ -945,8 +1172,11 @@ Settled and **not** open for re-litigation, despite appearing in earlier drafts 
 ### Anti-patterns — never do these
 - Do not use flask_sqlalchemy or any ORM
 - Do not add a build step (webpack, npm, etc.)
-- Do not hardcode DATA_DIR — always `from app.config import DATA_DIR`
-- Do not omit `from app.config import DATA_DIR` in settings_routes.py
+- Do not hardcode DATA_DIR paths as string literals
+- Do not read `DATA_DIR` as a flat module-level constant (`from app.config import DATA_DIR` at import time) in
+  a file with storage-dir helpers — it goes stale under `monkeypatch.setattr(app_config, "DATA_DIR", ...)` in
+  tests; use a function like `app_config.branding_dir()`/`backups_dir()`/`uploads_dir()`, read fresh per call
+  (corrects this document's own earlier §9 example — see §9's correction note)
 - Do not put login_heading / login_tagline inputs outside the `<form>` tag
 - Do not use `BETWEEN start AND end` for timestamp fields without `DATE()` wrapper
 - Do not hide patient retention section when lapsed count is 0
@@ -975,16 +1205,21 @@ Settled and **not** open for re-litigation, despite appearing in earlier drafts 
 | DPDP Notice | Data Processing Notice — mandatory at registration (Section 5, DPDP Act 2023) |
 | Erasure | Soft-anonymise PII; preserve clinical and financial records |
 | Plan B Export | Excel spreadsheet of all patient/case data, readable without the app |
-| login_heading | Caption below login screen image — configurable in Settings |
+| login_heading | H1 on login screen — configurable in Settings; falls back to clinic_name, then "Feast9" |
 | login_tagline | Subtitle under clinic name on login page — configurable in Settings |
-| Bible verse | Jeremiah 30:17 — always in login.html, never in Settings UI |
+| Bible verse | Exodus 15:26 — always in login.html, never in Settings UI (changed 2026-09-17 from an earlier Jeremiah 30:17 placeholder) |
 | Referral (collapsed) | Referral Notes hidden by default via HTML `<details>` element |
 | arrived_at | DB column retained from removed wait time feature — ignore in new code |
 | seen_at | DB column retained from removed wait time feature — ignore in new code |
 | start.bat | Windows one-click startup script |
 | _handle_noshow_followup | Helper function that sets tomorrow's follow-up on patient's active case |
+| series_id | Self-referential FK on `appointments` tying every occurrence of a recurring series (incl. the first) together |
+| is_historic_import | `patients` column flagging a row created via bulk Excel import rather than the manual registration form |
+| consent_signature_filename | `cases` column — filename of an optional captured signature PNG, embedded in the consent PDF when present |
+| google_sub | Google's stable per-account identifier on `admin` — used for linking, never the (mutable) email address |
+| reauth_required | Decorator gating high-risk actions behind a fresh (≤10 min) re-authentication, not just an active session |
 
 ---
 
 *Feast9 — September 2026.*
-*One continuous build against this document — "v2"/"v3" labels elsewhere are historical from earlier planning drafts, not two separate projects. §14 (roles, audit log, TOTP, dental charting, etc.) is in scope alongside Appointments/Dashboard/Reports/Analytics/Branding/PDFs; see §15 for the standing note on how each phase's sequencing is decided.*
+*One continuous build against this document — "v2"/"v3" labels elsewhere are historical from earlier planning drafts, not two separate projects. As of 2026-09-17, every §14 item is built (roles, audit log, TOTP, Google sign-in, recurring appointments, dental charting, automated backup, prescription history, threat model, clinical-document retention) except **Patient portal** and **DPDP Phase 3**, which are explicitly out of scope for now by product decision — not merely unsequenced. See §14's status note and §15 for what's settled vs. still genuinely open.*
