@@ -48,27 +48,98 @@ body {
   padding: 1.5rem 1rem 3rem;
 }
 
+body.auth-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #eaf1fa 0%, var(--bg) 22rem);
+}
+body.auth-page .container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+/* .auth-card is also reused as a plain boxed-form style outside the login flow
+   (user_form.html, data_request_form.html) — the centered/branded treatment below
+   is scoped to body.auth-page so those left-aligned forms aren't affected. */
 .auth-card {
-  max-width: 380px;
+  max-width: 400px;
   margin: 3rem auto;
   padding: 2rem;
   background: white;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.auth-card h1 { margin-top: 0; }
+
+body.auth-page .auth-card {
+  width: 100%;
+  margin: 0 auto;
+  padding: 2.5rem 2.25rem 2rem;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 12px 28px rgba(15, 23, 42, 0.08);
+  text-align: center;
 }
 
-.auth-card h1 { margin-top: 0; }
-.tagline { color: var(--muted); margin-top: -0.5rem; }
+.auth-logo-wrap {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 1.1rem;
+  border-radius: 18px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.auth-logo { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+body.auth-page .auth-card h1 { margin: 0 0 0.3rem; font-size: 1.45rem; }
+.tagline { color: var(--muted); margin: 0 0 1.75rem; font-size: 0.9rem; }
+
+body.auth-page .auth-card form { text-align: left; }
+body.auth-page .auth-card button[type="submit"] {
+  width: 100%;
+  padding: 0.7rem;
+  font-size: 1rem;
+  margin-top: 0.25rem;
+}
 
 .verse-block {
   margin-top: 2rem;
-  padding-top: 1rem;
+  padding-top: 1.25rem;
   border-top: 1px solid var(--border);
   font-style: italic;
   color: var(--muted);
+  font-size: 0.9rem;
   text-align: center;
 }
-.verse-ref { display: block; font-style: normal; font-size: 0.85em; margin-top: 0.25rem; }
+.verse-ref { display: block; font-style: normal; font-size: 0.85em; margin-top: 0.3rem; }
+
+.auth-footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 1.75rem 1rem 0.5rem;
+}
+
+.login-image-preview {
+  display: block;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0.3rem 0 0.5rem;
+  padding: 0.25rem;
+}
+
+.muted-note { color: var(--muted); font-size: 0.85rem; margin-top: -0.4rem; }
 
 form label {
   display: block;

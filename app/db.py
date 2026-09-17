@@ -306,6 +306,12 @@ def init_db():
             recorded_at TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT '',
+            updated_at TEXT
+        );
         """
     )
     conn.commit()
@@ -351,6 +357,27 @@ def write_audit_now(actor, action, entity, entity_id, before_summary="", after_s
     """For actions with no other write to share a transaction with (e.g. a file download)."""
     conn = get_db()
     _write_audit(conn, actor, action, entity, entity_id, before_summary, after_summary, outcome=outcome)
+    conn.commit()
+    conn.close()
+
+
+# ── Settings (key/value store — §5.12 Login Screen Customisation) ─────────
+
+def get_setting(key, default=""):
+    conn = get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_setting(key, value, actor=None):
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+        (key, value, now_iso()),
+    )
+    _write_audit(conn, actor, "setting_changed", "setting", None, after_summary=f"key={key}")
     conn.commit()
     conn.close()
 

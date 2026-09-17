@@ -42,10 +42,33 @@ _MAGIC_BYTES = {
 
 def detect_upload_type(header_bytes):
     """Return (mimetype, extension) for a recognised file signature, or None if unrecognised.
-    Content is validated by magic bytes, never by the client-supplied filename/extension."""
+    Content is validated by magic bytes, never by the client-supplied filename/extension.
+    Scoped to clinical attachments (JPG/PNG/PDF only) — see detect_image_upload_type for the
+    broader image set (adds GIF/WEBP) used by login-screen branding uploads."""
     for signature, result in _MAGIC_BYTES.items():
         if header_bytes.startswith(signature):
             return result
+    return None
+
+
+_IMAGE_MAGIC_BYTES = {
+    b"\xff\xd8": ("image/jpeg", "jpg"),
+    b"\x89PNG\r\n\x1a\n": ("image/png", "png"),
+    b"GIF87a": ("image/gif", "gif"),
+    b"GIF89a": ("image/gif", "gif"),
+}
+
+
+def detect_image_upload_type(header_bytes):
+    """Same magic-bytes principle as detect_upload_type, but for plain image uploads
+    (JPG/PNG/GIF/WEBP) — used by login-screen branding, not clinical attachments."""
+    for signature, result in _IMAGE_MAGIC_BYTES.items():
+        if header_bytes.startswith(signature):
+            return result
+    # WEBP's signature straddles a variable-length size field (RIFF + 4-byte size + "WEBP"),
+    # so it can't be a fixed-prefix dict entry like the others.
+    if header_bytes[:4] == b"RIFF" and header_bytes[8:12] == b"WEBP":
+        return ("image/webp", "webp")
     return None
 
 

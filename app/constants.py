@@ -66,6 +66,12 @@ CHART_FINDINGS = ["Sound", "Caries", "Restoration", "Crown", "Root Canal", "Impl
                    "Missing/Extracted", "Fracture", "Other"]
 CHART_STATUSES = ["Existing", "Planned", "Completed"]
 
+# Login screen customisation (§5.12) — fallbacks used until an admin sets a custom
+# value in Settings > Login Screen. login_image_filename has no text default; its
+# fallback is the bundled static/img/saint_apollonia.png file instead.
+DEFAULT_LOGIN_HEADING = "Feast9"
+DEFAULT_LOGIN_TAGLINE = "Patient & case management — please log in."
+
 # Presentation only (SVG is a presentation layer, never the source of truth — feast9_v2_agents.md §14).
 CHART_FINDING_COLORS = {
     "Sound": "#e9f7ef",

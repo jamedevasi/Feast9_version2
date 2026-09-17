@@ -18,5 +18,22 @@
   </a>
 </div>
 
-<p class="empty-state">Clinic branding, login-screen customisation, security question/password self-service, and bulk data import are not built yet.</p>
+<section class="card">
+  <h2>Login Screen</h2>
+  <p class="muted-note">Controls the heading, tagline, and image shown on the login page. The verse at the bottom is fixed and not configurable here.</p>
+  <form method="post" action="{{ url_for('settings.index') }}" enctype="multipart/form-data" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form" value="login_screen">
+    <label>Heading<input type="text" name="login_heading" value="{{ login_heading or '' }}" maxlength="120"></label>
+    <label>Tagline<input type="text" name="login_tagline" value="{{ login_tagline or '' }}" maxlength="200"></label>
+    <label>
+      Logo / Image
+      <img class="login-image-preview" src="{{ url_for('auth.login_image') }}" alt="Current login image">
+      <input type="file" name="login_image" accept="image/png,image/jpeg,image/gif,image/webp">
+    </label>
+    <button type="submit">Save Login Screen</button>
+  </form>
+</section>
+
+<p class="empty-state">Clinic Details, Clinic Logo (app-wide), Security Question, Change Password, and bulk data import are not built yet.</p>
 {% endblock %}

@@ -1,5 +1,8 @@
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+import pathlib
 
+from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, session, url_for
+
+from app import config as app_config
 from app import db
 from app.auth import (
     check_password,
@@ -10,9 +13,28 @@ from app.auth import (
     mark_reauthenticated,
     verify_totp_code,
 )
+from app.constants import DEFAULT_LOGIN_HEADING, DEFAULT_LOGIN_TAGLINE
 from app.csrf import validate_csrf
 
 bp = Blueprint("auth", __name__)
+
+_IMAGE_EXT_TO_MIMETYPE = {"jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}
+
+
+@bp.route("/login-image")
+def login_image():
+    """Public (no @login_required) — the login page needs this before the visitor has
+    authenticated. Falls back to the bundled default if no custom image is configured
+    or the configured file is missing (feast9_v2_agents.md §5.12)."""
+    default = pathlib.Path(current_app.root_path) / "static" / "img" / "saint_apollonia.png"
+    filename = db.get_setting("login_image_filename", "")
+    if filename:
+        custom = pathlib.Path(app_config.branding_dir()) / filename
+        if custom.exists():
+            ext = custom.suffix.lower().lstrip(".")
+            mimetype = _IMAGE_EXT_TO_MIMETYPE.get(ext, "image/jpeg")
+            return send_file(str(custom), mimetype=mimetype)
+    return send_file(str(default), mimetype="image/png")
 
 
 @bp.route("/")
@@ -95,7 +117,11 @@ def login():
             db.record_failed_login(ip)
             errors.append("Invalid username or password.")
 
-    return render_template("login.html", errors=errors)
+    return render_template(
+        "login.html", errors=errors,
+        login_heading=db.get_setting("login_heading", DEFAULT_LOGIN_HEADING),
+        login_tagline=db.get_setting("login_tagline", DEFAULT_LOGIN_TAGLINE),
+    )
 
 
 @bp.route("/login/totp", methods=["GET", "POST"])

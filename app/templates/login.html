@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Login — Feast9{% endblock %}
+{% block body_class %}auth-page{% endblock %}
 {% block content %}
 <div class="auth-card">
-  <h1>Feast9</h1>
-  <p class="tagline">Patient &amp; case management — please log in.</p>
+  <div class="auth-logo-wrap">
+    <img class="auth-logo" src="{{ url_for('auth.login_image') }}" alt="{{ login_heading }}">
+  </div>
+  <h1>{{ login_heading }}</h1>
+  <p class="tagline">{{ login_tagline }}</p>
 
   {% if errors %}
   <ul class="errors">
@@ -13,14 +17,15 @@
 
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Username<input type="text" name="username" required autofocus></label>
-    <label>Password<input type="password" name="password" required></label>
+    <label>Username<input type="text" name="username" required autofocus autocomplete="username"></label>
+    <label>Password<input type="password" name="password" required autocomplete="current-password"></label>
     <button type="submit">Log In</button>
   </form>
 
   <div class="verse-block">
-    "I will restore you to health and heal your wounds."
-    <span class="verse-ref">— Jeremiah 30:17</span>
+    "...for I am the LORD, who heals you."
+    <span class="verse-ref">— Exodus 15:26</span>
   </div>
 </div>
+<p class="auth-footer">© {{ current_year }} Feast9. All rights reserved.</p>
 {% endblock %}

@@ -71,6 +71,11 @@ def create_app():
 
 def _register_context_processors(app):
     @app.context_processor
+    def inject_current_year():
+        from datetime import date
+        return {"current_year": date.today().year}
+
+    @app.context_processor
     def inject_pending_data_requests():
         # feast9_v2_agents.md §5.11: "count_pending_data_requests() injected into every page"
         from flask import session

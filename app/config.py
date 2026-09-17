@@ -21,3 +21,8 @@ BACKUP_OFFSITE_COMMAND = os.environ.get("BACKUP_OFFSITE_COMMAND", "")
 def backups_dir():
     """A function, not a module-level constant, so it follows DATA_DIR when tests monkeypatch it."""
     return os.path.join(DATA_DIR, "backups")
+
+
+def branding_dir():
+    """Uploaded login-screen images (§5.12) — same DATA_DIR-follows-monkeypatch reasoning as backups_dir()."""
+    return os.path.join(DATA_DIR, "branding")
