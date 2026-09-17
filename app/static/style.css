@@ -255,6 +255,14 @@ details[open] summary { margin-bottom: 0.75rem; }
 
 .lab-req-row { margin-bottom: 0.15rem; }
 
+.entry-list li.lab-req-due-before-visit {
+  background: #fff8e1;
+  border-left: 3px solid #eda100;
+  padding-left: 0.6rem;
+  border-radius: 4px;
+}
+.lab-req-alert { color: #8a6100; font-weight: 600; margin: 0.3rem 0; }
+
 .calendar-nav { display: flex; justify-content: space-between; margin-bottom: 0.75rem; }
 .calendar-nav a { color: var(--brand); text-decoration: none; font-weight: 600; }
 
@@ -335,6 +343,7 @@ details[open] summary { margin-bottom: 0.75rem; }
 .followup-row-overdue { background: #fef2f2; }
 .followup-row-upcoming { background: #fff8e1; }
 .appt-row-completed { background: #f1f8f1; }
+.lab-req-row-alert { background: #fff8e1; }
 
 .dental-chart-svg { max-width: 100%; height: auto; }
 .dental-chart-svg a { cursor: pointer; }

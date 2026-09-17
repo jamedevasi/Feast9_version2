@@ -967,6 +967,50 @@ def delete_lab_req(req_id):
     conn.close()
 
 
+# New requirement, added by the user 2026-09-17 — not in feast9_v2_agents.md's original
+# §5.5: a lab requisition still "open" (not yet Received) is worth flagging if its
+# patient is due back soon, so results (or their absence) aren't a surprise at the visit.
+
+def get_next_scheduled_appointment_within(patient_id, days=3):
+    """Earliest Scheduled appointment date for this patient in the next `days` days,
+    or '' if none — used to highlight open lab requisitions on a single case page."""
+    conn = get_db()
+    today = date.today().isoformat()
+    cutoff = (date.today() + timedelta(days=days)).isoformat()
+    row = conn.execute(
+        """SELECT MIN(appt_date) AS d FROM appointments
+           WHERE patient_id = ? AND status = 'Scheduled' AND appt_date BETWEEN ? AND ?""",
+        (patient_id, today, cutoff),
+    ).fetchone()
+    conn.close()
+    return row["d"] or ""
+
+
+def get_open_lab_reqs_for_upcoming_appointments(days=3):
+    """Open (Sent/Delayed) lab requisitions whose patient has a Scheduled appointment
+    in the next `days` days — the dashboard-wide version of the same check, across
+    every patient rather than one case."""
+    conn = get_db()
+    today = date.today().isoformat()
+    cutoff = (date.today() + timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT lr.id AS lab_req_id, lr.case_id, lr.patient_id, lr.lab_name,
+                  lr.work_description, lr.status, lr.sent_date, lr.expected_return,
+                  p.name AS patient_name, MIN(a.appt_date) AS next_appt_date
+           FROM lab_requisitions lr
+           JOIN patients p ON p.id = lr.patient_id
+           JOIN appointments a ON a.patient_id = lr.patient_id
+           WHERE lr.status != 'Received'
+             AND a.status = 'Scheduled'
+             AND a.appt_date BETWEEN ? AND ?
+           GROUP BY lr.id
+           ORDER BY next_appt_date, lr.sent_date""",
+        (today, cutoff),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 # ── Referral Notes ───────────────────────────────────────────────────────
 
 def add_referral(case_id, patient_id, referral_date, referred_to, speciality, reason, notes):

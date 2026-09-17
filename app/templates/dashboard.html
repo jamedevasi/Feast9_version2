@@ -83,5 +83,28 @@
   {% endif %}
 </section>
 
+<section class="card">
+  <h2>Lab Requisitions Due Before Visit</h2>
+  {% if open_lab_reqs_due %}
+  <table class="data-table">
+    <thead>
+      <tr><th>Patient</th><th>Work</th><th>Status</th><th>Appointment</th></tr>
+    </thead>
+    <tbody>
+      {% for r in open_lab_reqs_due %}
+      <tr class="lab-req-row-alert">
+        <td><a href="{{ url_for('patients.detail', patient_id=r.patient_id) }}">{{ r.patient_name }}</a></td>
+        <td><a href="{{ url_for('cases.detail', case_id=r.case_id) }}">{{ r.work_description }}</a>{% if r.lab_name %} — {{ r.lab_name }}{% endif %}</td>
+        <td><span class="badge badge-lab-{{ r.status|lower }}">{{ r.status }}</span></td>
+        <td>{{ r.next_appt_date }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No open lab requisitions ahead of an upcoming visit 🎉</p>
+  {% endif %}
+</section>
+
 <p><a href="{{ url_for('patients.list_view') }}">Go to Patients →</a> · <a href="{{ url_for('appointments.index') }}">Go to Appointments →</a></p>
 {% endblock %}

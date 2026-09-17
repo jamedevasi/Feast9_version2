@@ -36,4 +36,5 @@ def index():
         outstanding_balance=db.get_outstanding_balance() if can_view_financial else None,
         can_view_financial=can_view_financial,
         todays_appointments=db.get_todays_appointments(),
+        open_lab_reqs_due=db.get_open_lab_reqs_for_upcoming_appointments(),
     )

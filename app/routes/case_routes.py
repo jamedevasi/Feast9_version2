@@ -90,6 +90,7 @@ def detail(case_id):
     prescriptions = db.list_prescriptions_for_case(case_id)
     attachments = db.list_attachments_for_case(case_id)
     lab_reqs = db.list_lab_reqs_for_case(case_id)
+    upcoming_appt_date = db.get_next_scheduled_appointment_within(case["patient_id"])
     referrals = db.list_referrals_for_case(case_id)
 
     can_view_financial = can_view_financial_data()
@@ -113,6 +114,7 @@ def detail(case_id):
         attachment_types=ATTACHMENT_TYPES,
         lab_reqs=lab_reqs,
         lab_req_statuses=LAB_REQ_STATUSES,
+        upcoming_appt_date=upcoming_appt_date,
         referrals=referrals,
         payments=payments,
         balance=balance,

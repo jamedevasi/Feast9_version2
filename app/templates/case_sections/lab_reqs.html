@@ -3,7 +3,8 @@
   {% if lab_reqs %}
   <ul class="entry-list">
     {% for r in lab_reqs %}
-    <li>
+    {% set is_due_before_visit = upcoming_appt_date and r.status != 'Received' %}
+    <li{% if is_due_before_visit %} class="lab-req-due-before-visit"{% endif %}>
       <div class="lab-req-row">
         <div>
           <strong>{{ r.work_description }}</strong>
@@ -12,6 +13,9 @@
         </div>
       </div>
       <span class="entry-date">Sent {{ r.sent_date }}{% if r.expected_return %} · Expected {{ r.expected_return }}{% endif %}{% if r.received_date %} · Received {{ r.received_date }}{% endif %}</span>
+      {% if is_due_before_visit %}
+      <p class="lab-req-alert">⚠ Appointment on {{ upcoming_appt_date }} — still {{ r.status|lower }}, not yet received.</p>
+      {% endif %}
       {% if r.notes %}<p>{{ r.notes }}</p>{% endif %}
 
       <form method="post" action="{{ url_for('clinical.update_lab_req', req_id=r.id) }}" class="lab-req-update-form">
