@@ -291,6 +291,21 @@ def init_db():
             resolved_at TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS dental_chart_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER NOT NULL REFERENCES patients(id),
+            case_id INTEGER REFERENCES cases(id),
+            tooth_id TEXT NOT NULL,
+            dentition TEXT NOT NULL,
+            surface TEXT NOT NULL DEFAULT 'Whole Tooth',
+            finding TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'Existing',
+            notes TEXT NOT NULL DEFAULT '',
+            recorded_by INTEGER,
+            recorded_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()
@@ -1408,3 +1423,74 @@ def cancel_appointment_series(series_id):
     )
     conn.commit()
     conn.close()
+
+
+# ── Dental charting (§14 item) ──────────────────────────────────────────────
+# Append-only, like visit notes/prescriptions — a correction is a new entry, never an edit of
+# an old one; "current state" is derived (latest entry per tooth+surface), and the append-only
+# log itself IS the correction/version history the spec asks for. SVG is a presentation layer
+# built from this data in the route/template — never the source of truth.
+
+def _dentition_for_tooth(tooth_id):
+    return "Primary" if tooth_id[0] in "5678" else "Permanent"
+
+
+def add_dental_chart_entry(patient_id, case_id, tooth_id, surface, finding, status, notes, actor=None):
+    dentition = _dentition_for_tooth(tooth_id)
+    now = now_iso()
+    conn = get_db()
+    cur = conn.execute(
+        """INSERT INTO dental_chart_entries
+               (patient_id, case_id, tooth_id, dentition, surface, finding, status, notes,
+                recorded_by, recorded_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (patient_id, case_id, tooth_id, dentition, surface, finding, status, notes,
+         actor.get("user_id") if actor else None, now, now),
+    )
+    entry_id = cur.lastrowid
+    _write_audit(
+        conn, actor, "dental_chart_entry_added", "patient", patient_id,
+        after_summary=f"tooth={tooth_id}, surface={surface}, finding={finding}, status={status}",
+    )
+    conn.commit()
+    conn.close()
+    return entry_id
+
+
+def list_dental_chart_entries(patient_id):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM dental_chart_entries WHERE patient_id = ? ORDER BY id DESC", (patient_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_current_dental_chart(patient_id):
+    """Returns {tooth_id: [current entries]} — the latest entry per surface for that tooth,
+    except a tooth whose overall latest entry is Missing/Extracted shows only that (it
+    supersedes any older surface-specific findings, which no longer apply to an absent tooth)."""
+    conn = get_db()
+    latest_per_surface = conn.execute(
+        """SELECT * FROM dental_chart_entries WHERE id IN (
+               SELECT MAX(id) FROM dental_chart_entries WHERE patient_id = ? GROUP BY tooth_id, surface
+           )""",
+        (patient_id,),
+    ).fetchall()
+    latest_overall = conn.execute(
+        """SELECT * FROM dental_chart_entries WHERE id IN (
+               SELECT MAX(id) FROM dental_chart_entries WHERE patient_id = ? GROUP BY tooth_id
+           )""",
+        (patient_id,),
+    ).fetchall()
+    conn.close()
+
+    by_tooth = {}
+    for row in latest_per_surface:
+        by_tooth.setdefault(row["tooth_id"], []).append(dict(row))
+
+    for row in latest_overall:
+        if row["finding"] == "Missing/Extracted":
+            by_tooth[row["tooth_id"]] = [dict(row)]
+
+    return by_tooth

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Dental Chart — {{ patient.name }} — Feast9{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
+<h1>Dental Chart — {{ patient.name }}</h1>
+
+{% macro tooth_box(tooth_id, x, y) %}
+{% set entries = current_chart.get(tooth_id, []) %}
+{% set primary = entries[0] if entries else None %}
+{% set fill = finding_colors.get(primary.finding, '#ffffff') if primary else '#ffffff' %}
+<a href="?tooth={{ tooth_id }}#chart-form">
+  <rect x="{{ x }}" y="{{ y }}" width="32" height="32" fill="{{ fill }}" stroke="#333" stroke-width="1"></rect>
+  <text x="{{ x + 16 }}" y="{{ y + 20 }}" text-anchor="middle" font-size="11">{{ tooth_id }}</text>
+  <title>Tooth {{ tooth_id }}{% for e in entries %} · {{ e.surface }}: {{ e.finding }} ({{ e.status }}){% endfor %}{% if not entries %} · No entries yet{% endif %}</title>
+</a>
+{% endmacro %}
+
+{% macro tooth_row(teeth, y) %}
+{% for t in teeth %}{{ tooth_box(t, 10 + loop.index0 * 36, y) }}{% endfor %}
+{% endmacro %}
+
+<section class="card">
+  <h2>Chart</h2>
+  <svg viewBox="0 0 610 190" xmlns="http://www.w3.org/2000/svg" class="dental-chart-svg">
+    {{ tooth_row(teeth_upper_permanent, 10) }}
+    {{ tooth_row(teeth_lower_permanent, 50) }}
+    {{ tooth_row(teeth_upper_primary, 110) }}
+    {{ tooth_row(teeth_lower_primary, 150) }}
+  </svg>
+  <p class="hint">Top two rows: permanent dentition (upper/lower). Bottom two rows: primary dentition (upper/lower). Click a tooth to add an entry for it.</p>
+  <div class="chart-legend">
+    {% for finding, color in finding_colors.items() %}
+    <span><span class="swatch" style="background: {{ color }};"></span>{{ finding }}</span>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card" id="chart-form">
+  <h2>Add Chart Entry</h2>
+  {% if errors %}
+  <ul class="errors">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <form method="post" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Tooth
+      <select name="tooth_id" required>
+        <option value="">Select…</option>
+        <optgroup label="Permanent — Upper">
+          {% for t in teeth_upper_permanent %}<option value="{{ t }}" {% if form_state.tooth_id == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+        </optgroup>
+        <optgroup label="Permanent — Lower">
+          {% for t in teeth_lower_permanent %}<option value="{{ t }}" {% if form_state.tooth_id == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+        </optgroup>
+        <optgroup label="Primary — Upper">
+          {% for t in teeth_upper_primary %}<option value="{{ t }}" {% if form_state.tooth_id == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+        </optgroup>
+        <optgroup label="Primary — Lower">
+          {% for t in teeth_lower_primary %}<option value="{{ t }}" {% if form_state.tooth_id == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+        </optgroup>
+      </select>
+    </label>
+    <label>Surface
+      <select name="surface">
+        {% for s in surfaces %}<option value="{{ s }}" {% if form_state.surface == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Finding
+      <select name="finding" required>
+        <option value="">Select…</option>
+        {% for f in findings %}<option value="{{ f }}" {% if form_state.finding == f %}selected{% endif %}>{{ f }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Status
+      <select name="status">
+        {% for s in statuses %}<option value="{{ s }}" {% if form_state.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Related Case (optional)
+      <select name="case_id">
+        <option value="">None</option>
+        {% for c in cases %}<option value="{{ c.id }}" {% if form_state.case_id == c.id|string %}selected{% endif %}>{{ c.title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Notes<textarea name="notes">{{ form_state.notes }}</textarea></label>
+    <button type="submit">Add Entry</button>
+  </form>
+  <p class="hint">Entries are append-only — a correction is a new entry, not an edit of an old one. Whole-tooth findings (Missing/Extracted, Crown, Root Canal, Implant) are always recorded against the whole tooth regardless of the surface selected.</p>
+</section>
+
+<section class="card">
+  <h2>Chart History</h2>
+  {% if history %}
+  <ul class="entry-list">
+    {% for e in history %}
+    <li>
+      <span class="entry-date">{{ e.recorded_at }}</span>
+      Tooth {{ e.tooth_id }} ({{ e.dentition }}) — {{ e.surface }}: {{ e.finding }}
+      <span class="badge badge-status-{{ e.status|lower }}">{{ e.status }}</span>
+      {% if e.notes %}<p>{{ e.notes }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">No dental chart entries yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
