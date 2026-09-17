@@ -4,11 +4,12 @@ import io
 import json
 from xml.sax.saxutils import escape as _esc
 
+from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app import db
 from app.constants import DEFAULT_CLINIC_NAME
@@ -340,10 +341,24 @@ def generate_report_pdf(start, end, context):
 
 # ── generate_consent_pdf ────────────────────────────────────────────────────
 
-def generate_consent_pdf(case, patient):
-    """With embedded signature or 'Paper consent on file' (feast9_v2_agents.md §10).
-    Signature capture is not built yet (see CLAUDE.md), so every recorded consent
-    shows as paper-on-file rather than an embedded image."""
+def _consent_signature_flowable(signature_bytes, max_width=2.5 * inch, max_height=1.2 * inch):
+    """A right-sized Image flowable for a captured signature — scaled to fit within
+    max_width/max_height while preserving aspect ratio, never at the canvas's native
+    pixel size (which can be far larger or smaller than makes sense on a printed page).
+    Returns None if the stored bytes can't actually be decoded as an image — the file is
+    validated with PIL before being saved (case_routes._save_consent_signature), but this
+    stays defensive in case a file is later corrupted on disk."""
+    try:
+        with PILImage.open(io.BytesIO(signature_bytes)) as img:
+            native_width, native_height = img.size
+    except Exception:
+        return None
+    scale = min(max_width / native_width, max_height / native_height, 1)
+    return Image(io.BytesIO(signature_bytes), width=native_width * scale, height=native_height * scale)
+
+
+def generate_consent_pdf(case, patient, signature_bytes=None):
+    """With embedded signature or 'Paper consent on file' (feast9_v2_agents.md §10)."""
     story = _header("Consent Form", _patient_line(patient))
 
     story.append(P(f"Case: {case['title']}", BODY))
@@ -352,7 +367,13 @@ def generate_consent_pdf(case, patient):
 
     if case.get("consent_recorded"):
         story.append(Paragraph(f"Consent recorded on {case['consent_recorded_at']}.", BODY))
-        story.append(Paragraph("Paper consent on file.", MUTED))
+        signature_flowable = _consent_signature_flowable(signature_bytes) if signature_bytes else None
+        if signature_flowable is not None:
+            story.append(Spacer(1, 6))
+            story.append(Paragraph("Signature:", MUTED))
+            story.append(signature_flowable)
+        else:
+            story.append(Paragraph("Paper consent on file.", MUTED))
         if case.get("consent_notes"):
             story.append(Spacer(1, 6))
             story.append(P(case["consent_notes"], BODY))

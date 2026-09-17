@@ -77,6 +77,18 @@ def _migrate_appointments_recurring(conn):
     conn.commit()
 
 
+def _migrate_cases_consent_signature(conn):
+    """Additive migration: an optional captured signature image alongside consent —
+    filename in DATA_DIR/uploads/ per feast9_v2_agents.md's directory layout. Blank
+    means "no signature" — record_case_consent's existing text-note path (typically
+    "Paper consent on file") remains the default; this is an addition, not a
+    replacement, since not every clinic device can capture an on-screen signature."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(cases)")}
+    if "consent_signature_filename" not in columns:
+        conn.execute("ALTER TABLE cases ADD COLUMN consent_signature_filename TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+
+
 def init_db():
     conn = get_db()
     conn.executescript(
@@ -318,6 +330,7 @@ def init_db():
     _migrate_admin_roles(conn)
     _migrate_patients_dpdp(conn)
     _migrate_appointments_recurring(conn)
+    _migrate_cases_consent_signature(conn)
     conn.close()
 
 
@@ -1266,14 +1279,17 @@ def update_case_followup(case_id, follow_up_date, next_action_note):
     conn.close()
 
 
-def record_case_consent(case_id, notes, actor=None):
+def record_case_consent(case_id, notes, signature_filename="", actor=None):
     conn = get_db()
     conn.execute(
-        """UPDATE cases SET consent_recorded = 1, consent_recorded_at = ?, consent_notes = ?, updated_at = ?
-           WHERE id = ?""",
-        (now_iso(), notes, now_iso(), case_id),
+        """UPDATE cases SET consent_recorded = 1, consent_recorded_at = ?, consent_notes = ?,
+           consent_signature_filename = ?, updated_at = ? WHERE id = ?""",
+        (now_iso(), notes, signature_filename, now_iso(), case_id),
     )
-    _write_audit(conn, actor, "consent_recorded", "case", case_id, after_summary="consent_recorded=1")
+    _write_audit(
+        conn, actor, "consent_recorded", "case", case_id,
+        after_summary=f"consent_recorded=1, signature={'yes' if signature_filename else 'no'}",
+    )
     conn.commit()
     conn.close()
 

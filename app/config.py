@@ -26,3 +26,9 @@ def backups_dir():
 def branding_dir():
     """Uploaded login-screen images (§5.12) — same DATA_DIR-follows-monkeypatch reasoning as backups_dir()."""
     return os.path.join(DATA_DIR, "branding")
+
+
+def uploads_dir():
+    """Consent signatures — feast9_v2_agents.md's directory layout names this 'uploads/',
+    distinct from clinical_uploads/ (X-rays/photos/lab reports) and branding/."""
+    return os.path.join(DATA_DIR, "uploads")
