@@ -20,6 +20,7 @@
       {% endif %}
       <a href="{{ url_for('dpdp.list_view') }}">DPDP Requests{% if pending_data_requests_count %} ({{ pending_data_requests_count }}){% endif %}</a>
       <a href="{{ url_for('totp.setup') }}">2FA</a>
+      <a href="{{ url_for('account.index') }}">My Account</a>
       {% if session.get('role') == 'admin' %}
       <a href="{{ url_for('users.list_view') }}">Users</a>
       <a href="{{ url_for('audit.list_view') }}">Audit Log</a>

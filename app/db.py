@@ -532,6 +532,30 @@ def set_user_active(user_id, is_active, actor=None):
     conn.close()
 
 
+def update_user_password(user_id, password_hash, actor=None):
+    """Self-service change-password (logged in) and the forgot-password reset flow
+    (§5.1 'self-service password reset — no email needed') both call this — the only
+    difference is where the caller got its authorization from."""
+    conn = get_db()
+    conn.execute("UPDATE admin SET password_hash = ?, updated_at = ? WHERE id = ?", (password_hash, now_iso(), user_id))
+    _write_audit(conn, actor, "password_changed", "user", user_id)
+    conn.commit()
+    conn.close()
+
+
+def update_security_question(user_id, security_question, security_answer_hash, actor=None):
+    conn = get_db()
+    conn.execute(
+        "UPDATE admin SET security_question = ?, security_answer_hash = ?, updated_at = ? WHERE id = ?",
+        (security_question, security_answer_hash, now_iso(), user_id),
+    )
+    # Never log the question/answer text itself — same redaction principle as every other
+    # sensitive free-text field (patient edits, visit notes, etc.).
+    _write_audit(conn, actor, "security_question_changed", "user", user_id)
+    conn.commit()
+    conn.close()
+
+
 # ── TOTP 2FA ─────────────────────────────────────────────────────────────
 # totp_secret is set (pending) as soon as setup starts but totp_enabled stays 0
 # until the user proves they can generate a valid code with it — see

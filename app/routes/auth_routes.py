@@ -169,6 +169,71 @@ def login_totp():
     return render_template("login_totp.html", errors=errors)
 
 
+@bp.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    """Step 1 of self-service password reset (§5.1: "no email needed") — enter a
+    username, land on the security question for that account."""
+    errors = []
+    if request.method == "POST":
+        validate_csrf(request.form.get("csrf_token"))
+        ip = request.remote_addr or "unknown"
+
+        if is_rate_limited(ip):
+            errors.append("Too many attempts. Please try again in 15 minutes.")
+        else:
+            username = request.form.get("username", "").strip()
+            user = db.get_user_by_username(username)
+            if user:
+                session["reset_pending_user_id"] = user["id"]
+                return redirect(url_for("auth.forgot_password_verify"))
+            db.record_failed_login(ip)
+            errors.append("No account found with that username.")
+
+    return render_template("forgot_password.html", errors=errors)
+
+
+@bp.route("/forgot-password/verify", methods=["GET", "POST"])
+def forgot_password_verify():
+    pending_id = session.get("reset_pending_user_id")
+    if not pending_id:
+        return redirect(url_for("auth.forgot_password"))
+    user = db.get_user_by_id(pending_id)
+    if not user or not user["is_active"]:
+        session.pop("reset_pending_user_id", None)
+        return redirect(url_for("auth.forgot_password"))
+
+    errors = []
+    if request.method == "POST":
+        validate_csrf(request.form.get("csrf_token"))
+        ip = request.remote_addr or "unknown"
+
+        if is_rate_limited(ip):
+            errors.append("Too many attempts. Please try again in 15 minutes.")
+        else:
+            answer = request.form.get("security_answer", "").strip().lower()
+            new_password = request.form.get("new_password", "")
+            confirm = request.form.get("confirm_password", "")
+
+            if not check_password(user["security_answer_hash"], answer):
+                db.record_failed_login(ip)
+                errors.append("Incorrect answer to the security question.")
+            elif len(new_password) < 8:
+                errors.append("Password must be at least 8 characters.")
+            elif new_password != confirm:
+                errors.append("Passwords do not match.")
+            else:
+                db.clear_failed_logins(ip)
+                actor = {"user_id": user["id"], "role": user["role"], "ip": ip, "user_agent": ""}
+                db.update_user_password(user["id"], hash_password(new_password), actor=actor)
+                session.pop("reset_pending_user_id", None)
+                flash("Password reset. Please log in with your new password.", "success")
+                return redirect(url_for("auth.login"))
+
+    return render_template(
+        "forgot_password_verify.html", errors=errors, security_question=user["security_question"]
+    )
+
+
 @bp.route("/reauth", methods=["GET", "POST"])
 @login_required
 def reauth():

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}My Account — Feast9{% endblock %}
+{% block content %}
+<h1>My Account</h1>
+<p class="muted-note">Signed in as <strong>{{ user.username }}</strong> ({{ user.role|capitalize }}).</p>
+
+<section class="card">
+  <h2>Change Password</h2>
+  <form method="post" action="{{ url_for('account.index') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form" value="change_password">
+    <label>Current Password<input type="password" name="current_password" required autocomplete="current-password"></label>
+    <label>New Password<input type="password" name="new_password" required minlength="8" autocomplete="new-password"></label>
+    <label>Confirm New Password<input type="password" name="confirm_password" required minlength="8" autocomplete="new-password"></label>
+    <button type="submit">Change Password</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Security Question</h2>
+  <p class="muted-note">Used for self-service password reset if you ever forget your password. Current question: <strong>{{ user.security_question }}</strong></p>
+  <form method="post" action="{{ url_for('account.index') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form" value="security_question">
+    <label>Current Password<input type="password" name="current_password" required autocomplete="current-password"></label>
+    <label>New Security Question<input type="text" name="security_question" required></label>
+    <label>New Security Answer<input type="text" name="security_answer" required></label>
+    <button type="submit">Update Security Question</button>
+  </form>
+</section>
+{% endblock %}

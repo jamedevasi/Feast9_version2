@@ -24,6 +24,7 @@ def create_app():
 
     app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024  # 15 MB — clinical attachments are small files
 
+    from app.routes.account_routes import bp as account_bp
     from app.routes.analytics_routes import bp as analytics_bp
     from app.routes.appointment_routes import bp as appointment_bp
     from app.routes.audit_routes import bp as audit_bp
@@ -44,6 +45,7 @@ def create_app():
     from app.routes.user_routes import bp as user_bp
 
     app.register_blueprint(auth_bp)
+    app.register_blueprint(account_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(patient_bp)
     app.register_blueprint(case_bp)
