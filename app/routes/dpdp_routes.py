@@ -83,12 +83,16 @@ def access_pdf(request_id):
     entry = _get_request_or_404(request_id)
     patient = db.get_patient(entry["patient_id"])
     cases = db.list_cases_for_patient(entry["patient_id"])
+    visit_notes = db.list_visit_notes_for_patient(entry["patient_id"])
+    dental_chart_entries = db.list_dental_chart_entries(entry["patient_id"])
     prescriptions = db.list_prescriptions_for_patient(entry["patient_id"])
     appointments = db.list_appointments_for_patient(entry["patient_id"])
     payments = [p for c in cases for p in db.list_payments_for_case(c["id"])]
     for p in payments:
         p["case_title"] = next(c["title"] for c in cases if c["id"] == p["case_id"])
-    pdf_bytes = pdf_reports.generate_data_access_pdf(patient, cases, prescriptions, payments, appointments)
+    pdf_bytes = pdf_reports.generate_data_access_pdf(
+        patient, cases, visit_notes, dental_chart_entries, prescriptions, payments, appointments
+    )
     db.write_audit_now(
         current_actor(), "data_access_pdf_downloaded", "patient", entry["patient_id"],
         after_summary=f"data_request_id={request_id}",

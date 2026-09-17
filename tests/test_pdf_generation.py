@@ -116,6 +116,11 @@ def test_referral_pdf_wrong_case_is_404(logged_in_client, patient_id):
 
 def test_data_access_pdf_for_admin_and_doctor(logged_in_client, patient_id):
     case_id, case_url, _ = _case_for(logged_in_client, patient_id, total_cost="1000")
+    # Visit notes and dental chart entries must appear in a right-to-access export too —
+    # not just prescriptions/payments/appointments (feast9_v2_agents.md §10).
+    db.add_visit_note(case_id, patient_id, "Patient tolerated the procedure well.", "2026-01-05")
+    db.add_dental_chart_entry(patient_id, case_id, "36", "Whole Tooth", "Root Canal", "Completed", "RCT completed")
+
     token = get_csrf(logged_in_client, f"/patients/{patient_id}/data-requests/new")
     logged_in_client.post(
         f"/patients/{patient_id}/data-requests/new",

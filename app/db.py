@@ -883,6 +883,21 @@ def list_visit_notes_for_case(case_id):
     return [dict(r) for r in rows]
 
 
+def list_visit_notes_for_patient(patient_id):
+    """All visit notes across every case for a patient — used by the DPDP right-to-access
+    export (feast9_v2_agents.md §10 generate_data_access_pdf), which must hand the patient
+    their own clinical text in full, unlike the audit log's field-level redaction."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT vn.*, c.title AS case_title FROM case_visit_notes vn
+           JOIN cases c ON c.id = vn.case_id
+           WHERE vn.patient_id = ? ORDER BY vn.visit_date DESC, vn.id DESC""",
+        (patient_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 # ── Prescriptions (append-only clinical record — no edit/delete) ───────────
 
 def add_prescription(case_id, patient_id, rx_details, prescribed_date, actor=None):

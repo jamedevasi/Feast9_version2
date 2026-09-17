@@ -364,10 +364,12 @@ def generate_consent_pdf(case, patient):
 
 # ── generate_data_access_pdf ────────────────────────────────────────────────
 
-def generate_data_access_pdf(patient, cases, prescriptions, payments, appointments):
+def generate_data_access_pdf(patient, cases, visit_notes, dental_chart_entries, prescriptions, payments, appointments):
     """DPDP Phase 2 right-to-access export (feast9_v2_agents.md §10) — the patient's
     own data, handed back to them on an Access request, so clinical text (visit
-    notes/prescriptions) is included in full here unlike the audit log's redaction."""
+    notes/prescriptions) is included in full here unlike the audit log's redaction.
+    Dental chart history is the full append-only log, not just the derived current
+    state, for the same reason — it's all personal data being processed."""
     story = _header("Data Access Export", _patient_line(patient))
 
     story.append(Paragraph("Contact Details", HEADING))
@@ -385,6 +387,27 @@ def generate_data_access_pdf(patient, cases, prescriptions, payments, appointmen
         ))
     else:
         story.append(Paragraph("No treatment cases.", EMPTY))
+
+    story.append(Paragraph("Visit Notes", HEADING))
+    if visit_notes:
+        story.append(_table(
+            ["Date", "Case", "Note"],
+            [[n["visit_date"], n["case_title"], n["note"]] for n in visit_notes],
+            col_widths=[0.9 * inch, 1.6 * inch, 3.5 * inch],
+        ))
+    else:
+        story.append(Paragraph("No visit notes recorded.", EMPTY))
+
+    story.append(Paragraph("Dental Chart History", HEADING))
+    if dental_chart_entries:
+        story.append(_table(
+            ["Recorded", "Tooth", "Surface", "Finding", "Status", "Notes"],
+            [[e["recorded_at"], e["tooth_id"], e["surface"], e["finding"], e["status"], e["notes"] or "—"]
+             for e in dental_chart_entries],
+            col_widths=[1.1 * inch, 0.6 * inch, 1 * inch, 1 * inch, 0.9 * inch, 1.4 * inch],
+        ))
+    else:
+        story.append(Paragraph("No dental chart entries recorded.", EMPTY))
 
     story.append(Paragraph("Prescriptions", HEADING))
     if prescriptions:
