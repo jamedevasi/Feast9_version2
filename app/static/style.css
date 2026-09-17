@@ -313,6 +313,29 @@ details[open] summary { margin-bottom: 0.75rem; }
 .badge-status-existing { background: #fff8e1; }
 .badge-status-planned { background: #e7f0fb; }
 
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.stat-tile {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.stat-label { font-size: 0.8rem; color: var(--muted); }
+.stat-value { font-size: 1.6rem; font-weight: 700; }
+.stat-restricted { font-size: 1rem; color: var(--muted); font-weight: 600; }
+
+.followup-row-overdue { background: #fef2f2; }
+.followup-row-upcoming { background: #fff8e1; }
+.appt-row-completed { background: #f1f8f1; }
+
 .dental-chart-svg { max-width: 100%; height: auto; }
 .dental-chart-svg a { cursor: pointer; }
 .dental-chart-svg text { fill: #333; font-family: inherit; pointer-events: none; }

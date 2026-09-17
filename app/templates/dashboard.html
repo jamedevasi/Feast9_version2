@@ -5,9 +5,83 @@
 {% if backup_warning %}
 <p class="allergy-alert">⚠ {{ backup_warning }} <a href="{{ url_for('backup.list_view') }}">View backups</a></p>
 {% endif %}
-<p class="empty-state">
-  This is a placeholder landing page. Stat tiles, follow-up alerts, and today's appointments
-  arrive once Cases and Appointments are built in a later phase.
-</p>
-<p><a href="{{ url_for('patients.list_view') }}">Go to Patients →</a></p>
+
+<div class="stat-grid">
+  <div class="stat-tile">
+    <span class="stat-label">Follow-ups Needing Attention</span>
+    <span class="stat-value">{{ overdue_followups|length + upcoming_followups|length }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">Total Outstanding Balance</span>
+    {% if can_view_financial %}
+    <span class="stat-value">₹{{ '%.2f'|format(outstanding_balance or 0) }}</span>
+    {% else %}
+    <span class="stat-value stat-restricted">Restricted</span>
+    {% endif %}
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">Active Cases</span>
+    <span class="stat-value">{{ active_cases_count }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">Today's Appointments</span>
+    <span class="stat-value">{{ todays_appointments|length }}</span>
+  </div>
+</div>
+
+<section class="card">
+  <h2>Follow-ups Needing Attention</h2>
+  {% if overdue_followups or upcoming_followups %}
+  <table class="data-table">
+    <thead>
+      <tr><th>Patient</th><th>Case</th><th>Follow-up Date</th><th>Next Action</th></tr>
+    </thead>
+    <tbody>
+      {% for f in overdue_followups %}
+      <tr class="followup-row-overdue">
+        <td>🔴 <a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
+        <td><a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a></td>
+        <td>{{ f.follow_up_date }}</td>
+        <td>{{ f.next_action_note }}</td>
+      </tr>
+      {% endfor %}
+      {% for f in upcoming_followups %}
+      <tr class="followup-row-upcoming">
+        <td>🟡 <a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
+        <td><a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a></td>
+        <td>{{ f.follow_up_date }}</td>
+        <td>{{ f.next_action_note }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No follow-ups requiring attention 🎉</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Today's Appointments</h2>
+  {% if todays_appointments %}
+  <table class="data-table">
+    <thead>
+      <tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for a in todays_appointments %}
+      <tr{% if a.status == 'Completed' %} class="appt-row-completed"{% endif %}>
+        <td>{{ a.start_time }}</td>
+        <td><a href="{{ url_for('patients.detail', patient_id=a.patient_id) }}">{{ a.patient_name }}</a></td>
+        <td>{{ a.doctor_name or '—' }}</td>
+        <td><span class="badge badge-status-{{ a.status|lower|replace(' ', '-') }}">{% if a.status == 'Completed' %}✓ {% endif %}{{ a.status }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No appointments scheduled for today.</p>
+  {% endif %}
+</section>
+
+<p><a href="{{ url_for('patients.list_view') }}">Go to Patients →</a> · <a href="{{ url_for('appointments.index') }}">Go to Appointments →</a></p>
 {% endblock %}

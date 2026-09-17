@@ -1425,6 +1425,73 @@ def cancel_appointment_series(series_id):
     conn.close()
 
 
+# ── Dashboard widgets ────────────────────────────────────────────────────────
+
+def get_followup_alerts():
+    """Merged follow-up table for the dashboard — (overdue_list, upcoming_list).
+    overdue:  follow_up_date < today
+    upcoming: today <= follow_up_date <= today + 3 days
+    Only cases still Active are surfaced — a closed case's stale follow-up date
+    (left over from before it was closed) shouldn't nag the dashboard."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT c.id AS case_id, c.patient_id, c.title AS case_title,
+                  c.follow_up_date, c.next_action_note, p.name AS patient_name
+           FROM cases c JOIN patients p ON p.id = c.patient_id
+           WHERE c.follow_up_date != '' AND c.status = 'Active'
+           ORDER BY c.follow_up_date""",
+    ).fetchall()
+    conn.close()
+    today_str = date.today().isoformat()
+    upcoming_cutoff = (date.today() + timedelta(days=3)).isoformat()
+    overdue, upcoming = [], []
+    for r in rows:
+        row = dict(r)
+        if row["follow_up_date"] < today_str:
+            overdue.append(row)
+        elif row["follow_up_date"] <= upcoming_cutoff:
+            upcoming.append(row)
+    return overdue, upcoming
+
+
+def get_active_cases_count():
+    conn = get_db()
+    row = conn.execute("SELECT COUNT(*) AS n FROM cases WHERE status = 'Active'").fetchone()
+    conn.close()
+    return row["n"]
+
+
+def get_outstanding_balance():
+    """Total_cost minus payments, summed across every case — financial data, redact
+    entirely (not just hide) from receptionist sessions at the route level."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT COALESCE(SUM(c.total_cost), 0) AS total_cost,
+                  COALESCE((SELECT SUM(amount) FROM payments), 0) AS total_paid
+           FROM cases c"""
+    ).fetchone()
+    conn.close()
+    return row["total_cost"] - row["total_paid"]
+
+
+def get_todays_appointments():
+    """Today's Appointments widget — status badges must key off appointment.status
+    only (never arrived_at/seen_at, which are unused leftovers)."""
+    conn = get_db()
+    today_str = date.today().isoformat()
+    rows = conn.execute(
+        """SELECT a.*, p.name AS patient_name, d.name AS doctor_name, d.color AS doctor_color
+           FROM appointments a
+           JOIN patients p ON p.id = a.patient_id
+           LEFT JOIN doctors d ON d.id = a.doctor_id
+           WHERE a.appt_date = ?
+           ORDER BY a.start_time""",
+        (today_str,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 # ── Dental charting (§14 item) ──────────────────────────────────────────────
 # Append-only, like visit notes/prescriptions — a correction is a new entry, never an edit of
 # an old one; "current state" is derived (latest entry per tooth+surface), and the append-only
