@@ -132,10 +132,11 @@ def test_reports_filter_form_has_explicit_action(logged_in_client):
     assert b'action="/reports/"' in resp.data
 
 
-def test_reports_print_view_renders(logged_in_client, patient_id):
-    resp = logged_in_client.get("/reports/print")
+def test_reports_pdf_download(logged_in_client, patient_id):
+    resp = logged_in_client.get("/reports/report.pdf")
     assert resp.status_code == 200
-    assert b"Print / Save as PDF" in resp.data
+    assert resp.headers["Content-Type"] == "application/pdf"
+    assert resp.data[:4] == b"%PDF"
 
 
 def test_download_pending_excel(logged_in_client, patient_id):
@@ -151,7 +152,7 @@ def test_receptionist_blocked_from_reports(logged_in_client, patient_id):
     _login(logged_in_client, "repreports")
 
     assert logged_in_client.get("/reports/").status_code == 403
-    assert logged_in_client.get("/reports/print").status_code == 403
+    assert logged_in_client.get("/reports/report.pdf").status_code == 403
     assert logged_in_client.get("/reports/pending.xlsx").status_code == 403
 
     dash = logged_in_client.get("/dashboard")

@@ -4,7 +4,7 @@ from io import BytesIO
 from flask import Blueprint, render_template, request, send_file
 from openpyxl import Workbook
 
-from app import db
+from app import db, pdf_reports
 from app.auth import current_actor, financial_access_required, login_required
 from app.validators import normalize_date, today_iso
 
@@ -47,12 +47,16 @@ def view_reports():
     return render_template("reports.html", start=start, end=end, **_report_context(start, end))
 
 
-@bp.route("/print")
+@bp.route("/report.pdf")
 @login_required
 @financial_access_required
-def print_view():
+def report_pdf():
     start, end = _period_from_request()
-    return render_template("reports_print.html", start=start, end=end, **_report_context(start, end))
+    pdf_bytes = pdf_reports.generate_report_pdf(start, end, _report_context(start, end))
+    db.write_audit_now(
+        current_actor(), "report_downloaded", "report", None, after_summary=f"report.pdf, {start} to {end}",
+    )
+    return send_file(BytesIO(pdf_bytes), mimetype="application/pdf", download_name=f"report-{start}-to-{end}.pdf")
 
 
 @bp.route("/pending.xlsx")

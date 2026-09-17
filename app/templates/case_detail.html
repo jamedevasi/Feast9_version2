@@ -9,6 +9,7 @@
     <span class="badge badge-{{ 'active' if case.status == 'Active' else 'closed' }}">{{ case.status }}</span>
   </div>
   <div class="case-actions">
+    <a class="button" href="{{ url_for('cases.summary_pdf', case_id=case.id) }}">📄 Case Summary (PDF)</a>
     {% if case.status == 'Active' %}
     <a class="button" href="{{ url_for('cases.edit', case_id=case.id) }}">Edit</a>
     <form method="post" action="{{ url_for('cases.close', case_id=case.id) }}" onsubmit="return confirm('Close this case? This cannot be undone from the UI.');">

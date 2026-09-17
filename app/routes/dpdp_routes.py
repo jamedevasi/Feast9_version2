@@ -1,7 +1,9 @@
 """DPDP Phase 2 — data-rights requests (feast9_v2_agents.md §5.11)."""
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+import io
 
-from app import db
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
+
+from app import db, pdf_reports
 from app.auth import current_actor, login_required, reauth_required, role_required
 from app.constants import DATA_REQUEST_STATUSES, DATA_REQUEST_TYPES
 from app.csrf import validate_csrf
@@ -70,6 +72,31 @@ def detail(request_id):
     entry = _get_request_or_404(request_id)
     patient = db.get_patient(entry["patient_id"])
     return render_template("data_request_detail.html", entry=entry, patient=patient, statuses=DATA_REQUEST_STATUSES)
+
+
+@bp.route("/data-requests/<int:request_id>/access.pdf")
+@login_required
+@role_required("admin", "doctor")
+def access_pdf(request_id):
+    """DPDP Phase 2 right-to-access export (feast9_v2_agents.md §10) — only meaningful
+    for an Access request, but any request's patient can still be exported this way."""
+    entry = _get_request_or_404(request_id)
+    patient = db.get_patient(entry["patient_id"])
+    cases = db.list_cases_for_patient(entry["patient_id"])
+    prescriptions = db.list_prescriptions_for_patient(entry["patient_id"])
+    appointments = db.list_appointments_for_patient(entry["patient_id"])
+    payments = [p for c in cases for p in db.list_payments_for_case(c["id"])]
+    for p in payments:
+        p["case_title"] = next(c["title"] for c in cases if c["id"] == p["case_id"])
+    pdf_bytes = pdf_reports.generate_data_access_pdf(patient, cases, prescriptions, payments, appointments)
+    db.write_audit_now(
+        current_actor(), "data_access_pdf_downloaded", "patient", entry["patient_id"],
+        after_summary=f"data_request_id={request_id}",
+    )
+    return send_file(
+        io.BytesIO(pdf_bytes), mimetype="application/pdf",
+        download_name=f"data-access-{entry['patient_id']}.pdf",
+    )
 
 
 @bp.route("/data-requests/<int:request_id>/resolve", methods=["POST"])

@@ -7,7 +7,7 @@
   <label>From <input type="date" name="start" value="{{ start }}"></label>
   <label>To <input type="date" name="end" value="{{ end }}"></label>
   <button type="submit">Apply</button>
-  <a href="{{ url_for('reports.print_view', start=start, end=end) }}" target="_blank" rel="noopener">🖨 Print Report (PDF)</a>
+  <a href="{{ url_for('reports.report_pdf', start=start, end=end) }}">🖨 Print Report (PDF)</a>
   <a href="{{ url_for('reports.download_pending_xlsx') }}">📊 Download Pending (Excel)</a>
 </form>
 

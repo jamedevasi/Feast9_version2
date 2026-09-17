@@ -863,6 +863,13 @@ def list_prescriptions_for_case(case_id):
     return [dict(r) for r in rows]
 
 
+def get_prescription(rx_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM prescriptions WHERE id = ?", (rx_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def list_prescriptions_for_patient(patient_id):
     """All prescriptions across every case for a patient — feast9_v2_agents.md §14 'Prescription history'."""
     conn = get_db()

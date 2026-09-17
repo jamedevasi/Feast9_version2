@@ -1,4 +1,5 @@
 """Clinical Attachments, Lab Requisitions, Referral Notes — grouped as in feast9_v2_agents.md §3."""
+import io
 import os
 import uuid
 
@@ -6,7 +7,7 @@ from flask import Blueprint, abort, flash, redirect, request, send_file, url_for
 from werkzeug.utils import secure_filename
 
 from app import config as app_config
-from app import db
+from app import db, pdf_reports
 from app.auth import current_actor, login_required, reauth_required, role_required
 from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
 from app.csrf import validate_csrf
@@ -199,6 +200,20 @@ def add_referral(case_id):
     db.add_referral(case_id, case["patient_id"], referral_date, referred_to, speciality, reason, notes)
     flash("Referral added.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
+
+
+@bp.route("/cases/<int:case_id>/referral/<int:ref_id>/print")
+@login_required
+def referral_pdf(case_id, ref_id):
+    case = _get_case_or_404(case_id)
+    referral = db.get_referral(ref_id)
+    if not referral or referral["case_id"] != case_id:
+        abort(404)
+    patient = db.get_patient(case["patient_id"])
+    pdf_bytes = pdf_reports.generate_referral_pdf(referral, case, patient)
+    return send_file(
+        io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name=f"referral-{ref_id}.pdf"
+    )
 
 
 @bp.route("/referrals/<int:ref_id>/delete", methods=["POST"])

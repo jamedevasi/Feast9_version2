@@ -1,9 +1,10 @@
+import io
 import json
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 
-from app import db
-from app.auth import current_actor, login_required
+from app import db, pdf_reports
+from app.auth import can_view_financial_data, current_actor, login_required
 from app.constants import ALLERGY_DRUGS, MEDICAL_CONDITIONS, SEX_OPTIONS
 from app.csrf import validate_csrf
 from app.validators import compute_age, is_valid_mobile, normalize_date, now_iso, today_iso
@@ -120,6 +121,23 @@ def detail(patient_id):
     return render_template(
         "patient_detail.html", patient=patient, cases=cases, appointments=appointments,
         data_requests=data_requests, prescriptions=prescriptions,
+    )
+
+
+@bp.route("/<int:patient_id>/summary.pdf")
+@login_required
+def summary_pdf(patient_id):
+    patient = db.get_patient(patient_id)
+    if not patient:
+        abort(404)
+    cases = db.list_cases_for_patient(patient_id)
+    prescriptions = db.list_prescriptions_for_patient(patient_id)
+    appointments = db.list_appointments_for_patient(patient_id)
+    pdf_bytes = pdf_reports.generate_patient_summary_pdf(
+        patient, cases, prescriptions, appointments, can_view_financial_data()
+    )
+    return send_file(
+        io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name=f"patient-summary-{patient_id}.pdf"
     )
 
 

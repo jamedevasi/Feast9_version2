@@ -5,6 +5,7 @@
   <h1>{{ patient.name }}</h1>
   <div class="case-actions">
     <a class="button" href="{{ url_for('dental.chart', patient_id=patient.id) }}">🦷 Dental Chart</a>
+    <a class="button" href="{{ url_for('patients.summary_pdf', patient_id=patient.id) }}">📄 Patient Summary (PDF)</a>
     <a class="button" href="{{ url_for('patients.edit', patient_id=patient.id) }}">Edit</a>
   </div>
 </div>

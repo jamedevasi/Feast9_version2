@@ -1,14 +1,19 @@
+import io
 import json
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 
-from app import db
+from app import db, pdf_reports
 from app.auth import can_view_financial_data, current_actor, financial_access_required, login_required
 from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
 from app.csrf import validate_csrf
 from app.validators import normalize_date, today_iso
 
 bp = Blueprint("cases", __name__)
+
+
+def _send_pdf(pdf_bytes, download_name):
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name=download_name)
 
 
 def _collect_case_form(form):
@@ -124,6 +129,22 @@ def detail(case_id):
     )
 
 
+@bp.route("/cases/<int:case_id>/summary.pdf")
+@login_required
+def summary_pdf(case_id):
+    case = _get_case_or_404(case_id)
+    patient = db.get_patient(case["patient_id"])
+    can_view_financial = can_view_financial_data()
+    if can_view_financial:
+        payments = db.list_payments_for_case(case_id)
+        balance = db.get_case_balance(case_id)
+        cost_revisions = db.list_cost_revisions_for_case(case_id)
+    else:
+        payments, balance, cost_revisions = [], None, []
+    pdf_bytes = pdf_reports.generate_case_summary_pdf(case, patient, payments, balance, cost_revisions, can_view_financial)
+    return _send_pdf(pdf_bytes, f"case-summary-{case_id}.pdf")
+
+
 @bp.route("/cases/<int:case_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit(case_id):
@@ -178,6 +199,18 @@ def add_prescription(case_id):
         db.add_prescription(case_id, case["patient_id"], rx_details, prescribed_date, actor=current_actor())
         flash("Prescription added.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
+
+
+@bp.route("/cases/<int:case_id>/prescriptions/<int:rx_id>.pdf")
+@login_required
+def prescription_pdf(case_id, rx_id):
+    case = _get_case_or_404(case_id)
+    prescription = db.get_prescription(rx_id)
+    if not prescription or prescription["case_id"] != case_id:
+        abort(404)
+    patient = db.get_patient(case["patient_id"])
+    pdf_bytes = pdf_reports.generate_prescription_pdf(prescription, case, patient)
+    return _send_pdf(pdf_bytes, f"prescription-{rx_id}.pdf")
 
 
 @bp.route("/cases/<int:case_id>/payments", methods=["POST"])
@@ -255,6 +288,15 @@ def record_consent(case_id):
     db.record_case_consent(case_id, notes, actor=current_actor())
     flash("Consent recorded.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
+
+
+@bp.route("/cases/<int:case_id>/consent.pdf")
+@login_required
+def consent_pdf(case_id):
+    case = _get_case_or_404(case_id)
+    patient = db.get_patient(case["patient_id"])
+    pdf_bytes = pdf_reports.generate_consent_pdf(case, patient)
+    return _send_pdf(pdf_bytes, f"consent-{case_id}.pdf")
 
 
 @bp.route("/cases/<int:case_id>/close", methods=["POST"])

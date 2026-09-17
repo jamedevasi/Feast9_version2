@@ -13,6 +13,7 @@
     <li>
       <span class="entry-date">{{ rx.prescribed_date }}</span>
       <p>{{ rx.rx_details }}</p>
+      <a href="{{ url_for('cases.prescription_pdf', case_id=case.id, rx_id=rx.id) }}">📄 Print</a>
     </li>
     {% endfor %}
   </ul>
