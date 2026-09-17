@@ -6,8 +6,9 @@ to manage their own credentials, so this lives on its own page rather than behin
 Settings' admin gate."""
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
+from app import config as app_config
 from app import db
-from app.auth import check_password, current_actor, hash_password, login_required
+from app.auth import check_password, current_actor, hash_password, login_required, reauth_required
 from app.csrf import validate_csrf
 
 bp = Blueprint("account", __name__, url_prefix="/account")
@@ -26,7 +27,17 @@ def index():
             _change_security_question(user)
         return redirect(url_for("account.index"))
 
-    return render_template("account.html", user=user)
+    return render_template("account.html", user=user, google_signin_enabled=app_config.google_signin_enabled())
+
+
+@bp.route("/unlink-google", methods=["POST"])
+@login_required
+@reauth_required
+def unlink_google():
+    validate_csrf(request.form.get("csrf_token"))
+    db.unlink_google_account(session["admin_id"], actor=current_actor())
+    flash("Google account unlinked.", "success")
+    return redirect(url_for("account.index"))
 
 
 def _change_password(user):

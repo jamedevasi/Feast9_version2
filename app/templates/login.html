@@ -23,6 +23,11 @@
   </form>
   <p class="forgot-password-link"><a href="{{ url_for('auth.forgot_password') }}">Forgot password?</a></p>
 
+  {% if google_signin_enabled %}
+  <div class="auth-divider"><span>or</span></div>
+  <a class="button button-google" href="{{ url_for('google_auth.login_start', next=request.args.get('next', '')) }}">Sign in with Google</a>
+  {% endif %}
+
   <div class="verse-block">
     "...for I am the LORD, who heals you."
     <span class="verse-ref">— Exodus 15:26</span>

@@ -36,6 +36,7 @@ def create_app():
     from app.routes.dental_routes import bp as dental_bp
     from app.routes.doctor_routes import bp as doctor_bp
     from app.routes.dpdp_routes import bp as dpdp_bp
+    from app.routes.google_auth_routes import bp as google_auth_bp
     from app.routes.import_routes import bp as import_bp
     from app.routes.patient_routes import bp as patient_bp
     from app.routes.procedure_type_routes import bp as procedure_type_bp
@@ -63,6 +64,10 @@ def create_app():
     app.register_blueprint(procedure_type_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(import_bp)
+    app.register_blueprint(google_auth_bp)
+
+    from app.google_oauth import init_google_oauth
+    init_google_oauth(app)
 
     app.jinja_env.globals["csrf_token"] = generate_csrf_token
 

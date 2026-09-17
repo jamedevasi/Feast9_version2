@@ -125,6 +125,7 @@ def login():
         "login.html", errors=errors,
         login_heading=login_heading,
         login_tagline=db.get_setting("login_tagline", DEFAULT_LOGIN_TAGLINE),
+        google_signin_enabled=app_config.google_signin_enabled(),
     )
 
 

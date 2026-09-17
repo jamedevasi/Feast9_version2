@@ -5,8 +5,11 @@ receptionist role exists"). The receptionist role now exists (Phase 4a), so this
 covers the six areas §14 calls out by name, plus the assets/actors/trust-boundary context
 needed to make sense of them. It reflects the codebase as of the TOTP 2FA commit (Phase 4c)
 and should be revisited whenever a new role, external integration, or data-export path is added
-— PDF generation, Excel import, Google sign-in, and the patient portal are the most likely
-future triggers for a revision.
+— PDF generation, Excel import, Google sign-in, and the patient portal were named as the most
+likely future triggers. PDF generation and Excel import have since shipped without a
+revisit (still outstanding); **Google sign-in shipped 2026-09-17 and is covered below (§4)**,
+since it's the one of the four that actually adds a new authentication path. The patient
+portal remains the standing trigger for the next full revision.
 
 ## 1. Assets
 
@@ -179,19 +182,54 @@ leaving implicit. **Recommendation:** low priority given the single-clinic, thre
 model, but if the patient portal (§14, future) is ever built, this must change — an external
 patient session must never be able to enumerate another patient's attachment IDs.
 
-## 4. Explicitly out of scope for this document
+## 4. Google sign-in (§14 — added 2026-09-17)
+
+Optional/secondary alternate login path. What changes and what doesn't:
+
+- **No new actor type.** Google sign-in authenticates as one of the existing admin/doctor/
+  receptionist accounts — it's an alternate credential for an account that already exists,
+  not a new kind of session or a way to create one. All of §2's actor/trust-level analysis
+  is unchanged.
+- **Cannot create an account.** `db.get_user_by_google_sub` only ever looks up an *existing*
+  row; there is no code path from a Google identity to a new `admin` row. An unrecognized
+  Google identity is rejected with a flash message pointing back to password login.
+- **The "explicit first-time link" step is enforced by authentication order, not by a
+  promise.** Linking (`/account/link-google`) is `@login_required` — a Google identity can
+  only be attached to an account from a session that already passed the normal password
+  (+TOTP, if enabled) check. There is no server-side path that links a Google identity based
+  on a matching email alone.
+- **One Google identity, one local account.** `idx_admin_google_sub` is a partial unique
+  index on `admin.google_sub` — the database itself rejects a second account claiming the
+  same `sub`, not just application logic, so a race between two concurrent link attempts
+  fails safely rather than silently duplicating.
+- **Token validation is Authlib's job, not hand-rolled.** `authorize_access_token()` validates
+  issuer, audience, signature (via Google's published JWKS), expiry, and nonce before
+  `token["userinfo"]` is ever populated; `state` (CSRF) is validated the same way before that.
+  This app never parses or verifies a JWT itself.
+- **Email must be Google-verified.** `email_verified` is checked explicitly on both the link
+  and sign-in paths — an unverified email is rejected outright, since it can't be trusted to
+  identify the account holder.
+- **Scope stays identity-only.** `openid email profile` — no Gmail/Drive/Calendar/contacts
+  scope is ever requested, so a compromised or over-permissioned Google session grants no
+  reach into the user's other Google data.
+- **Admin can unlink, but cannot revoke an already-active session.** `/users/<id>/unlink-google`
+  removes the identity link (preventing *future* Google sign-ins) but does not invalidate a
+  session that was already established — this is the same gap as §3.4/§6 below, not a new one
+  Google sign-in introduces, just another path that lands in it.
+- **Feature-flagged off by default.** With `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` unset (the
+  default), every route 404s and no button renders — a clinic that never configures it has
+  zero additional attack surface from this feature.
+
+## 5. Explicitly out of scope for this document
 
 - Multi-tenancy / cross-clinic isolation — not applicable, single `DATA_DIR` per deployment.
-- Google sign-in's own threat surface (token validation, issuer/audience/nonce checks) — deferred
-  along with the feature itself; §14 already specifies the required checks in detail when it's
-  built, and it explicitly cannot replace the local-password/TOTP baseline this document assumes.
 - Physical security of the server / hosting provider's own security posture.
 - Denial-of-service beyond the basic `MAX_CONTENT_LENGTH` bound and IP-based login rate limiting.
 
-## 5. Summary of open recommendations
+## 6. Summary of open recommendations
 
 1. Idle/absolute session timeout (§3.3).
-2. Session revocation on deactivation/password-change/TOTP-reset (§3.4).
+2. Session revocation on deactivation/password-change/TOTP-reset/Google-account-unlink (§3.4, §4).
 3. Re-run financial role checks on any future export/PDF route (§3.2) — process note for
    whoever builds it, not code to write now.
 4. Per-attachment ownership check, if/when an external (patient-facing) role is introduced (§3.6).

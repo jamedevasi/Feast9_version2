@@ -28,4 +28,21 @@
     <button type="submit">Update Security Question</button>
   </form>
 </section>
+
+{% if google_signin_enabled %}
+<section class="card">
+  <h2>Google Account</h2>
+  {% if user.google_email %}
+  <p>Linked to <strong>{{ user.google_email }}</strong> on {{ user.google_linked_at }}.</p>
+  <p class="muted-note">You can sign in with this Google account instead of your password.</p>
+  <form method="post" action="{{ url_for('account.unlink_google') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="button button-secondary">Unlink Google Account</button>
+  </form>
+  {% else %}
+  <p class="muted-note">Link a Google account for an alternate way to sign in. Your password (and 2FA, if enabled) still work as before — this doesn't replace them.</p>
+  <p><a class="button" href="{{ url_for('google_auth.link_start') }}">Link Google Account</a></p>
+  {% endif %}
+</section>
+{% endif %}
 {% endblock %}

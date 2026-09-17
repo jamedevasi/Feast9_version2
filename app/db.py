@@ -89,6 +89,25 @@ def _migrate_cases_consent_signature(conn):
     conn.commit()
 
 
+def _migrate_admin_google(conn):
+    """Additive migration: an optional Google OIDC identity linked to a local account
+    (§14 'Google sign-in' — optional/secondary, never the only path in). google_sub
+    (the provider's stable subject id, not email — email can change) is the lookup
+    key; a partial unique index keeps two local accounts from ever linking the same
+    Google identity, while leaving every unlinked row (blank string) uncollided."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(admin)")}
+    if "google_sub" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN google_sub TEXT NOT NULL DEFAULT ''")
+    if "google_email" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN google_email TEXT NOT NULL DEFAULT ''")
+    if "google_linked_at" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN google_linked_at TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_google_sub ON admin(google_sub) WHERE google_sub != ''"
+    )
+    conn.commit()
+
+
 def init_db():
     conn = get_db()
     conn.executescript(
@@ -331,6 +350,7 @@ def init_db():
     _migrate_patients_dpdp(conn)
     _migrate_appointments_recurring(conn)
     _migrate_cases_consent_signature(conn)
+    _migrate_admin_google(conn)
     conn.close()
 
 
@@ -603,6 +623,48 @@ def reset_totp(user_id, actor=None):
         (now_iso(), user_id),
     )
     _write_audit(conn, actor, "totp_reset", "user", user_id)
+    conn.commit()
+    conn.close()
+
+
+# ── Google sign-in (§14 — optional/secondary alternate login path) ─────────
+# A Google identity is looked up by its stable "sub" claim, never by email (an email
+# address can change on Google's side; sub cannot). Linking never creates a new local
+# account — see app/routes/google_auth_routes.py for why that's enforced at the route
+# layer (the explicit first-time link step happens from an already-authenticated
+# session, not from this module).
+
+def get_user_by_google_sub(google_sub):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM admin WHERE google_sub = ? AND is_active = 1", (google_sub,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def link_google_account(user_id, google_sub, google_email, actor=None):
+    conn = get_db()
+    conn.execute(
+        "UPDATE admin SET google_sub = ?, google_email = ?, google_linked_at = ?, updated_at = ? WHERE id = ?",
+        (google_sub, google_email, now_iso(), now_iso(), user_id),
+    )
+    _write_audit(
+        conn, actor, "google_account_linked", "user", user_id, after_summary=f"google_email={google_email}"
+    )
+    conn.commit()
+    conn.close()
+
+
+def unlink_google_account(user_id, actor=None):
+    """Admin-controlled unlink, or self-service unlink — same dual-caller pattern as
+    reset_totp above."""
+    conn = get_db()
+    conn.execute(
+        "UPDATE admin SET google_sub = '', google_email = '', google_linked_at = '', updated_at = ? WHERE id = ?",
+        (now_iso(), user_id),
+    )
+    _write_audit(conn, actor, "google_account_unlinked", "user", user_id)
     conn.commit()
     conn.close()
 

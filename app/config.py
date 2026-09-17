@@ -17,6 +17,20 @@ BACKUP_ENCRYPTION_KEY = os.environ.get("BACKUP_ENCRYPTION_KEY", "")
 # unset means the backup stays local-only.
 BACKUP_OFFSITE_COMMAND = os.environ.get("BACKUP_OFFSITE_COMMAND", "")
 
+# Google sign-in (§14) — optional/secondary alternate login path, never the only one.
+# Unset (the default) means the feature is simply absent: no button on the login page,
+# no routes exposed. Get these from a Google Cloud Console OAuth 2.0 Client ID (Web
+# application type) — the redirect URI registered there must exactly match this app's
+# /login/google/callback URL for the deployed domain.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+
+def google_signin_enabled():
+    """A function, not a module-level constant, for the same DATA_DIR-staleness reason
+    as backups_dir() — read fresh so tests can monkeypatch it after import."""
+    return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
 
 def backups_dir():
     """A function, not a module-level constant, so it follows DATA_DIR when tests monkeypatch it."""

@@ -106,3 +106,17 @@ def reset_totp(user_id):
     db.reset_totp(user_id, actor=current_actor())
     flash(f"Two-factor authentication reset for '{target['username']}'.", "success")
     return redirect(url_for("users.list_view"))
+
+
+@bp.route("/<int:user_id>/unlink-google", methods=["POST"])
+@login_required
+@role_required("admin")
+@reauth_required
+def unlink_google(user_id):
+    validate_csrf(request.form.get("csrf_token"))
+    target = db.get_user_by_id(user_id)
+    if not target:
+        abort(404)
+    db.unlink_google_account(user_id, actor=current_actor())
+    flash(f"Google account unlinked for '{target['username']}'.", "success")
+    return redirect(url_for("users.list_view"))

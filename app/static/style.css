@@ -138,6 +138,38 @@ body.auth-page .auth-card button[type="submit"] {
 
 .forgot-password-link { text-align: center; font-size: 0.85rem; margin-top: -0.5rem; }
 
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 1rem 0;
+}
+.auth-divider::before, .auth-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid var(--border);
+}
+.auth-divider span { padding: 0 0.75rem; }
+
+/* .button.button-google (both classes) so this reliably beats the plain .button rule
+   below regardless of stylesheet order — two class selectors outrank one. */
+.button.button-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.6rem;
+  background: white;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.button.button-google:hover { border-color: var(--brand); }
+
 .login-image-preview {
   display: block;
   width: 64px;
