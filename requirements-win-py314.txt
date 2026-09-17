@@ -1,10 +1,9 @@
 # Windows + Python 3.14 (gunicorn does not run on Windows — use waitress)
-# NOTE: this is Phase 1 (Foundation + Patients) of the feast9_v2_agents.md spec.
-# reportlab / openpyxl / Pillow will be added when PDF generation, Excel import,
-# and branding are built in later phases.
+# NOTE: reportlab / Pillow will be added when PDF generation and branding are built.
 Flask==3.1.3
 Werkzeug==3.1.7
 waitress>=3.0.0
 pyotp==2.10.0
 qrcode==8.2
 cryptography==50.0.1
+openpyxl==3.1.5

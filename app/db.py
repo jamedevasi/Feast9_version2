@@ -1492,6 +1492,167 @@ def get_todays_appointments():
     return [dict(r) for r in rows]
 
 
+# ── Reports (§5.9) ───────────────────────────────────────────────────────────
+# created_at/closed_at are "YYYY-MM-DD HH:MM:SS" — every filter here wraps them in
+# DATE() so a record on the end date isn't excluded by a plain string comparison.
+# payment_date is stored date-only, so it compares fine without DATE().
+
+def get_new_cases_count(start, end):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM cases WHERE DATE(created_at) BETWEEN ? AND ?", (start, end)
+    ).fetchone()
+    conn.close()
+    return row["n"]
+
+
+def get_new_patients_count(start, end):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM patients WHERE DATE(created_at) BETWEEN ? AND ?", (start, end)
+    ).fetchone()
+    conn.close()
+    return row["n"]
+
+
+def get_cases_closed_count(start, end):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM cases WHERE closed_at != '' AND DATE(closed_at) BETWEEN ? AND ?",
+        (start, end),
+    ).fetchone()
+    conn.close()
+    return row["n"]
+
+
+def get_cases_closed_in_range(start, end):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT c.*, p.name AS patient_name
+           FROM cases c JOIN patients p ON p.id = c.patient_id
+           WHERE c.closed_at != '' AND DATE(c.closed_at) BETWEEN ? AND ?
+           ORDER BY c.closed_at DESC""",
+        (start, end),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_revenue_collected(start, end):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE payment_date BETWEEN ? AND ?",
+        (start, end),
+    ).fetchone()
+    conn.close()
+    return row["total"]
+
+
+def get_payments_in_range(start, end):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT pay.*, p.name AS patient_name, c.title AS case_title
+           FROM payments pay
+           JOIN cases c ON c.id = pay.case_id
+           JOIN patients p ON p.id = pay.patient_id
+           WHERE pay.payment_date BETWEEN ? AND ?
+           ORDER BY pay.payment_date DESC, pay.id DESC""",
+        (start, end),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_revenue_overview():
+    """All-time billed vs. collected vs. outstanding — computed live, never stored,
+    same principle as get_case_balance."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT COALESCE(SUM(total_cost), 0) AS billed,
+                  COALESCE((SELECT SUM(amount) FROM payments), 0) AS collected
+           FROM cases"""
+    ).fetchone()
+    conn.close()
+    billed, collected = row["billed"], row["collected"]
+    return {"billed": billed, "collected": collected, "outstanding": billed - collected}
+
+
+def get_pending_payments():
+    """Every case with a live-computed outstanding balance > 0, for the 'Pending Payments
+    by Patient & Case' report section and its Excel export — not period-filtered, since a
+    balance owed doesn't stop being owed once the period ends."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT c.id AS case_id, c.title AS case_title, c.status, c.total_cost,
+                  p.id AS patient_id, p.name AS patient_name, p.mobile,
+                  COALESCE((SELECT SUM(amount) FROM payments WHERE case_id = c.id), 0) AS paid
+           FROM cases c JOIN patients p ON p.id = c.patient_id"""
+    ).fetchall()
+    conn.close()
+    pending = []
+    for r in rows:
+        row = dict(r)
+        row["balance"] = row["total_cost"] - row["paid"]
+        if row["balance"] > 0:
+            pending.append(row)
+    pending.sort(key=lambda r: r["balance"], reverse=True)
+    return pending
+
+
+def get_doctor_revenue_by_period(start, end):
+    """Billed = total_cost of cases opened in the period; collected = payments against
+    those same cases (a subquery, not a join, so a case with several payments doesn't
+    fan out and inflate the billed sum). collection_rate feeds the progress bars."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT d.id AS doctor_id, d.name AS doctor_name, d.color AS doctor_color,
+                  COALESCE(SUM(c.total_cost), 0) AS billed,
+                  COALESCE((SELECT SUM(pay.amount) FROM payments pay
+                            WHERE pay.case_id IN (
+                                SELECT id FROM cases
+                                WHERE doctor_id = d.id AND DATE(created_at) BETWEEN ? AND ?
+                            )), 0) AS collected
+           FROM doctors d
+           LEFT JOIN cases c ON c.doctor_id = d.id AND DATE(c.created_at) BETWEEN ? AND ?
+           GROUP BY d.id
+           ORDER BY d.name""",
+        (start, end, start, end),
+    ).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        row = dict(r)
+        row["collection_rate"] = (row["collected"] / row["billed"] * 100) if row["billed"] else 0
+        result.append(row)
+    return result
+
+
+def get_patient_retention(months=6):
+    """Lapsed = no logged visit within the threshold window. 'Visit' is
+    case_visit_notes.visit_date — the actual clinical-visit record — falling back to the
+    patient's registration date for a patient who has never had one logged yet. Anonymised
+    (erased) patients are excluded — they're no longer a retention target."""
+    conn = get_db()
+    cutoff = _add_months(date.today(), -months).isoformat()
+    rows = conn.execute(
+        """SELECT p.id, p.name, p.mobile,
+                  COALESCE((SELECT MAX(visit_date) FROM case_visit_notes WHERE patient_id = p.id),
+                           DATE(p.created_at)) AS last_activity
+           FROM patients p
+           WHERE p.is_anonymized = 0"""
+    ).fetchall()
+    conn.close()
+    total_patients = len(rows)
+    lapsed = [dict(r) for r in rows if (r["last_activity"] or "") < cutoff]
+    lapsed.sort(key=lambda r: r["last_activity"] or "")
+    return {
+        "lapsed": lapsed,
+        "total_patients": total_patients,
+        "threshold_months": months,
+        "cutoff_date": cutoff,
+    }
+
+
 # ── Dental charting (§14 item) ──────────────────────────────────────────────
 # Append-only, like visit notes/prescriptions — a correction is a new entry, never an edit of
 # an old one; "current state" is derived (latest entry per tooth+surface), and the append-only

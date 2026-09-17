@@ -390,3 +390,21 @@ details[open] summary { margin-bottom: 0.75rem; }
 .error-page h1 { font-size: 3rem; margin-bottom: 0; color: var(--brand); }
 
 .qr-code svg { width: 220px; height: 220px; }
+
+.progress-bar {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  height: 0.6rem;
+  width: 8rem;
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+}
+.progress-fill { background: var(--brand); height: 100%; }
+
+.print-report .card { break-inside: avoid; }
+@media print {
+  .no-print { display: none; }
+}

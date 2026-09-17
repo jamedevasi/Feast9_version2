@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Feast9 — Report {{ start }} to {{ end }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="container print-report">
+    <h1>Feast9 — Report</h1>
+    <p>Period: {{ start }} to {{ end }}</p>
+
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <span class="stat-label">Revenue Collected</span>
+        <span class="stat-value">₹{{ '%.2f'|format(revenue_collected) }}</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">Cases Closed</span>
+        <span class="stat-value">{{ cases_closed_count }}</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">New Cases</span>
+        <span class="stat-value">{{ new_cases_count }}</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">New Patients</span>
+        <span class="stat-value">{{ new_patients_count }}</span>
+      </div>
+    </div>
+
+    <section class="card">
+      <h2>Revenue Overview — All Time</h2>
+      <dl>
+        <dt>Billed</dt><dd>₹{{ '%.2f'|format(revenue_overview.billed) }}</dd>
+        <dt>Collected</dt><dd>₹{{ '%.2f'|format(revenue_overview.collected) }}</dd>
+        <dt>Outstanding</dt><dd>₹{{ '%.2f'|format(revenue_overview.outstanding) }}</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Pending Payments by Patient &amp; Case</h2>
+      {% if pending_payments %}
+      <table class="data-table">
+        <thead><tr><th>Patient</th><th>Case</th><th>Status</th><th>Total Cost</th><th>Paid</th><th>Balance</th></tr></thead>
+        <tbody>
+          {% for row in pending_payments %}
+          <tr>
+            <td>{{ row.patient_name }}</td><td>{{ row.case_title }}</td><td>{{ row.status }}</td>
+            <td>₹{{ '%.2f'|format(row.total_cost) }}</td><td>₹{{ '%.2f'|format(row.paid) }}</td><td>₹{{ '%.2f'|format(row.balance) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="empty-state">No pending payments — every case is fully paid.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Doctor-wise Revenue by Period</h2>
+      {% if doctor_revenue %}
+      <table class="data-table">
+        <thead><tr><th>Doctor</th><th>Billed</th><th>Collected</th><th>Collection Rate</th></tr></thead>
+        <tbody>
+          {% for doc in doctor_revenue %}
+          <tr>
+            <td>{{ doc.doctor_name }}</td><td>₹{{ '%.2f'|format(doc.billed) }}</td>
+            <td>₹{{ '%.2f'|format(doc.collected) }}</td><td>{{ '%.0f'|format(doc.collection_rate) }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="empty-state">No doctors on file yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Patient Retention</h2>
+      <p>{{ retention.total_patients }} patients on file · lapsed = no visit in the last {{ retention.threshold_months }} months (since {{ retention.cutoff_date }})</p>
+      {% if retention.lapsed %}
+      <table class="data-table">
+        <thead><tr><th>Patient</th><th>Mobile</th><th>Last Visit</th></tr></thead>
+        <tbody>
+          {% for p in retention.lapsed %}
+          <tr><td>{{ p.name }}</td><td>{{ p.mobile or '—' }}</td><td>{{ p.last_activity or '—' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="badge badge-active">All clear — no lapsed patients</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Payments Received in Period</h2>
+      {% if payments_in_period %}
+      <table class="data-table">
+        <thead><tr><th>Date</th><th>Patient</th><th>Case</th><th>Amount</th><th>Method</th></tr></thead>
+        <tbody>
+          {% for pay in payments_in_period %}
+          <tr>
+            <td>{{ pay.payment_date }}</td><td>{{ pay.patient_name }}</td><td>{{ pay.case_title }}</td>
+            <td>₹{{ '%.2f'|format(pay.amount) }}</td><td>{{ pay.method or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="empty-state">No payments recorded in this period.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Cases Closed in Period</h2>
+      {% if cases_closed_in_period %}
+      <table class="data-table">
+        <thead><tr><th>Closed</th><th>Patient</th><th>Case</th><th>Total Cost</th></tr></thead>
+        <tbody>
+          {% for c in cases_closed_in_period %}
+          <tr>
+            <td>{{ c.closed_at }}</td><td>{{ c.patient_name }}</td><td>{{ c.title }}</td><td>₹{{ '%.2f'|format(c.total_cost) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="empty-state">No cases closed in this period.</p>
+      {% endif %}
+    </section>
+
+    <p class="no-print"><button type="button" id="print-trigger">🖨 Print / Save as PDF</button></p>
+  </main>
+  <script src="{{ url_for('static', filename='reports_print.js') }}"></script>
+</body>
+</html>

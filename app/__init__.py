@@ -34,6 +34,7 @@ def create_app():
     from app.routes.dental_routes import bp as dental_bp
     from app.routes.dpdp_routes import bp as dpdp_bp
     from app.routes.patient_routes import bp as patient_bp
+    from app.routes.reports_routes import bp as reports_bp
     from app.routes.totp_routes import bp as totp_bp
     from app.routes.user_routes import bp as user_bp
 
@@ -49,6 +50,7 @@ def create_app():
     app.register_blueprint(backup_bp)
     app.register_blueprint(dpdp_bp)
     app.register_blueprint(dental_bp)
+    app.register_blueprint(reports_bp)
 
     app.jinja_env.globals["csrf_token"] = generate_csrf_token
 
@@ -64,9 +66,14 @@ def _register_context_processors(app):
     def inject_pending_data_requests():
         # feast9_v2_agents.md §5.11: "count_pending_data_requests() injected into every page"
         from flask import session
+
+        from app.auth import can_view_financial_data
         if not session.get("admin_id"):
             return {}
-        return {"pending_data_requests_count": db_module.count_pending_data_requests()}
+        return {
+            "pending_data_requests_count": db_module.count_pending_data_requests(),
+            "can_view_financial_nav": can_view_financial_data(),
+        }
 
 
 def _register_security_headers(app):
