@@ -35,6 +35,9 @@ APPOINTMENT_STATUSES = ["Scheduled", "Completed", "Cancelled", "No-show"]
 RECURRENCE_INTERVALS = ["Weekly", "Biweekly", "Monthly"]
 MAX_RECURRING_OCCURRENCES = 52
 
+# Bulk patient import (§2/§3 excel_import.py — "Bulk 8,000-row xlsx import").
+MAX_IMPORT_ROWS = 8000
+
 # Admin: full access. Doctor: full clinical + financial access. Receptionist:
 # zero access to financial data (payments, costs/balances) — enforced server-side,
 # see app/auth.py:financial_access_required.

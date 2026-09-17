@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Import Data — Feast9{% endblock %}
+{% block content %}
+<h1>Import Data</h1>
+<p class="muted-note">Bulk-import historic patient records from a spreadsheet — for example, digitising paper records when a clinic first starts using Feast9. This always creates new patient records; it never updates or matches against existing ones.</p>
+
+<section class="card">
+  <h2>1. Download the Template</h2>
+  <p>Fill in one row per patient, keeping the column headers exactly as given.</p>
+  <p><a class="button" href="{{ url_for('import_data.template') }}">📥 Download Template (.xlsx)</a></p>
+  <p class="muted-note"><strong>DPDP Notice Accepted</strong> must be "Yes" for a row to import — bulk import never bypasses patient consent. <strong>Sex</strong> must be exactly "Male" or "Female". A patient under 18 (by Date of Birth or Age) needs a Guardian Name and a valid Guardian Mobile.</p>
+</section>
+
+<section class="card">
+  <h2>2. Upload Your Spreadsheet</h2>
+  <form method="post" action="{{ url_for('import_data.import_patients') }}" enctype="multipart/form-data" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Spreadsheet (.xlsx)<input type="file" name="file" accept=".xlsx" required></label>
+    <button type="submit">Import Patients</button>
+  </form>
+</section>
+
+{% if result %}
+<section class="card">
+  <h2>Import Results</h2>
+  <p><strong>{{ result.imported_count }}</strong> patient(s) imported.</p>
+  {% if result.skipped %}
+  <p><strong>{{ result.skipped|length }}</strong> row(s) skipped:</p>
+  <table class="data-table">
+    <thead><tr><th>Row</th><th>Name</th><th>Reason(s) Skipped</th></tr></thead>
+    <tbody>
+      {% for s in result.skipped %}
+      <tr>
+        <td>{{ s.row }}</td>
+        <td>{{ s.name or '—' }}</td>
+        <td>{{ s.errors|join('; ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted-note">Fix these rows and re-upload a spreadsheet containing only them — already-imported rows are not re-checked for duplicates, so re-uploading the full file would import everyone twice.</p>
+  {% else %}
+  <p class="empty-state">No rows were skipped.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<p><a href="{{ url_for('settings.index') }}">← Back to Settings</a></p>
+{% endblock %}

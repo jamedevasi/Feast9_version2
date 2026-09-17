@@ -16,6 +16,10 @@
     <span class="settings-card-icon">💾</span>
     <span class="settings-card-label">Backups</span>
   </a>
+  <a class="card settings-card" href="{{ url_for('import_data.index') }}">
+    <span class="settings-card-icon">📥</span>
+    <span class="settings-card-label">Import Data</span>
+  </a>
 </div>
 
 <section class="card">
@@ -35,5 +39,5 @@
   </form>
 </section>
 
-<p class="empty-state">Clinic Details, Clinic Logo (app-wide), Security Question, Change Password, and bulk data import are not built yet.</p>
+<p class="empty-state">Clinic Details, Clinic Logo (app-wide), Security Question, and Change Password are not built yet.</p>
 {% endblock %}

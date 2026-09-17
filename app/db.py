@@ -712,23 +712,43 @@ def set_procedure_type_active(procedure_type_id, is_active, actor=None):
 
 # ── Patients ─────────────────────────────────────────────────────────────
 
-def add_patient(data):
+def _insert_patient_row(conn, data, is_historic_import, now):
     row = {col: data.get(col, _PATIENT_DEFAULTS.get(col)) for col in _PATIENT_COLUMNS}
     for col in _PATIENT_BOOL_COLUMNS:
         row[col] = int(bool(row[col]))
-    now = now_iso()
     row["created_at"] = now
     row["updated_at"] = now
-    row["is_historic_import"] = 0
+    row["is_historic_import"] = 1 if is_historic_import else 0
 
     columns = ", ".join(row.keys())
     placeholders = ", ".join(f":{k}" for k in row.keys())
-    conn = get_db()
     cur = conn.execute(f"INSERT INTO patients ({columns}) VALUES ({placeholders})", row)
+    return cur.lastrowid
+
+
+def add_patient(data):
+    conn = get_db()
+    patient_id = _insert_patient_row(conn, data, is_historic_import=False, now=now_iso())
     conn.commit()
-    patient_id = cur.lastrowid
     conn.close()
     return patient_id
+
+
+def bulk_add_patients(rows, actor=None):
+    """Insert many validated patient dicts in a single transaction — the Excel bulk
+    import (up to MAX_IMPORT_ROWS per row, feast9_v2_agents.md's 'Bulk 8,000-row xlsx
+    import'), where one connect/commit per row would be needlessly slow for a batch
+    this size. Every row is marked is_historic_import=1."""
+    conn = get_db()
+    now = now_iso()
+    ids = [_insert_patient_row(conn, data, is_historic_import=True, now=now) for data in rows]
+    _write_audit(
+        conn, actor, "patients_bulk_imported", "patient", None,
+        after_summary=f"{len(ids)} patients imported",
+    )
+    conn.commit()
+    conn.close()
+    return ids
 
 
 def update_patient(patient_id, data, actor=None):

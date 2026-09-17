@@ -35,6 +35,7 @@ def create_app():
     from app.routes.dental_routes import bp as dental_bp
     from app.routes.doctor_routes import bp as doctor_bp
     from app.routes.dpdp_routes import bp as dpdp_bp
+    from app.routes.import_routes import bp as import_bp
     from app.routes.patient_routes import bp as patient_bp
     from app.routes.procedure_type_routes import bp as procedure_type_bp
     from app.routes.reports_routes import bp as reports_bp
@@ -59,6 +60,7 @@ def create_app():
     app.register_blueprint(doctor_bp)
     app.register_blueprint(procedure_type_bp)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(import_bp)
 
     app.jinja_env.globals["csrf_token"] = generate_csrf_token
 
