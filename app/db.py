@@ -592,14 +592,19 @@ def clear_failed_logins(ip):
     conn.close()
 
 
-# ── Doctors / Procedure Types (lookup data — admin CRUD UI is a later phase) ──
+# ── Doctors / Procedure Types (lookup data — admin CRUD UI, §5.13) ─────────
+# Deactivating either never deletes the row — cases already reference doctor_id, and
+# procedures_json already stores procedure-type *names* by value, so history is
+# unaffected either way; list_doctors()/list_procedure_types() default to active_only,
+# so a deactivated one simply stops being offered on new cases.
 
-def add_doctor(name, color=""):
+def add_doctor(name, color="", actor=None):
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO doctors (name, color, is_active, created_at) VALUES (?, ?, 1, ?)",
         (name, color, now_iso()),
     )
+    _write_audit(conn, actor, "doctor_created", "doctor", cur.lastrowid, after_summary=f"name={name}")
     conn.commit()
     doctor_id = cur.lastrowid
     conn.close()
@@ -624,11 +629,22 @@ def get_doctor(doctor_id):
     return dict(row) if row else None
 
 
-def add_procedure_type(name):
+def set_doctor_active(doctor_id, is_active, actor=None):
+    conn = get_db()
+    conn.execute("UPDATE doctors SET is_active = ? WHERE id = ?", (1 if is_active else 0, doctor_id))
+    _write_audit(conn, actor, "doctor_activated" if is_active else "doctor_deactivated", "doctor", doctor_id)
+    conn.commit()
+    conn.close()
+
+
+def add_procedure_type(name, actor=None):
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO procedure_types (name, is_active, created_at) VALUES (?, 1, ?)",
         (name, now_iso()),
+    )
+    _write_audit(
+        conn, actor, "procedure_type_created", "procedure_type", cur.lastrowid, after_summary=f"name={name}"
     )
     conn.commit()
     procedure_type_id = cur.lastrowid
@@ -645,6 +661,26 @@ def list_procedure_types(active_only=True):
     rows = conn.execute(query).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_procedure_type(procedure_type_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM procedure_types WHERE id = ?", (procedure_type_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def set_procedure_type_active(procedure_type_id, is_active, actor=None):
+    conn = get_db()
+    conn.execute(
+        "UPDATE procedure_types SET is_active = ? WHERE id = ?", (1 if is_active else 0, procedure_type_id)
+    )
+    _write_audit(
+        conn, actor, "procedure_type_activated" if is_active else "procedure_type_deactivated",
+        "procedure_type", procedure_type_id,
+    )
+    conn.commit()
+    conn.close()
 
 
 # ── Patients ─────────────────────────────────────────────────────────────

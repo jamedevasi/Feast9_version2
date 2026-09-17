@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Case Types — Feast9{% endblock %}
+{% block content %}
+<h1>Case Types</h1>
+
+{% if procedure_types %}
+<table class="data-table">
+  <thead>
+    <tr><th>Name</th><th>Status</th><th>Added</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for p in procedure_types %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ 'Active' if p.is_active else 'Deactivated' }}</td>
+      <td>{{ p.created_at }}</td>
+      <td>
+        {% if p.is_active %}
+        <form method="post" action="{{ url_for('procedure_types.deactivate', procedure_type_id=p.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link-button">Deactivate</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('procedure_types.activate', procedure_type_id=p.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link-button">Reactivate</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No case types on file yet.</p>
+{% endif %}
+
+<section class="card">
+  <h2>Add Case Type</h2>
+  <form method="post" action="{{ url_for('procedure_types.new') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Name<input type="text" name="name" required placeholder="e.g. Bridge, Whitening"></label>
+    <button type="submit">Add Case Type</button>
+  </form>
+</section>
+
+<p><a href="{{ url_for('settings.index') }}">← Back to Settings</a></p>
+{% endblock %}

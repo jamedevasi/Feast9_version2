@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Doctors — Feast9{% endblock %}
+{% block content %}
+<h1>Doctors</h1>
+
+{% if doctors %}
+<table class="data-table">
+  <thead>
+    <tr><th>Name</th><th>Colour</th><th>Status</th><th>Added</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for d in doctors %}
+    <tr>
+      <td>{{ d.name }}</td>
+      <td>{% if d.color %}<span class="color-swatch" style="background: {{ d.color }};"></span> {{ d.color }}{% else %}—{% endif %}</td>
+      <td>{{ 'Active' if d.is_active else 'Deactivated' }}</td>
+      <td>{{ d.created_at }}</td>
+      <td>
+        {% if d.is_active %}
+        <form method="post" action="{{ url_for('doctors.deactivate', doctor_id=d.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link-button">Deactivate</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('doctors.activate', doctor_id=d.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link-button">Reactivate</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No doctors on file yet.</p>
+{% endif %}
+
+<section class="card">
+  <h2>Add Doctor</h2>
+  <form method="post" action="{{ url_for('doctors.new') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Name<input type="text" name="name" required></label>
+    <label>Calendar Colour<input type="color" name="color" value="#2b6cb0"></label>
+    <button type="submit">Add Doctor</button>
+  </form>
+</section>
+
+<p><a href="{{ url_for('settings.index') }}">← Back to Settings</a></p>
+{% endblock %}

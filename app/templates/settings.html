@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Settings — Feast9{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="settings-grid">
+  <a class="card settings-card" href="{{ url_for('doctors.list_view') }}">
+    <span class="settings-card-icon">👨‍⚕️</span>
+    <span class="settings-card-label">Doctors</span>
+  </a>
+  <a class="card settings-card" href="{{ url_for('procedure_types.list_view') }}">
+    <span class="settings-card-icon">🦷</span>
+    <span class="settings-card-label">Case Types</span>
+  </a>
+  <a class="card settings-card" href="{{ url_for('backup.list_view') }}">
+    <span class="settings-card-icon">💾</span>
+    <span class="settings-card-label">Backups</span>
+  </a>
+</div>
+
+<p class="empty-state">Clinic branding, login-screen customisation, security question/password self-service, and bulk data import are not built yet.</p>
+{% endblock %}
