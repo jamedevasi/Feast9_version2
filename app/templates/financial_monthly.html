@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Monthly Evaluation — Feast9{% endblock %}
+{% block content %}
+<h1>Monthly Evaluation</h1>
+<p class="tagline">
+  {% if view == 'long' %}
+  <strong>Long Term</strong> — Net Monthly Profit = Billed &minus; case expenses (Lab + Consultant Fee + Consumables + Misc) &minus; clinic overhead &minus; capital depreciation for the month.
+  {% else %}
+  <strong>Short Term</strong> — Net Monthly Profit = Billed &minus; case expenses (Lab + Consultant Fee + Consumables + Misc) &minus; clinic overhead for the month (capital investment cost not included).
+  {% endif %}
+  "This month" means cases opened in the selected month, same as Reports' period figures.
+</p>
+
+<form method="get" action="{{ url_for('financial.monthly') }}" class="search-form">
+  <label>Month <input type="month" name="month" value="{{ month }}"></label>
+  <input type="hidden" name="view" value="{{ view }}">
+  <button type="submit">Apply</button>
+  <a href="{{ url_for('financial.index', **{'from': month_start, 'to': month_end}) }}">View this month's cases in Financial Assessment →</a>
+</form>
+
+<p class="view-toggle">
+  <a href="{{ url_for('financial.monthly', month=month, view='short') }}" class="button {{ 'button-active' if view == 'short' else '' }}">Short Term (excl. capital investment)</a>
+  <a href="{{ url_for('financial.monthly', month=month, view='long') }}" class="button {{ 'button-active' if view == 'long' else '' }}">Long Term (incl. capital investment)</a>
+</p>
+
+<section class="card">
+  <h2>Case Activity — {{ month }}</h2>
+  <dl>
+    <dt>Cases Opened</dt><dd>{{ rollup.case_count }}</dd>
+    <dt>Billed</dt><dd>₹{{ '%.2f'|format(rollup.total_billed) }}</dd>
+    <dt>Collected</dt><dd>₹{{ '%.2f'|format(rollup.total_collected) }}</dd>
+    <dt>Pending</dt><dd>₹{{ '%.2f'|format(rollup.total_pending) }}</dd>
+    <dt>Case Expenses (Lab + Consultant + Consumables + Misc)</dt><dd>₹{{ '%.2f'|format(rollup.total_case_expenses) }}</dd>
+  </dl>
+</section>
+
+<section class="card">
+  <h2>Clinic Overhead — {{ month }}</h2>
+  <form method="post" action="{{ url_for('financial.monthly_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="month" value="{{ month }}">
+    <input type="hidden" name="view" value="{{ view }}">
+    <label>Rent <input type="number" step="0.01" min="0" name="overhead_rent" value="{{ '%.2f'|format(overhead.rent) }}"></label>
+    <label>Staff Salary <input type="number" step="0.01" min="0" name="overhead_staff_salary" value="{{ '%.2f'|format(overhead.staff_salary) }}"></label>
+    <label>Electricity <input type="number" step="0.01" min="0" name="overhead_electricity" value="{{ '%.2f'|format(overhead.electricity) }}"></label>
+    <label>EMI <input type="number" step="0.01" min="0" name="overhead_emi" value="{{ '%.2f'|format(overhead.emi) }}"></label>
+    <label>Cleaning &amp; Disposal <input type="number" step="0.01" min="0" name="overhead_cleaning_disposal" value="{{ '%.2f'|format(overhead.cleaning_disposal) }}"></label>
+    <label>Other <input type="number" step="0.01" min="0" name="overhead_other_expense" value="{{ '%.2f'|format(overhead.other_expense) }}"></label>
+    <p><button type="submit">Save Overhead Expenses</button></p>
+  </form>
+  <p>Total Overhead: ₹{{ '%.2f'|format(overhead_total) }}</p>
+</section>
+
+{% if view == 'long' %}
+<section class="card">
+  <h2>Capital Depreciation — {{ month }}</h2>
+  {% if depreciation.breakdown %}
+  <table class="data-table">
+    <thead><tr><th>Asset</th><th>Monthly Depreciation</th></tr></thead>
+    <tbody>
+      {% for item in depreciation.breakdown %}
+      <tr><td>{{ item.asset_name }}</td><td>₹{{ '%.2f'|format(item.monthly_amount) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No active capital investments are being depreciated this month.</p>
+  {% endif %}
+  <p>Total Depreciation: ₹{{ '%.2f'|format(depreciation.total) }}</p>
+  <p><a href="{{ url_for('financial.capital_investments') }}">Manage Capital Investments →</a></p>
+</section>
+{% else %}
+<p><a href="{{ url_for('financial.capital_investments') }}">Manage Capital Investments →</a></p>
+{% endif %}
+
+<section class="card">
+  <h2>Net Monthly Profit ({{ 'Long Term' if view == 'long' else 'Short Term' }})</h2>
+  <p class="stat-value {{ 'profit-loss' if net_profit < 0 else 'profit-positive' }}">₹{{ '%.2f'|format(net_profit) }}</p>
+  {% if view == 'long' %}
+  <p>Billed (₹{{ '%.2f'|format(rollup.total_billed) }}) &minus; Case Expenses (₹{{ '%.2f'|format(rollup.total_case_expenses) }}) &minus; Overhead (₹{{ '%.2f'|format(overhead_total) }}) &minus; Depreciation (₹{{ '%.2f'|format(depreciation.total) }})</p>
+  {% else %}
+  <p>Billed (₹{{ '%.2f'|format(rollup.total_billed) }}) &minus; Case Expenses (₹{{ '%.2f'|format(rollup.total_case_expenses) }}) &minus; Overhead (₹{{ '%.2f'|format(overhead_total) }})</p>
+  {% endif %}
+</section>
+{% endblock %}

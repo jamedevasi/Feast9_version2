@@ -2,7 +2,7 @@
 {% block title %}Financial Assessment — Feast9{% endblock %}
 {% block content %}
 <h1>Financial Assessment</h1>
-<p class="tagline">Profit = Billed &minus; (Lab Amount + Consultant Fee + Misc Expense). Pending is shown alongside so an unrealised profit isn't mistaken for cash already in hand. A loss is highlighted in amber.</p>
+<p class="tagline">Profit = Billed &minus; (Lab Amount + Consultant Fee + Consumables + Misc Expense). Pending is shown alongside so an unrealised profit isn't mistaken for cash already in hand. A loss is highlighted in amber.</p>
 
 <form method="get" action="{{ url_for('financial.index') }}" class="search-form">
   <label>From <input type="date" name="from" value="{{ date_from }}"></label>
@@ -10,6 +10,8 @@
   <button type="submit">Apply</button>
   {% if date_from or date_to %}<a href="{{ url_for('financial.index') }}">Clear filter</a>{% endif %}
   <a href="{{ url_for('financial.export_xlsx', **({'from': date_from, 'to': date_to} if date_from and date_to else {})) }}">📊 Export (Excel)</a>
+  <a href="{{ url_for('financial.monthly') }}">📅 Monthly Evaluation (overhead &amp; net profit) →</a>
+  <a href="{{ url_for('financial.capital_investments') }}">🏗 Capital Investments →</a>
 </form>
 
 {% if cases %}
@@ -21,7 +23,7 @@
     <thead>
       <tr>
         <th>Date</th><th>Patient</th><th>Case</th><th>Billed</th><th>Collected</th><th>Pending</th>
-        <th>Lab Amount</th><th>Consultant Fee</th><th>Misc Expense</th><th>Profit</th>
+        <th>Lab Amount</th><th>Consultant Fee</th><th>Consumables</th><th>Misc Expense</th><th>Profit</th>
       </tr>
     </thead>
     <tbody>
@@ -35,6 +37,7 @@
         <td>₹{{ '%.2f'|format(c.pending) }}</td>
         <td><input type="number" step="0.01" min="0" name="lab_amount_{{ c.case_id }}" value="{{ '%.2f'|format(c.lab_amount) }}"></td>
         <td><input type="number" step="0.01" min="0" name="consultant_fee_{{ c.case_id }}" value="{{ '%.2f'|format(c.consultant_fee) }}"></td>
+        <td><input type="number" step="0.01" min="0" name="consumables_{{ c.case_id }}" value="{{ '%.2f'|format(c.consumables) }}"></td>
         <td><input type="number" step="0.01" min="0" name="misc_expense_{{ c.case_id }}" value="{{ '%.2f'|format(c.misc_expense) }}"></td>
         <td class="{{ 'profit-loss' if c.profit < 0 else 'profit-positive' }}">₹{{ '%.2f'|format(c.profit) }}</td>
       </tr>
@@ -46,7 +49,7 @@
         <td>₹{{ '%.2f'|format(totals.total_cost) }}</td>
         <td>₹{{ '%.2f'|format(totals.collected) }}</td>
         <td>₹{{ '%.2f'|format(totals.pending) }}</td>
-        <td colspan="2"></td>
+        <td colspan="3"></td>
         <td>₹{{ '%.2f'|format(totals.expenses) }}</td>
         <td class="{{ 'profit-loss' if totals.profit < 0 else 'profit-positive' }}">₹{{ '%.2f'|format(totals.profit) }}</td>
       </tr>

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Capital Investments — Feast9{% endblock %}
+{% block content %}
+<h1>Capital Investments</h1>
+<p class="tagline">Assets recorded here are depreciated straight-line (Cost ÷ Useful Life) and feed the "Long Term" view of Monthly Evaluation — a purchase is spread over its useful life rather than hitting one month's profit all at once.</p>
+
+{% if investments %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Asset</th><th>Purchase Date</th><th>Cost</th><th>Useful Life (months)</th>
+      <th>Monthly Depreciation</th><th>Notes</th><th>Status</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for inv in investments %}
+    <tr>
+      <td>{{ inv.asset_name }}</td>
+      <td>{{ inv.purchase_date }}</td>
+      <td>₹{{ '%.2f'|format(inv.cost) }}</td>
+      <td>{{ inv.useful_life_months }}</td>
+      <td>₹{{ '%.2f'|format(inv.monthly_depreciation) }}</td>
+      <td>{{ inv.notes or '—' }}</td>
+      <td>{{ 'Active' if inv.is_active else 'Deactivated' }}</td>
+      <td>
+        {% if inv.is_active %}
+        <form method="post" action="{{ url_for('financial.capital_investments_deactivate', investment_id=inv.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link-button">Deactivate</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('financial.capital_investments_activate', investment_id=inv.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="link-button">Reactivate</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No capital investments recorded yet.</p>
+{% endif %}
+
+<section class="card">
+  <h2>Add Asset</h2>
+  <form method="post" action="{{ url_for('financial.capital_investments_new') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Asset Name<input type="text" name="asset_name" required></label>
+    <label>Purchase Date<input type="date" name="purchase_date" required></label>
+    <label>Cost<input type="number" step="0.01" min="0.01" name="cost" required></label>
+    <label>Useful Life (months)<input type="number" step="1" min="1" name="useful_life_months" required></label>
+    <label>Notes<input type="text" name="notes"></label>
+    <button type="submit">Add Asset</button>
+  </form>
+</section>
+
+<p><a href="{{ url_for('financial.monthly') }}">← Back to Monthly Evaluation</a></p>
+{% endblock %}

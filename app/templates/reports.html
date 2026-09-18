@@ -47,7 +47,11 @@
     <dt>Cases Currently in Loss</dt>
     <dd>{% if financial_summary.loss_case_count %}<span class="profit-loss">{{ financial_summary.loss_case_count }}</span>{% else %}0{% endif %}</dd>
   </dl>
-  <p><a href="{{ url_for('financial.index') }}">View Financial Assessment (per-case detail &amp; expense entry) →</a></p>
+  <p>
+    <a href="{{ url_for('financial.index') }}">View Financial Assessment (per-case detail &amp; expense entry) →</a>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('financial.monthly') }}">Monthly Evaluation (overhead &amp; net profit) →</a>
+  </p>
 </section>
 
 <section class="card">

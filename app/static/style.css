@@ -264,6 +264,10 @@ button[type="submit"], .button {
   text-decoration: none;
 }
 
+.view-toggle { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.view-toggle .button { background: white; color: var(--text); border: 1px solid var(--border); }
+.view-toggle .button.button-active { background: var(--brand); color: white; border-color: var(--brand); }
+
 .errors {
   color: var(--danger);
   background: #fef2f2;

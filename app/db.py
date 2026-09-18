@@ -108,6 +108,16 @@ def _migrate_admin_google(conn):
     conn.commit()
 
 
+def _migrate_case_financial_assessments_consumables(conn):
+    """Additive migration: Consumables (gloves/materials/disposables consumed for the
+    case) split out as its own per-case expense category, alongside Lab Amount/
+    Consultant Fee/Misc Expense — user request, 2026-09-18."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(case_financial_assessments)")}
+    if "consumables" not in columns:
+        conn.execute("ALTER TABLE case_financial_assessments ADD COLUMN consumables REAL NOT NULL DEFAULT 0")
+    conn.commit()
+
+
 def init_db():
     conn = get_db()
     conn.executescript(
@@ -353,6 +363,31 @@ def init_db():
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS monthly_overhead_expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            month TEXT NOT NULL UNIQUE,
+            rent REAL NOT NULL DEFAULT 0,
+            staff_salary REAL NOT NULL DEFAULT 0,
+            electricity REAL NOT NULL DEFAULT 0,
+            emi REAL NOT NULL DEFAULT 0,
+            cleaning_disposal REAL NOT NULL DEFAULT 0,
+            other_expense REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS capital_investments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_name TEXT NOT NULL,
+            purchase_date TEXT NOT NULL,
+            cost REAL NOT NULL,
+            useful_life_months INTEGER NOT NULL,
+            notes TEXT NOT NULL DEFAULT '',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()
@@ -361,6 +396,7 @@ def init_db():
     _migrate_appointments_recurring(conn)
     _migrate_cases_consent_signature(conn)
     _migrate_admin_google(conn)
+    _migrate_case_financial_assessments_consumables(conn)
     conn.close()
 
 
@@ -1916,10 +1952,15 @@ def get_patient_retention(months=6):
 
 # ── Financial Assessment (ad-hoc addition, 2026-09-18 — not in feast9_v2_agents.md's
 # original scope) — a doctor-facing per-case profitability view. Profit = Billed − (Lab +
-# Consultant Fee + Misc Expense), shown alongside the still-outstanding Pending balance so
-# a profitable-on-paper case that hasn't been fully collected yet isn't misread as cash in
-# hand. financial_access_required (blocks receptionist) applies to every route, same as
-# Reports/Analytics.
+# Consultant Fee + Consumables + Misc Expense), shown alongside the still-outstanding
+# Pending balance so a profitable-on-paper case that hasn't been fully collected yet isn't
+# misread as cash in hand. financial_access_required (blocks receptionist) applies to every
+# route, same as Reports/Analytics. Monthly Evaluation (below) extends the same Billed-minus-
+# expenses methodology to a whole month by also subtracting clinic overhead (rent, staff
+# salary, electricity, EMI, cleaning & disposal, other) that isn't tied to any one case.
+
+_CASE_EXPENSE_FIELDS = ("lab_amount", "consultant_fee", "consumables", "misc_expense")
+
 
 def list_financial_assessment_cases(date_from="", date_to=""):
     """Every case (any status), most recent first, with live-computed collected/pending
@@ -1931,6 +1972,7 @@ def list_financial_assessment_cases(date_from="", date_to=""):
                       COALESCE((SELECT SUM(amount) FROM payments WHERE case_id = c.id), 0) AS collected,
                       COALESCE(fa.lab_amount, 0) AS lab_amount,
                       COALESCE(fa.consultant_fee, 0) AS consultant_fee,
+                      COALESCE(fa.consumables, 0) AS consumables,
                       COALESCE(fa.misc_expense, 0) AS misc_expense
                FROM cases c
                JOIN patients p ON p.id = c.patient_id
@@ -1944,40 +1986,45 @@ def list_financial_assessment_cases(date_from="", date_to=""):
     conn.close()
     for row in rows:
         row["pending"] = row["total_cost"] - row["collected"]
-        row["expenses"] = row["lab_amount"] + row["consultant_fee"] + row["misc_expense"]
+        row["expenses"] = sum(row[f] for f in _CASE_EXPENSE_FIELDS)
         row["profit"] = row["total_cost"] - row["expenses"]
     return rows
 
 
-def upsert_case_financial_expenses(case_id, lab_amount, consultant_fee, misc_expense, actor=None):
+def upsert_case_financial_expenses(case_id, lab_amount, consultant_fee, consumables, misc_expense, actor=None):
     conn = get_db()
     existing = conn.execute(
-        "SELECT lab_amount, consultant_fee, misc_expense FROM case_financial_assessments WHERE case_id = ?",
+        "SELECT lab_amount, consultant_fee, consumables, misc_expense "
+        "FROM case_financial_assessments WHERE case_id = ?",
         (case_id,),
     ).fetchone()
     now = now_iso()
     if existing is None:
         conn.execute(
             """INSERT INTO case_financial_assessments
-               (case_id, lab_amount, consultant_fee, misc_expense, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (case_id, lab_amount, consultant_fee, misc_expense, now, now),
+               (case_id, lab_amount, consultant_fee, consumables, misc_expense, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (case_id, lab_amount, consultant_fee, consumables, misc_expense, now, now),
         )
     else:
         conn.execute(
             """UPDATE case_financial_assessments
-               SET lab_amount = ?, consultant_fee = ?, misc_expense = ?, updated_at = ?
+               SET lab_amount = ?, consultant_fee = ?, consumables = ?, misc_expense = ?, updated_at = ?
                WHERE case_id = ?""",
-            (lab_amount, consultant_fee, misc_expense, now, case_id),
+            (lab_amount, consultant_fee, consumables, misc_expense, now, case_id),
         )
     if existing is None or (
         existing["lab_amount"] != lab_amount
         or existing["consultant_fee"] != consultant_fee
+        or existing["consumables"] != consumables
         or existing["misc_expense"] != misc_expense
     ):
         _write_audit(
             conn, actor, "case_financial_expenses_updated", "case", case_id,
-            after_summary=f"lab={lab_amount}, consultant={consultant_fee}, misc={misc_expense}",
+            after_summary=(
+                f"lab={lab_amount}, consultant={consultant_fee}, "
+                f"consumables={consumables}, misc={misc_expense}"
+            ),
         )
     conn.commit()
     conn.close()
@@ -1992,15 +2039,182 @@ def get_financial_assessment_summary():
         """SELECT COUNT(*) AS case_count,
                   COALESCE(SUM(c.total_cost), 0)
                     - COALESCE(SUM(COALESCE(fa.lab_amount, 0) + COALESCE(fa.consultant_fee, 0)
-                                   + COALESCE(fa.misc_expense, 0)), 0) AS total_profit,
+                                   + COALESCE(fa.consumables, 0) + COALESCE(fa.misc_expense, 0)), 0) AS total_profit,
                   COUNT(CASE WHEN c.total_cost
                              - (COALESCE(fa.lab_amount, 0) + COALESCE(fa.consultant_fee, 0)
-                                + COALESCE(fa.misc_expense, 0)) < 0 THEN 1 END) AS loss_case_count
+                                + COALESCE(fa.consumables, 0) + COALESCE(fa.misc_expense, 0)) < 0
+                        THEN 1 END) AS loss_case_count
            FROM cases c
            LEFT JOIN case_financial_assessments fa ON fa.case_id = c.id"""
     ).fetchone()
     conn.close()
     return dict(row)
+
+
+# ── Monthly Evaluation — extends Financial Assessment to a whole calendar month (user
+# request, 2026-09-18). "Billed this month" = cases *opened* in the month, same convention
+# as get_doctor_revenue_by_period's "billed = total_cost of cases opened in the period",
+# so the case-level and monthly views never disagree about what counts as this month's
+# business. Overhead (rent/salary/electricity/EMI/cleaning/other) isn't tied to any case,
+# so it lives in its own per-month table, upserted the same way as case expenses.
+
+_OVERHEAD_FIELDS = ("rent", "staff_salary", "electricity", "emi", "cleaning_disposal", "other_expense")
+
+
+def get_monthly_case_rollup(month):
+    """month is 'YYYY-MM'. Sums billed/collected/expenses across every case opened that
+    month — the same numbers a filtered Financial Assessment view would total, just
+    pre-aggregated so Monthly Evaluation doesn't have to re-render the per-case table."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT COUNT(*) AS case_count,
+                  COALESCE(SUM(c.total_cost), 0) AS total_billed,
+                  COALESCE(SUM((SELECT COALESCE(SUM(amount), 0) FROM payments WHERE case_id = c.id)), 0)
+                    AS total_collected,
+                  COALESCE(SUM(COALESCE(fa.lab_amount, 0)), 0) AS total_lab,
+                  COALESCE(SUM(COALESCE(fa.consultant_fee, 0)), 0) AS total_consultant,
+                  COALESCE(SUM(COALESCE(fa.consumables, 0)), 0) AS total_consumables,
+                  COALESCE(SUM(COALESCE(fa.misc_expense, 0)), 0) AS total_misc
+           FROM cases c
+           LEFT JOIN case_financial_assessments fa ON fa.case_id = c.id
+           WHERE strftime('%Y-%m', c.created_at) = ?""",
+        (month,),
+    ).fetchone()
+    conn.close()
+    result = dict(row)
+    result["total_case_expenses"] = (
+        result["total_lab"] + result["total_consultant"] + result["total_consumables"] + result["total_misc"]
+    )
+    result["total_pending"] = result["total_billed"] - result["total_collected"]
+    return result
+
+
+def get_monthly_overhead_expenses(month):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM monthly_overhead_expenses WHERE month = ?", (month,)).fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return {"month": month, **{f: 0.0 for f in _OVERHEAD_FIELDS}}
+
+
+def upsert_monthly_overhead_expenses(month, rent, staff_salary, electricity, emi, cleaning_disposal,
+                                      other_expense, actor=None):
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT rent, staff_salary, electricity, emi, cleaning_disposal, other_expense "
+        "FROM monthly_overhead_expenses WHERE month = ?",
+        (month,),
+    ).fetchone()
+    now = now_iso()
+    new_values = (rent, staff_salary, electricity, emi, cleaning_disposal, other_expense)
+    if existing is None:
+        conn.execute(
+            """INSERT INTO monthly_overhead_expenses
+               (month, rent, staff_salary, electricity, emi, cleaning_disposal, other_expense,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (month, *new_values, now, now),
+        )
+    else:
+        conn.execute(
+            """UPDATE monthly_overhead_expenses
+               SET rent = ?, staff_salary = ?, electricity = ?, emi = ?, cleaning_disposal = ?,
+                   other_expense = ?, updated_at = ?
+               WHERE month = ?""",
+            (*new_values, now, month),
+        )
+    if existing is None or tuple(existing[f] for f in _OVERHEAD_FIELDS) != new_values:
+        _write_audit(
+            conn, actor, "monthly_overhead_expenses_updated", "monthly_overhead_expenses", None,
+            after_summary=f"month={month}, " + ", ".join(f"{f}={v}" for f, v in zip(_OVERHEAD_FIELDS, new_values)),
+        )
+    conn.commit()
+    conn.close()
+
+
+# ── Capital Investments — a small asset ledger (user request, 2026-09-18) feeding the
+# "Long Term" view of Monthly Evaluation. Straight-line depreciation only, spread across
+# each asset's useful life, so a single large purchase doesn't wipe out one month's
+# figures — the whole point of a "Short Term" (no capital cost) vs. "Long Term" (with
+# capital cost) toggle. No edit/delete route — mirrors the doctors/procedure_types
+# pattern of soft-deactivate-only, since correcting a mis-entered asset by editing its
+# cost/date would silently rewrite depreciation already reported in past months.
+
+def add_capital_investment(asset_name, purchase_date, cost, useful_life_months, notes="", actor=None):
+    conn = get_db()
+    now = now_iso()
+    cur = conn.execute(
+        """INSERT INTO capital_investments
+           (asset_name, purchase_date, cost, useful_life_months, notes, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+        (asset_name, purchase_date, cost, useful_life_months, notes, now, now),
+    )
+    investment_id = cur.lastrowid
+    _write_audit(
+        conn, actor, "capital_investment_added", "capital_investment", investment_id,
+        after_summary=f"asset={asset_name}, cost={cost}, useful_life_months={useful_life_months}",
+    )
+    conn.commit()
+    conn.close()
+    return investment_id
+
+
+def list_capital_investments(active_only=False):
+    conn = get_db()
+    query = "SELECT * FROM capital_investments"
+    if active_only:
+        query += " WHERE is_active = 1"
+    query += " ORDER BY purchase_date DESC, id DESC"
+    rows = [dict(r) for r in conn.execute(query).fetchall()]
+    conn.close()
+    for row in rows:
+        row["monthly_depreciation"] = row["cost"] / row["useful_life_months"] if row["useful_life_months"] else 0
+    return rows
+
+
+def get_capital_investment(investment_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM capital_investments WHERE id = ?", (investment_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def set_capital_investment_active(investment_id, is_active, actor=None):
+    conn = get_db()
+    conn.execute(
+        "UPDATE capital_investments SET is_active = ?, updated_at = ? WHERE id = ?",
+        (1 if is_active else 0, now_iso(), investment_id),
+    )
+    _write_audit(
+        conn, actor, "capital_investment_activated" if is_active else "capital_investment_deactivated",
+        "capital_investment", investment_id,
+    )
+    conn.commit()
+    conn.close()
+
+
+def _months_elapsed(purchase_date, month):
+    """purchase_date: 'YYYY-MM-DD'; month: 'YYYY-MM'. 0 = the purchase month itself."""
+    py, pm = int(purchase_date[:4]), int(purchase_date[5:7])
+    my, mm = int(month[:4]), int(month[5:7])
+    return (my - py) * 12 + (mm - pm)
+
+
+def get_monthly_depreciation(month):
+    """Straight-line: cost / useful_life_months, contributed only for the months from
+    purchase (inclusive) through the asset's useful life (exclusive) — zero before
+    purchase and zero once fully depreciated. Deactivated (disposed/mis-entered) assets
+    never contribute, past or present."""
+    breakdown = []
+    total = 0.0
+    for inv in list_capital_investments(active_only=True):
+        elapsed = _months_elapsed(inv["purchase_date"], month)
+        if 0 <= elapsed < inv["useful_life_months"]:
+            amount = inv["monthly_depreciation"]
+            breakdown.append({"asset_name": inv["asset_name"], "monthly_amount": amount})
+            total += amount
+    return {"total": total, "breakdown": breakdown}
 
 
 # ── Analytics (§5.10) — separate tab from Reports; the monthly revenue chart lives
