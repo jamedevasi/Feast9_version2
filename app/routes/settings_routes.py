@@ -6,8 +6,14 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from app import config as app_config
 from app import db
 from app.auth import current_actor, login_required, role_required
-from app.constants import DEFAULT_LOGIN_HEADING, DEFAULT_LOGIN_TAGLINE
+from app.constants import (
+    DEFAULT_LOGIN_HEADING,
+    DEFAULT_LOGIN_TAGLINE,
+    DEFAULT_THEME_BACKGROUND_COLOR,
+    DEFAULT_THEME_PRIMARY_COLOR,
+)
 from app.csrf import validate_csrf
+from app.theme import is_valid_hex_color
 from app.validators import detect_image_upload_type
 
 # feast9_v2_agents.md §5.12 rule #1 says "from app.config import DATA_DIR must be at the
@@ -35,6 +41,10 @@ def index():
             _save_clinic_logo()
         elif form == "login_screen":
             _save_login_screen()
+        elif form == "theme":
+            _save_theme()
+        elif form == "theme_reset":
+            _reset_theme()
         return redirect(url_for("settings.index"))
 
     return render_template(
@@ -45,6 +55,10 @@ def index():
         clinic_email=db.get_setting("clinic_email", ""),
         login_heading=db.get_setting("login_heading", DEFAULT_LOGIN_HEADING),
         login_tagline=db.get_setting("login_tagline", DEFAULT_LOGIN_TAGLINE),
+        theme_primary_color=db.get_setting("theme_primary_color", DEFAULT_THEME_PRIMARY_COLOR),
+        theme_background_color=db.get_setting("theme_background_color", DEFAULT_THEME_BACKGROUND_COLOR),
+        default_theme_primary_color=DEFAULT_THEME_PRIMARY_COLOR,
+        default_theme_background_color=DEFAULT_THEME_BACKGROUND_COLOR,
     )
 
 
@@ -83,3 +97,22 @@ def _save_login_screen():
     db.set_setting("login_heading", request.form.get("login_heading", "").strip(), actor=actor)
     db.set_setting("login_tagline", request.form.get("login_tagline", "").strip(), actor=actor)
     flash("Login screen updated.", "success")
+
+
+def _save_theme():
+    primary = request.form.get("theme_primary_color", "").strip()
+    background = request.form.get("theme_background_color", "").strip()
+    if not is_valid_hex_color(primary) or not is_valid_hex_color(background):
+        flash("Theme colors must be valid (each picker already restricts this, but the value was rejected).", "warning")
+        return
+    actor = current_actor()
+    db.set_setting("theme_primary_color", primary, actor=actor)
+    db.set_setting("theme_background_color", background, actor=actor)
+    flash("Theme updated — applies across the whole app immediately.", "success")
+
+
+def _reset_theme():
+    actor = current_actor()
+    db.set_setting("theme_primary_color", DEFAULT_THEME_PRIMARY_COLOR, actor=actor)
+    db.set_setting("theme_background_color", DEFAULT_THEME_BACKGROUND_COLOR, actor=actor)
+    flash("Theme reset to the default light apple green.", "success")

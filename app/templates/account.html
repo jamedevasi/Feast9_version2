@@ -29,6 +29,20 @@
   </form>
 </section>
 
+<section class="card">
+  <h2>Two-Factor Authentication (2FA)</h2>
+  {% if user.totp_enabled %}
+  <p class="muted-note">Two-factor authentication is enabled on your account — a code from your authenticator app is required at login in addition to your password.</p>
+  <form method="post" action="{{ url_for('totp.disable') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="button button-secondary">Disable Two-Factor Authentication</button>
+  </form>
+  {% else %}
+  <p class="muted-note">Add an extra layer of security — a 6-digit code from an authenticator app (Google Authenticator, Authy, etc.) is required at login in addition to your password.</p>
+  <p><a class="button" href="{{ url_for('totp.setup') }}">Set Up 2FA</a></p>
+  {% endif %}
+</section>
+
 {% if google_signin_enabled %}
 <section class="card">
   <h2>Google Account</h2>

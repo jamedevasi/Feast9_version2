@@ -34,7 +34,7 @@ def setup():
     user = db.get_user_by_id(session["admin_id"])
     if user["totp_enabled"]:
         flash("Two-factor authentication is already enabled on your account.", "warning")
-        return redirect(url_for("dashboard.index"))
+        return redirect(url_for("account.index"))
 
     secret = user["totp_secret"] or generate_totp_secret()
     if not user["totp_secret"]:
@@ -60,7 +60,7 @@ def setup():
 def recovery_codes():
     codes = session.pop("recovery_codes_to_show", None)
     if not codes:
-        return redirect(url_for("dashboard.index"))
+        return redirect(url_for("account.index"))
     return render_template("totp_recovery_codes.html", codes=codes)
 
 
@@ -71,4 +71,4 @@ def disable():
     validate_csrf(request.form.get("csrf_token"))
     db.reset_totp(session["admin_id"], actor=current_actor())
     flash("Two-factor authentication disabled on your account.", "success")
-    return redirect(url_for("dashboard.index"))
+    return redirect(url_for("account.index"))

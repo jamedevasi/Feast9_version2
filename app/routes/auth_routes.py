@@ -15,10 +15,23 @@ from app.auth import (
 )
 from app.constants import DEFAULT_LOGIN_HEADING, DEFAULT_LOGIN_TAGLINE
 from app.csrf import validate_csrf
+from app.theme import render_theme_css, resolve_theme
 
 bp = Blueprint("auth", __name__)
 
 _IMAGE_EXT_TO_MIMETYPE = {"jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}
+
+
+@bp.route("/theme.css")
+def theme_css():
+    """Public (no @login_required) — the login page is themed too, and CSP's style-src 'self'
+    (no 'unsafe-inline') rules out an inline <style> block, so the customizable colors are
+    served as their own same-origin stylesheet instead, linked after style.css in base.html so
+    its :root override wins the cascade."""
+    css = render_theme_css(resolve_theme())
+    response = current_app.response_class(css, mimetype="text/css")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @bp.route("/login-image")

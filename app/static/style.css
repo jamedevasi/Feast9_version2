@@ -37,9 +37,37 @@ body {
 }
 .brand-logo { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
 
-.topbar nav { display: flex; gap: 1rem; flex: 1; }
+.topbar nav { display: flex; align-items: center; gap: 1rem; flex: 1; }
 .topbar nav a { color: var(--text); text-decoration: none; }
 .topbar nav a:hover { color: var(--brand); }
+
+.nav-dropdown { position: relative; }
+.nav-dropdown > summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--text);
+}
+.nav-dropdown > summary::-webkit-details-marker { display: none; }
+.nav-dropdown > summary:hover { color: var(--brand); }
+.nav-dropdown > summary::after { content: "\25BE"; margin-left: 0.25rem; font-size: 0.7em; }
+.nav-dropdown[open] > summary::after { content: "\25B4"; }
+.nav-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding: 0.4rem 0;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  z-index: 20;
+}
+.nav-dropdown-menu a { padding: 0.45rem 1rem; }
+.nav-dropdown-menu a:hover { background: var(--bg); }
 
 .logout-form { margin: 0; }
 .link-button {
@@ -59,7 +87,7 @@ body {
 
 body.auth-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, #eaf1fa 0%, var(--bg) 22rem);
+  background: linear-gradient(180deg, var(--accent, #eaf1fa) 0%, var(--bg) 22rem);
 }
 body.auth-page .container {
   min-height: 100vh;
@@ -422,7 +450,7 @@ details[open] summary { margin-bottom: 0.75rem; }
   background: white;
 }
 .calendar-cell-empty { background: var(--bg); }
-.calendar-cell-today { background: #eef4fb; }
+.calendar-cell-today { background: var(--accent, #eef4fb); }
 
 .calendar-day-header {
   display: flex;
