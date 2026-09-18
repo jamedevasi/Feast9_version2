@@ -36,6 +36,7 @@ def _report_context(start, end):
         "retention": db.get_patient_retention(),
         "payments_in_period": db.get_payments_in_range(start, end),
         "cases_closed_in_period": db.get_cases_closed_in_range(start, end),
+        "financial_summary": db.get_financial_assessment_summary(),
     }
 
 

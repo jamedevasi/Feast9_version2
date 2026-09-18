@@ -157,3 +157,20 @@ def test_receptionist_blocked_from_reports(logged_in_client, patient_id):
 
     dash = logged_in_client.get("/dashboard")
     assert b'href="/reports/"' not in dash.data
+
+
+def test_reports_shows_profitability_summary_not_full_table(logged_in_client, patient_id):
+    """User instruction (2026-09-18): the Financial Assessment expense table must stay on its
+    own page — Reports gets a compact all-time summary + link only, never the editable table,
+    so the period-filtered report view doesn't get cluttered with a second, all-time table."""
+    case_id, case_url, _ = _case_for(logged_in_client, patient_id, title="Profitability Case", total_cost="1000")
+    _add_payment(logged_in_client, case_id, case_url, 1000)
+
+    resp = logged_in_client.get("/reports/")
+    assert b"Profitability" in resp.data
+    assert b"Financial Assessment" in resp.data
+    # The editable per-case expense inputs (Financial Assessment's own table) must never
+    # render inside Reports — only a rolled-up summary and a link to the dedicated page.
+    assert b'name="lab_amount_' not in resp.data
+    assert b'name="consultant_fee_' not in resp.data
+    assert b'name="misc_expense_' not in resp.data

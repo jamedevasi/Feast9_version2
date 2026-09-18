@@ -17,6 +17,7 @@
       {% if can_view_financial_nav %}
       <a href="{{ url_for('reports.view_reports') }}">Reports</a>
       <a href="{{ url_for('analytics.view_analytics') }}">Analytics</a>
+      <a href="{{ url_for('financial.index') }}">Financial Assessment</a>
       {% endif %}
       <a href="{{ url_for('dpdp.list_view') }}">DPDP Requests{% if pending_data_requests_count %} ({{ pending_data_requests_count }}){% endif %}</a>
       <a href="{{ url_for('totp.setup') }}">2FA</a>

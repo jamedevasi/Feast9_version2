@@ -343,6 +343,16 @@ def init_db():
             value TEXT NOT NULL DEFAULT '',
             updated_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS case_financial_assessments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_id INTEGER NOT NULL UNIQUE REFERENCES cases(id) ON DELETE CASCADE,
+            lab_amount REAL NOT NULL DEFAULT 0,
+            consultant_fee REAL NOT NULL DEFAULT 0,
+            misc_expense REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()
@@ -1902,6 +1912,95 @@ def get_patient_retention(months=6):
         "threshold_months": months,
         "cutoff_date": cutoff,
     }
+
+
+# ── Financial Assessment (ad-hoc addition, 2026-09-18 — not in feast9_v2_agents.md's
+# original scope) — a doctor-facing per-case profitability view. Profit = Billed − (Lab +
+# Consultant Fee + Misc Expense), shown alongside the still-outstanding Pending balance so
+# a profitable-on-paper case that hasn't been fully collected yet isn't misread as cash in
+# hand. financial_access_required (blocks receptionist) applies to every route, same as
+# Reports/Analytics.
+
+def list_financial_assessment_cases(date_from="", date_to=""):
+    """Every case (any status), most recent first, with live-computed collected/pending
+    and its expense-entry row (defaulting to 0s if none has been entered yet). Optional
+    DATE()-wrapped filter on the case's created_at, same convention as Reports."""
+    conn = get_db()
+    query = """SELECT c.id AS case_id, c.title AS case_title, c.status, c.total_cost,
+                      c.created_at, c.patient_id, p.name AS patient_name,
+                      COALESCE((SELECT SUM(amount) FROM payments WHERE case_id = c.id), 0) AS collected,
+                      COALESCE(fa.lab_amount, 0) AS lab_amount,
+                      COALESCE(fa.consultant_fee, 0) AS consultant_fee,
+                      COALESCE(fa.misc_expense, 0) AS misc_expense
+               FROM cases c
+               JOIN patients p ON p.id = c.patient_id
+               LEFT JOIN case_financial_assessments fa ON fa.case_id = c.id"""
+    params = []
+    if date_from and date_to:
+        query += " WHERE DATE(c.created_at) BETWEEN ? AND ?"
+        params.extend([date_from, date_to])
+    query += " ORDER BY c.created_at DESC, c.id DESC"
+    rows = [dict(r) for r in conn.execute(query, params).fetchall()]
+    conn.close()
+    for row in rows:
+        row["pending"] = row["total_cost"] - row["collected"]
+        row["expenses"] = row["lab_amount"] + row["consultant_fee"] + row["misc_expense"]
+        row["profit"] = row["total_cost"] - row["expenses"]
+    return rows
+
+
+def upsert_case_financial_expenses(case_id, lab_amount, consultant_fee, misc_expense, actor=None):
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT lab_amount, consultant_fee, misc_expense FROM case_financial_assessments WHERE case_id = ?",
+        (case_id,),
+    ).fetchone()
+    now = now_iso()
+    if existing is None:
+        conn.execute(
+            """INSERT INTO case_financial_assessments
+               (case_id, lab_amount, consultant_fee, misc_expense, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (case_id, lab_amount, consultant_fee, misc_expense, now, now),
+        )
+    else:
+        conn.execute(
+            """UPDATE case_financial_assessments
+               SET lab_amount = ?, consultant_fee = ?, misc_expense = ?, updated_at = ?
+               WHERE case_id = ?""",
+            (lab_amount, consultant_fee, misc_expense, now, case_id),
+        )
+    if existing is None or (
+        existing["lab_amount"] != lab_amount
+        or existing["consultant_fee"] != consultant_fee
+        or existing["misc_expense"] != misc_expense
+    ):
+        _write_audit(
+            conn, actor, "case_financial_expenses_updated", "case", case_id,
+            after_summary=f"lab={lab_amount}, consultant={consultant_fee}, misc={misc_expense}",
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_financial_assessment_summary():
+    """All-time Profitability rollup for Reports' compact summary card — a single aggregate
+    query, not the full per-case list, so Reports stays cheap and uncluttered while still
+    surfacing the headline number and a link to the full Financial Assessment table."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT COUNT(*) AS case_count,
+                  COALESCE(SUM(c.total_cost), 0)
+                    - COALESCE(SUM(COALESCE(fa.lab_amount, 0) + COALESCE(fa.consultant_fee, 0)
+                                   + COALESCE(fa.misc_expense, 0)), 0) AS total_profit,
+                  COUNT(CASE WHEN c.total_cost
+                             - (COALESCE(fa.lab_amount, 0) + COALESCE(fa.consultant_fee, 0)
+                                + COALESCE(fa.misc_expense, 0)) < 0 THEN 1 END) AS loss_case_count
+           FROM cases c
+           LEFT JOIN case_financial_assessments fa ON fa.case_id = c.id"""
+    ).fetchone()
+    conn.close()
+    return dict(row)
 
 
 # ── Analytics (§5.10) — separate tab from Reports; the monthly revenue chart lives

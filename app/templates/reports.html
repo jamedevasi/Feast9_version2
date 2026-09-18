@@ -40,6 +40,17 @@
 </section>
 
 <section class="card">
+  <h2>Profitability — All Time</h2>
+  <dl>
+    <dt>Net Profit (Billed &minus; Expenses, across {{ financial_summary.case_count }} cases)</dt>
+    <dd class="{{ 'profit-loss' if financial_summary.total_profit < 0 else 'profit-positive' }}">₹{{ '%.2f'|format(financial_summary.total_profit) }}</dd>
+    <dt>Cases Currently in Loss</dt>
+    <dd>{% if financial_summary.loss_case_count %}<span class="profit-loss">{{ financial_summary.loss_case_count }}</span>{% else %}0{% endif %}</dd>
+  </dl>
+  <p><a href="{{ url_for('financial.index') }}">View Financial Assessment (per-case detail &amp; expense entry) →</a></p>
+</section>
+
+<section class="card">
   <h2>Pending Payments by Patient &amp; Case</h2>
   {% if pending_payments %}
   <table class="data-table">

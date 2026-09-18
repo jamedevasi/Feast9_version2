@@ -36,6 +36,7 @@ def create_app():
     from app.routes.dental_routes import bp as dental_bp
     from app.routes.doctor_routes import bp as doctor_bp
     from app.routes.dpdp_routes import bp as dpdp_bp
+    from app.routes.financial_routes import bp as financial_bp
     from app.routes.google_auth_routes import bp as google_auth_bp
     from app.routes.import_routes import bp as import_bp
     from app.routes.patient_routes import bp as patient_bp
@@ -60,6 +61,7 @@ def create_app():
     app.register_blueprint(dental_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(analytics_bp)
+    app.register_blueprint(financial_bp)
     app.register_blueprint(doctor_bp)
     app.register_blueprint(procedure_type_bp)
     app.register_blueprint(settings_bp)
