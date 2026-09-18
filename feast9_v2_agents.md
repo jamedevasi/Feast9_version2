@@ -430,6 +430,45 @@ id, name TEXT, color TEXT, is_active INTEGER DEFAULT 1, created_at TEXT
 id, name TEXT, is_active INTEGER DEFAULT 1, created_at TEXT
 ```
 
+### case_financial_assessments — not in original §4, Financial Assessment (ad-hoc, §5.15, 2026-09-18)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+case_id INTEGER NOT NULL UNIQUE REFERENCES cases(id) ON DELETE CASCADE,
+lab_amount REAL NOT NULL DEFAULT 0,
+consultant_fee REAL NOT NULL DEFAULT 0,
+consumables REAL NOT NULL DEFAULT 0,   -- additive, same day, follow-up request
+misc_expense REAL NOT NULL DEFAULT 0,
+created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+```
+One row per case, upserted (`db.upsert_case_financial_expenses`) — a plain editable current-state row, not append-only like payments/visit notes, since these are estimates the doctor may revise. Each change is still audited (`case_financial_expenses_updated`, amounts logged).
+
+### monthly_overhead_expenses — not in original §4, Monthly Evaluation (ad-hoc, §5.15, 2026-09-18)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+month TEXT NOT NULL UNIQUE,     -- 'YYYY-MM'
+rent REAL NOT NULL DEFAULT 0,
+staff_salary REAL NOT NULL DEFAULT 0,
+electricity REAL NOT NULL DEFAULT 0,
+emi REAL NOT NULL DEFAULT 0,
+cleaning_disposal REAL NOT NULL DEFAULT 0,
+other_expense REAL NOT NULL DEFAULT 0,
+created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+```
+One row per calendar month, upserted (`db.upsert_monthly_overhead_expenses`, audited `monthly_overhead_expenses_updated`). Clinic overhead that isn't tied to any one case.
+
+### capital_investments — not in original §4, Capital Investments ledger (ad-hoc, §5.15, 2026-09-18)
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+asset_name TEXT NOT NULL,
+purchase_date TEXT NOT NULL,
+cost REAL NOT NULL,
+useful_life_months INTEGER NOT NULL,
+notes TEXT NOT NULL DEFAULT '',
+is_active INTEGER NOT NULL DEFAULT 1,
+created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+```
+Soft-deactivate-only (mirrors `doctors`/`procedure_types` — no edit/delete route) so correcting a mis-entered asset never silently rewrites depreciation already reported in past months; a correction is deactivate-the-wrong-one + add-the-right-one. `db.add_capital_investment` audits `capital_investment_added`; `db.set_capital_investment_active` audits `capital_investment_activated`/`_deactivated`.
+
 ---
 
 ## 5. Features
@@ -796,7 +835,12 @@ def login_image():
 
 ### 5.13 Settings Navigation
 
-**Top nav:** Dashboard | Patients | Appointments | Reports | Analytics | Data Rights | Settings
+**Top nav:** Dashboard | Patients | Appointments | Reports | Analytics | Financial Assessment | Data Rights | Settings
+
+**Financial Assessment** (§5.15, added 2026-09-18, not in original spec) sits in the nav
+immediately after Analytics, gated by the same `can_view_financial_nav` flag as Reports/
+Analytics — hidden from the receptionist role, not just blocked server-side (though it is also
+blocked server-side, via `financial_access_required` on every route).
 
 **Settings page — admin cards (NOT in top nav):**
 - 👨‍⚕️ Doctors → `/doctors/`
@@ -816,6 +860,65 @@ Backup is in Settings only — not in top nav.
 @app.errorhandler(403)   # Access Denied
 ```
 All use `error.html` template with error_code, error_title, error_message and navigation links.
+
+### 5.15 Financial Assessment / Monthly Evaluation / Capital Investments (ad-hoc addition, 2026-09-18 — not in original scope)
+
+A doctor-facing per-case and per-month profitability module, added the same day at the user's
+request, on top of the existing Reports/Analytics financial pages rather than folded into them.
+Gated exactly like Reports/Analytics: `financial_access_required` on every route
+(`app/routes/financial_routes.py`, `url_prefix="/financial-assessment"`) — receptionist gets
+`403` on every route, and the nav link (top nav, right after Analytics) is hidden for that role
+via the same `can_view_financial_nav` flag.
+
+**Per-case table (`/financial-assessment`):**
+- Lists every case (any status), most recent first, with live-computed Billed (`total_cost`)/
+  Collected (`SUM(payments)`)/Pending, next to the doctor-entered expenses (Lab Amount,
+  Consultant Fee, Consumables, Misc Expense — one editable row per case,
+  `db.upsert_case_financial_expenses`, one form for the whole table with a single "Save
+  Expenses" button, since a `<form>` can't be nested per-row inside a `<table>`).
+- **Profit = Billed − (Lab Amount + Consultant Fee + Consumables + Misc Expense)** — the user's
+  explicit choice over a collected-based formula, so a paper profit on an uncollected balance
+  isn't mistaken for cash in hand. A negative profit (loss) is flagged amber (`.profit-loss`,
+  reusing the `.flash-warning` amber palette) both on-screen and in the export.
+- Optional `from`/`to` filter on the case's `created_at` (`DATE()`-wrapped, same convention as
+  Reports); no filter shows all cases.
+- `/financial-assessment/export.xlsx` (openpyxl) mirrors the on-screen columns exactly,
+  including Profit; audited `financial_assessment_exported`.
+- **Deliberately kept off the Reports page** — Reports only gets a compact "Profitability — All
+  Time" card (`db.get_financial_assessment_summary()`, one cheap aggregate query: all-time net
+  profit + a loss-case count) with a link to the full table; the editable per-case list never
+  renders inside Reports, so the period-filtered report view doesn't get a second, differently
+  -scoped (all-time, not period) editable table.
+
+**Monthly Evaluation (`/financial-assessment/monthly`):**
+- Extends the same methodology to a whole calendar month. "Billed this month" = every case
+  *opened* that month (`strftime('%Y-%m', c.created_at) = ?`) — the same "billed = cases opened
+  in the period" convention `get_doctor_revenue_by_period` already uses, so the per-case and
+  monthly views never disagree about what counts as a given month's business
+  (`db.get_monthly_case_rollup`).
+- Clinic overhead not tied to any one case (Rent, Staff Salary, Electricity, EMI,
+  Cleaning & Disposal, Other) is entered per month (`db.upsert_monthly_overhead_expenses`, one
+  row per `'YYYY-MM'`, `HTML5 <input type="month">`).
+- A **Short Term / Long Term** toggle (`?view=short|long`, default short):
+  - **Short Term: Net Profit = Billed − Case Expenses − Overhead**
+  - **Long Term: Net Profit = Billed − Case Expenses − Overhead − Depreciation** (see Capital
+    Investments below), with a per-asset depreciation breakdown shown on the page.
+- Same amber-on-loss treatment as the per-case table.
+
+**Capital Investments ledger (`/financial-assessment/capital-investments`):**
+- A small asset ledger — asset name, purchase date, cost, useful-life months, notes.
+- No edit/delete route, mirroring the `doctors`/`procedure_types` pattern — only soft
+  deactivate/reactivate (`db.set_capital_investment_active`), specifically so correcting a
+  mis-entered asset never silently rewrites depreciation already reported in past months; a
+  correction is deactivate-the-wrong-one + add-the-right-one.
+- `db.get_monthly_depreciation(month)` computes **straight-line depreciation** (cost ÷
+  useful_life_months) per active asset, contributing only for the months from purchase
+  (inclusive) through the end of its useful life (exclusive) — zero before purchase, zero once
+  fully depreciated.
+- This is a direct, deliberately partial implementation of a capital-investment-ROI question
+  raised the same day — true cumulative ROI/payback tracking (cumulative profit vs. cumulative
+  capital invested, a "months to payback" projection) was flagged as a separate, larger feature
+  and was **not** built; only the depreciation-based Long Term view was. See §15.
 
 ---
 
@@ -1106,12 +1209,16 @@ Seed must call `db.add_patient(...)` with `date_of_birth` parameter.
 
 ## 14. Remaining Build Scope (Security, Governance & Advanced Clinical)
 
-**Status as of 2026-09-17:** every row below has been built except two, which the user explicitly decided
+**Status as of 2026-09-18:** every row below has been built except two, which the user explicitly decided
 (2026-09-17) to put **out of scope for now** rather than sequence into this build: **Patient portal** and
 **DPDP Phase 3**. Everything else in this table is done — see `CLAUDE.md`'s build log for the concrete
 implementation of each (files, routes, tests). This is a real change from earlier drafts of this document,
 which framed the whole table as "unsequenced, not out of scope" — that framing no longer applies to those
-two rows specifically; it still applies to nothing else remaining, since nothing else remains.
+two rows specifically; it still applies to nothing else remaining, since nothing else remains. Financial
+Assessment / Monthly Evaluation / Capital Investments (§5.15) is an ad-hoc addition made after this table
+was originally drafted — it was never part of `feast9_v2_agents.md`'s original scope at all, so its row
+below is not a "built vs. deferred" status the same way the others are; it is simply documented for
+completeness.
 
 | Feature | Status |
 |---|---|
@@ -1127,6 +1234,7 @@ two rows specifically; it still applies to nothing else remaining, since nothing
 | **DPDP Phase 3** | ❌ **Out of scope (2026-09-17 product decision, deferred indefinitely, alongside Patient portal).** Breach incident log, configurable retention policy, legal hold, automated retention sweep — none needed for the current single-clinic scale and none blocking any other shipped feature. Revisit if regulatory obligations or data volume change. |
 | Threat model | ✅ Built. `THREAT_MODEL.md` covers all six named areas with file references; two residual gaps flagged as follow-up recommendations rather than fixed inline (no idle/absolute session timeout, no session revocation on deactivation/TOTP-reset) — revisit if PDF generation, Excel import, Google sign-in, or the patient portal change (first three now shipped; portal is out of scope). |
 | Clinical document retention/deletion (added 2026-09-16, not originally in this table) | ✅ Built. Practitioner-only (`role_required("admin","doctor")` + `reauth_required`) single-file delete (reason optional) and bulk clear (reason required), both audited, both hidden from the receptionist role client-side too. See §5.4, `tests/test_attachments.py`. |
+| Financial Assessment / Monthly Evaluation / Capital Investments (added 2026-09-18, ad-hoc, not in original scope) | ✅ Built. Per-case profitability table (`/financial-assessment`), Monthly Evaluation with a Short/Long Term (depreciation) toggle (`/financial-assessment/monthly`), and a Capital Investments asset ledger (`/financial-assessment/capital-investments`) — all `financial_access_required`, all audited. Cumulative ROI/payback tracking was explicitly **not** built (flagged as a separate, larger feature — see §15). See §5.15, `tests/test_financial_assessment.py`. |
 
 ---
 
@@ -1138,6 +1246,7 @@ These are genuinely open — don't treat them as settled just because they're ab
 - Approved communication channel for appointment reminders (WhatsApp Business API vs SMS gateway vs manual copy-paste, which is what's built today) — may be automated later; not required.
 - Payment gateway integration, if any — payments are treated as manually logged records, not processed transactions, throughout this build. Adding a live gateway is a separate decision with its own PCI/compliance surface.
 - Real identity-verification design for a future patient portal, should the 2026-09-17 out-of-scope decision (§14) ever be revisited.
+- Cumulative capital-investment ROI/payback tracking (cumulative profit vs. cumulative capital invested, a "months to payback" projection) — flagged 2026-09-18 as a separate, larger feature on top of §5.15's straight-line depreciation view; not built.
 
 Resolved since earlier drafts (moved out of "genuinely open"):
 - Exact recurring-appointment UI/UX — resolved as a bounded set of real appointment rows (`series_id`), not a virtual/computed series; edit-one-vs-edit-series per §14's literal framing. See §14, Recurring appointments.
@@ -1218,8 +1327,11 @@ Settled and **not** open for re-litigation, despite appearing in earlier drafts 
 | consent_signature_filename | `cases` column — filename of an optional captured signature PNG, embedded in the consent PDF when present |
 | google_sub | Google's stable per-account identifier on `admin` — used for linking, never the (mutable) email address |
 | reauth_required | Decorator gating high-risk actions behind a fresh (≤10 min) re-authentication, not just an active session |
+| Financial Assessment | Ad-hoc (2026-09-18) per-case profitability table — Profit = Billed − (Lab + Consultant Fee + Consumables + Misc Expense); not the same page as Reports (§5.15) |
+| Monthly Evaluation | Extends Financial Assessment to a calendar month, adding clinic overhead; Short Term excludes depreciation, Long Term includes it (§5.15) |
+| Capital Investment | An asset ledger entry (cost, purchase date, useful-life months) depreciated straight-line for Monthly Evaluation's Long Term view; soft-deactivate-only, no edit (§5.15) |
 
 ---
 
 *Feast9 — September 2026.*
-*One continuous build against this document — "v2"/"v3" labels elsewhere are historical from earlier planning drafts, not two separate projects. As of 2026-09-17, every §14 item is built (roles, audit log, TOTP, Google sign-in, recurring appointments, dental charting, automated backup, prescription history, threat model, clinical-document retention) except **Patient portal** and **DPDP Phase 3**, which are explicitly out of scope for now by product decision — not merely unsequenced. See §14's status note and §15 for what's settled vs. still genuinely open.*
+*One continuous build against this document — "v2"/"v3" labels elsewhere are historical from earlier planning drafts, not two separate projects. As of 2026-09-17, every §14 item is built (roles, audit log, TOTP, Google sign-in, recurring appointments, dental charting, automated backup, prescription history, threat model, clinical-document retention) except **Patient portal** and **DPDP Phase 3**, which are explicitly out of scope for now by product decision — not merely unsequenced. On 2026-09-18, Financial Assessment / Monthly Evaluation / Capital Investments (§5.15) was added as an ad-hoc, same-day build on top of this document's original scope — not a §14 item, not sequenced from an earlier draft. See §14's status note and §15 for what's settled vs. still genuinely open.*
