@@ -89,6 +89,17 @@ def _migrate_cases_consent_signature(conn):
     conn.commit()
 
 
+def _migrate_cases_followup_source(conn):
+    """Additive migration: remembers which no-show appointment (if any) created a case's
+    follow-up, so the follow-up can be withdrawn again when that appointment is later
+    cancelled/deleted/attended, and so it only surfaces from the day after the no-show.
+    NULL = a follow-up set by hand (or none)."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(cases)")}
+    if "follow_up_appointment_id" not in columns:
+        conn.execute("ALTER TABLE cases ADD COLUMN follow_up_appointment_id INTEGER REFERENCES appointments(id)")
+    conn.commit()
+
+
 def _migrate_admin_google(conn):
     """Additive migration: an optional Google OIDC identity linked to a local account
     (§14 'Google sign-in' — optional/secondary, never the only path in). google_sub
@@ -115,6 +126,18 @@ def _migrate_case_financial_assessments_consumables(conn):
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(case_financial_assessments)")}
     if "consumables" not in columns:
         conn.execute("ALTER TABLE case_financial_assessments ADD COLUMN consumables REAL NOT NULL DEFAULT 0")
+    conn.commit()
+
+
+def _migrate_dental_chart_planned_date(conn):
+    """Additive migration: an optional "Planned By" target date for a Planned dental chart
+    entry (user request, 2026-09-22) — lets an overdue Planned treatment be flagged Needs
+    Attention (see app/validators.py:chart_entry_severity) and, optionally, be pushed onto
+    the linked case's follow-up (db.update_case_followup) so it also surfaces on the
+    dashboard, the same way a lab requisition's expected date or a no-show's reminder do."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(dental_chart_entries)")}
+    if "planned_date" not in columns:
+        conn.execute("ALTER TABLE dental_chart_entries ADD COLUMN planned_date TEXT NOT NULL DEFAULT ''")
     conn.commit()
 
 
@@ -342,6 +365,7 @@ def init_db():
             surface TEXT NOT NULL DEFAULT 'Whole Tooth',
             finding TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'Existing',
+            planned_date TEXT NOT NULL DEFAULT '',
             notes TEXT NOT NULL DEFAULT '',
             recorded_by INTEGER,
             recorded_at TEXT NOT NULL,
@@ -395,8 +419,10 @@ def init_db():
     _migrate_patients_dpdp(conn)
     _migrate_appointments_recurring(conn)
     _migrate_cases_consent_signature(conn)
+    _migrate_cases_followup_source(conn)
     _migrate_admin_google(conn)
     _migrate_case_financial_assessments_consumables(conn)
+    _migrate_dental_chart_planned_date(conn)
     conn.close()
 
 
@@ -493,13 +519,6 @@ def list_backup_log(limit=100):
 def get_backup_log(backup_id):
     conn = get_db()
     row = conn.execute("SELECT * FROM backup_log WHERE id = ?", (backup_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def latest_backup_log():
-    conn = get_db()
-    row = conn.execute("SELECT * FROM backup_log ORDER BY id DESC LIMIT 1").fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -932,7 +951,8 @@ def add_case(data):
     row["patient_id"] = data["patient_id"]
     row["status"] = "Active"
     now = now_iso()
-    row["created_at"] = now
+    # Only seed_demo_data.py passes created_at (to backdate sample cases); the web form never does.
+    row["created_at"] = data.get("created_at") or now
     row["updated_at"] = now
     row["closed_at"] = ""
     row["next_action_note"] = ""
@@ -986,10 +1006,17 @@ def get_case(case_id):
 
 
 def list_cases_for_patient(patient_id):
+    """Adds `doctor_name` and `latest_visit_note` (the most recent case_visit_notes entry, for
+    the patient-detail page's brief per-case description) to every row."""
     conn = get_db()
     rows = conn.execute(
-        """SELECT * FROM cases WHERE patient_id = ?
-           ORDER BY CASE WHEN status = 'Active' THEN 0 ELSE 1 END, updated_at DESC""",
+        """SELECT c.*, d.name AS doctor_name,
+                  (SELECT note FROM case_visit_notes WHERE case_id = c.id
+                       ORDER BY visit_date DESC, id DESC LIMIT 1) AS latest_visit_note
+           FROM cases c
+           LEFT JOIN doctors d ON d.id = c.doctor_id
+           WHERE c.patient_id = ?
+           ORDER BY CASE WHEN c.status = 'Active' THEN 0 ELSE 1 END, c.updated_at DESC""",
         (patient_id,),
     ).fetchall()
     conn.close()
@@ -1377,11 +1404,75 @@ def list_cost_revisions_for_case(case_id):
 # ── Follow-up & Consent (both live directly on the case row) ───────────────
 
 def update_case_followup(case_id, follow_up_date, next_action_note):
-    """Call with ("", "") to clear a follow-up."""
+    """Call with ("", "") to clear a follow-up. A hand-set follow-up is never tied to an
+    appointment, so this always drops any no-show link."""
     conn = get_db()
     conn.execute(
-        "UPDATE cases SET follow_up_date = ?, next_action_note = ?, updated_at = ? WHERE id = ?",
+        """UPDATE cases SET follow_up_date = ?, next_action_note = ?, follow_up_appointment_id = NULL,
+           updated_at = ? WHERE id = ?""",
         (follow_up_date, next_action_note, now_iso(), case_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def complete_case_followup(case_id, actor=None):
+    """The follow-up has been dealt with — clears it so it stops appearing on the dashboard.
+    Audited with the date only (the note is free text)."""
+    conn = get_db()
+    before = conn.execute("SELECT follow_up_date FROM cases WHERE id = ?", (case_id,)).fetchone()
+    conn.execute(
+        """UPDATE cases SET follow_up_date = '', next_action_note = '', follow_up_appointment_id = NULL,
+           updated_at = ? WHERE id = ?""",
+        (now_iso(), case_id),
+    )
+    _write_audit(
+        conn, actor, "case_followup_completed", "case", case_id,
+        before_summary=f"follow_up_date={before['follow_up_date'] if before else ''}", after_summary="follow-up done",
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_noshow_followup(case_id, follow_up_date, next_action_note, appointment_id):
+    """A no-show's reminder on the case — tagged with the appointment that caused it."""
+    conn = get_db()
+    conn.execute(
+        """UPDATE cases SET follow_up_date = ?, next_action_note = ?, follow_up_appointment_id = ?,
+           updated_at = ? WHERE id = ?""",
+        (follow_up_date, next_action_note, appointment_id, now_iso(), case_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _clear_noshow_followups(conn, where_sql, params):
+    conn.execute(
+        f"""UPDATE cases SET follow_up_date = '', next_action_note = '', follow_up_appointment_id = NULL,
+            updated_at = ? WHERE follow_up_appointment_id IS NOT NULL AND {where_sql}""",
+        (now_iso(), *params),
+    )
+
+
+def clear_noshow_followup_for_appointment(appointment_id):
+    """The no-show no longer stands (cancelled, deleted, or attended after all) — withdraw the
+    follow-up it created."""
+    conn = get_db()
+    _clear_noshow_followups(conn, "follow_up_appointment_id = ?", (appointment_id,))
+    conn.commit()
+    conn.close()
+
+
+def resolve_noshow_followups_for_patient(patient_id, new_appt_date):
+    """The patient has been rebooked after a no-show, so its "please reschedule" follow-up is
+    done. Only a booking dated after the missed appointment counts — retro-entering an older
+    visit must not silently close it."""
+    conn = get_db()
+    _clear_noshow_followups(
+        conn,
+        """patient_id = ? AND (SELECT appt_date FROM appointments
+                               WHERE id = cases.follow_up_appointment_id) < ?""",
+        (patient_id, new_appt_date),
     )
     conn.commit()
     conn.close()
@@ -1416,6 +1507,52 @@ def list_patients(search="", limit=200):
         rows = conn.execute("SELECT * FROM patients ORDER BY name LIMIT ?", (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def list_patients_directory(search="", only_active=False, include_balance=False, limit=200):
+    """The Patients page's list. Adds `active_case_count`, `computed_age` (from date_of_birth,
+    same helper as the patient-detail page — never the raw stored `age` column, which is only
+    ever set once at registration and goes stale), `last_visit_date` (most recent
+    case_visit_notes.visit_date, same source as Reports' Patient Retention section) and
+    `no_show_count` to every row, and — only when include_balance — `balance_due`: the sum,
+    over that patient's cases, of what is still unpaid (per case, so one over-paid case never
+    cancels another's debt).
+
+    only_active narrows to patients who have an Active case; with include_balance it also
+    keeps anyone who still owes money (a closed case with an unpaid balance is still a case
+    to chase). include_balance is False for the receptionist role: the list's *membership*
+    would otherwise reveal who owes money, so their filter never looks at payments at all."""
+    balance_sql = """,
+               (SELECT COALESCE(SUM(MAX(c.total_cost - COALESCE(
+                    (SELECT SUM(pay.amount) FROM payments pay WHERE pay.case_id = c.id), 0), 0)), 0)
+                FROM cases c WHERE c.patient_id = p.id) AS balance_due""" if include_balance else ""
+    clauses, params = [], []
+    if search:
+        like = f"%{search}%"
+        clauses.append("(name LIKE ? OR mobile LIKE ? OR email LIKE ? OR address LIKE ?)")
+        params += [like, like, like, like]
+    if only_active:
+        clauses.append("(active_case_count > 0 OR balance_due > 0)" if include_balance else "active_case_count > 0")
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    conn = get_db()
+    rows = conn.execute(
+        f"""SELECT * FROM (
+                SELECT p.*,
+                       (SELECT COUNT(*) FROM cases c WHERE c.patient_id = p.id AND c.status = 'Active')
+                           AS active_case_count,
+                       (SELECT MAX(visit_date) FROM case_visit_notes WHERE patient_id = p.id)
+                           AS last_visit_date,
+                       (SELECT COUNT(*) FROM appointments WHERE patient_id = p.id AND status = 'No-show')
+                           AS no_show_count{balance_sql}
+                FROM patients p
+            ) {where} ORDER BY name LIMIT ?""",
+        (*params, limit),
+    ).fetchall()
+    conn.close()
+    result = [dict(r) for r in rows]
+    for row in result:
+        row["computed_age"] = compute_age(row.get("date_of_birth"))
+    return result
 
 
 # ── DPDP Phase 2 — data-rights requests (feast9_v2_agents.md §5.11) ────────
@@ -1573,6 +1710,7 @@ def get_appointment(appt_id):
 
 def delete_appointment(appt_id):
     conn = get_db()
+    _clear_noshow_followups(conn, "follow_up_appointment_id = ?", (appt_id,))
     conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
     conn.commit()
     conn.close()
@@ -1621,14 +1759,6 @@ def _add_months(d, n):
     return date(year, month, day)
 
 
-def _step_date(d, interval):
-    if interval == "Weekly":
-        return d + timedelta(days=7)
-    if interval == "Biweekly":
-        return d + timedelta(days=14)
-    return _add_months(d, 1)  # Monthly
-
-
 def _times_overlap(start_a, end_a, start_b, end_b):
     end_a = end_a or start_a
     end_b = end_b or start_b
@@ -1644,19 +1774,49 @@ def _find_conflicts(conn, doctor_id, appt_date, start_time, end_time):
     return [r["id"] for r in rows if _times_overlap(start_time, end_time, r["start_time"], r["end_time"])]
 
 
+def _nth_occurrence(start, interval, n):
+    """The nth occurrence counted from the *start* date. Stepping from the previous occurrence
+    instead would let a short month drag every later one along (Jan 31 -> Feb 28 -> Mar 28)."""
+    if interval == "Weekly":
+        return start + timedelta(days=7 * n)
+    if interval == "Biweekly":
+        return start + timedelta(days=14 * n)
+    return _add_months(start, n)  # Monthly
+
+
 def add_recurring_appointments(patient_id, case_id, doctor_id, start_date, start_time, end_time,
                                 title, notes, status, interval, until_date, skip_sundays=True):
-    """Generates occurrences from start_date through until_date (inclusive), stepping by
-    interval, capped at MAX_RECURRING_OCCURRENCES. Returns (created_ids, conflict_warnings) —
-    conflict_warnings lists dates where another appointment already exists for that doctor at
-    an overlapping time; the occurrence is still created (a warning, not a hard block)."""
-    dates = []
-    d = date.fromisoformat(start_date)
+    """Generates one appointment per occurrence from start_date through until_date (inclusive),
+    capped at MAX_RECURRING_OCCURRENCES — every occurrence gets its own calendar entry.
+    With skip_sundays (the clinic is closed on Sundays) an occurrence that lands on a Sunday
+    moves to the Monday after rather than being dropped, so no occurrence goes missing.
+
+    Returns (created_ids, conflict_warnings, notices). conflict_warnings lists dates where
+    another appointment already exists for that doctor at an overlapping time; the occurrence
+    is still created (a warning, not a hard block). notices are plain facts the caller should
+    show: which Sundays were moved, and whether the cap cut the series short."""
+    dates, moved, notices = [], [], []
+    start = date.fromisoformat(start_date)
     until = date.fromisoformat(until_date)
-    while d <= until and len(dates) < MAX_RECURRING_OCCURRENCES:
-        if not (skip_sundays and d.weekday() == 6):
-            dates.append(d)
-        d = _step_date(d, interval)
+    n = 0
+    while _nth_occurrence(start, interval, n) <= until and len(dates) < MAX_RECURRING_OCCURRENCES:
+        planned = _nth_occurrence(start, interval, n)
+        actual = planned + timedelta(days=1) if skip_sundays and planned.weekday() == 6 else planned
+        if actual != planned:
+            moved.append(f"{planned.isoformat()} → {actual.isoformat()}")
+        dates.append(actual)
+        n += 1
+    if moved:
+        shown = "; ".join(moved[:4]) + (f"; and {len(moved) - 4} more" if len(moved) > 4 else "")
+        notices.append(
+            f"{len(moved)} occurrence{'s' if len(moved) != 1 else ''} fell on a Sunday and "
+            f"{'were' if len(moved) != 1 else 'was'} moved to the following Monday ({shown})"
+        )
+    if _nth_occurrence(start, interval, n) <= until:
+        notices.append(
+            f"Only the first {MAX_RECURRING_OCCURRENCES} occurrences were booked (up to {dates[-1].isoformat()}); "
+            f"book another series to continue past that"
+        )
 
     conn = get_db()
     now = now_iso()
@@ -1685,7 +1845,7 @@ def add_recurring_appointments(patient_id, case_id, doctor_id, start_date, start
 
     conn.commit()
     conn.close()
-    return created_ids, conflict_warnings
+    return created_ids, conflict_warnings, notices
 
 
 def list_appointments_for_series(series_id):
@@ -1728,25 +1888,37 @@ def get_followup_alerts():
     """Merged follow-up table for the dashboard — (overdue_list, upcoming_list).
     overdue:  follow_up_date < today
     upcoming: today <= follow_up_date <= today + 3 days
-    Only cases still Active are surfaced — a closed case's stale follow-up date
-    (left over from before it was closed) shouldn't nag the dashboard."""
+    A hand-set follow-up is surfaced only for cases still Active — a closed case's stale
+    follow-up date (left over from before it was closed) shouldn't nag the dashboard.
+    A no-show's follow-up (follow_up_appointment_id set) is the exception on both counts: it
+    appears from the day *after* the no-show (never before), even if the case has since been
+    closed, and only while that appointment is still marked No-show — so a cancelled, deleted
+    or attended appointment can never show up here."""
+    today_str = date.today().isoformat()
     conn = get_db()
     rows = conn.execute(
         """SELECT c.id AS case_id, c.patient_id, c.title AS case_title,
                   c.follow_up_date, c.next_action_note, p.name AS patient_name
            FROM cases c JOIN patients p ON p.id = c.patient_id
-           WHERE c.follow_up_date != '' AND c.status = 'Active'
+           WHERE c.follow_up_date != '' AND (
+                 (c.follow_up_appointment_id IS NULL AND c.status = 'Active')
+              OR (c.follow_up_date <= ? AND EXISTS (
+                     SELECT 1 FROM appointments a
+                     WHERE a.id = c.follow_up_appointment_id AND a.status = 'No-show'))
+           )
            ORDER BY c.follow_up_date""",
+        (today_str,),
     ).fetchall()
     conn.close()
-    today_str = date.today().isoformat()
     upcoming_cutoff = (date.today() + timedelta(days=3)).isoformat()
     overdue, upcoming = [], []
     for r in rows:
         row = dict(r)
         if row["follow_up_date"] < today_str:
+            row["days_overdue"] = (date.today() - date.fromisoformat(row["follow_up_date"])).days
             overdue.append(row)
         elif row["follow_up_date"] <= upcoming_cutoff:
+            row["days_until"] = (date.fromisoformat(row["follow_up_date"]) - date.today()).days
             upcoming.append(row)
     return overdue, upcoming
 
@@ -2398,23 +2570,24 @@ def _dentition_for_tooth(tooth_id):
     return "Primary" if tooth_id[0] in "5678" else "Permanent"
 
 
-def add_dental_chart_entry(patient_id, case_id, tooth_id, surface, finding, status, notes, actor=None):
+def add_dental_chart_entry(patient_id, case_id, tooth_id, surface, finding, status, notes,
+                            planned_date="", actor=None):
     dentition = _dentition_for_tooth(tooth_id)
     now = now_iso()
     conn = get_db()
     cur = conn.execute(
         """INSERT INTO dental_chart_entries
-               (patient_id, case_id, tooth_id, dentition, surface, finding, status, notes,
-                recorded_by, recorded_at, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (patient_id, case_id, tooth_id, dentition, surface, finding, status, notes,
+               (patient_id, case_id, tooth_id, dentition, surface, finding, status, planned_date,
+                notes, recorded_by, recorded_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (patient_id, case_id, tooth_id, dentition, surface, finding, status, planned_date, notes,
          actor.get("user_id") if actor else None, now, now),
     )
     entry_id = cur.lastrowid
-    _write_audit(
-        conn, actor, "dental_chart_entry_added", "patient", patient_id,
-        after_summary=f"tooth={tooth_id}, surface={surface}, finding={finding}, status={status}",
-    )
+    summary = f"tooth={tooth_id}, surface={surface}, finding={finding}, status={status}"
+    if planned_date:
+        summary += f", planned_date={planned_date}"
+    _write_audit(conn, actor, "dental_chart_entry_added", "patient", patient_id, after_summary=summary)
     conn.commit()
     conn.close()
     return entry_id

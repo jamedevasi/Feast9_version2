@@ -73,21 +73,23 @@ def _validate_recurrence(recurrence, appt_date):
     return errors
 
 
-def _handle_noshow_followup(patient_id, appt_date):
-    """Set follow-up reminder for next day on patient's most recent active case."""
+def _handle_noshow_followup(patient_id, appt_date, appt_id):
+    """Set a follow-up reminder for the next day on the patient's most recent case — an active
+    one if there is one, otherwise their latest closed case, so a no-show is never silently
+    dropped. The reminder is tagged with the appointment (appt_id): it shows on the dashboard
+    from the next day, and is withdrawn again if that appointment is cancelled or deleted."""
     next_day = (date.today() + timedelta(days=1)).isoformat()
     try:
-        cases = db.list_cases_for_patient(patient_id)
-        active = sorted(
-            [c for c in cases if c.get("status") == "Active"],
-            key=lambda c: c.get("updated_at", ""), reverse=True,
-        )
-        if active:
-            db.update_case_followup(
-                active[0]["id"], next_day,
-                f"Patient did not attend appointment on {appt_date} — please reschedule",
+        cases = sorted(db.list_cases_for_patient(patient_id), key=lambda c: c.get("updated_at", ""), reverse=True)
+        target = next((c for c in cases if c.get("status") == "Active"), cases[0] if cases else None)
+        if target:
+            db.set_noshow_followup(
+                target["id"], next_day,
+                f"Patient did not attend appointment on {appt_date} — please reschedule", appt_id,
             )
             flash(f"Follow-up reminder set for {next_day}.", "warning")
+        else:
+            flash("This patient has no case yet, so no follow-up reminder could be created for the no-show.", "warning")
     except Exception:
         pass  # follow-up is best-effort; don't block the save
 
@@ -147,6 +149,7 @@ def view_calendar(year, month):
         next_year=next_year,
         next_month=next_month,
         today=today_iso(),
+        doctors=db.list_doctors(),
     )
 
 
@@ -164,24 +167,31 @@ def new():
         if not errors:
             case_id = int(clear_followup) if clear_followup.isdigit() else None
             if recurrence["is_recurring"]:
-                _created_ids, conflicts = db.add_recurring_appointments(
+                created_ids, conflicts, notices = db.add_recurring_appointments(
                     data["patient_id"], case_id, data["doctor_id"], data["appt_date"],
                     data["start_time"], data["end_time"], data["title"], data["notes"], data["status"],
                     recurrence["recur_interval"], recurrence["recur_until"], recurrence["skip_sundays"],
                 )
-                flash(f"{len(_created_ids)} recurring appointments booked.", "success")
+                flash(f"{len(created_ids)} recurring appointments booked.", "success")
+                for notice in notices:
+                    flash(f"{notice}.", "warning")
                 for warning in conflicts:
                     flash(f"Possible conflict: {warning}.", "warning")
+                first_appt_id = created_ids[0]
             else:
-                db.add_appointment(
+                first_appt_id = db.add_appointment(
                     data["patient_id"], case_id, data["doctor_id"], data["appt_date"],
                     data["start_time"], data["end_time"], data["title"], data["notes"], data["status"],
                 )
                 flash("Appointment booked.", "success")
             if case_id:
                 db.update_case_followup(case_id, "", "")
+            if data["status"] in ("Scheduled", "Completed"):
+                # Rebooking a patient who missed an earlier appointment is what their no-show
+                # follow-up was asking for — it's done now.
+                db.resolve_noshow_followups_for_patient(data["patient_id"], data["appt_date"])
             if data["status"] == "No-show":
-                _handle_noshow_followup(data["patient_id"], data["appt_date"])
+                _handle_noshow_followup(data["patient_id"], data["appt_date"], first_appt_id)
             return _redirect_to_calendar_for(data["appt_date"])
 
         patient = db.get_patient(data["patient_id"]) if data["patient_id"] else None
@@ -291,7 +301,10 @@ def edit(appt_id):
                 data["start_time"], data["end_time"], data["title"], data["notes"], data["status"],
             )
             if data["status"] == "No-show" and prev_status != "No-show":
-                _handle_noshow_followup(data["patient_id"], data["appt_date"])
+                _handle_noshow_followup(data["patient_id"], data["appt_date"], appt_id)
+            elif prev_status == "No-show" and data["status"] != "No-show":
+                # Cancelled, attended or rescheduled after all — the no-show reminder no longer applies.
+                db.clear_noshow_followup_for_appointment(appt_id)
             flash("Appointment updated.", "success")
             return _redirect_to_calendar_for(data["appt_date"])
         form_state = {

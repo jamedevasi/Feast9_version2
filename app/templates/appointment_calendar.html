@@ -47,4 +47,12 @@
 </div>
 
 <p class="hint">Coloured bar shows the doctor. Badge colour shows status — Scheduled (blue), Completed (green), Cancelled (grey), No-show (red).</p>
+
+{% if doctors %}
+<div class="doctor-legend">
+  {% for d in doctors %}
+  <span><span class="color-swatch" style="background: {{ d.color or '#adb5bd' }};"></span>{{ d.name }}</span>
+  {% endfor %}
+</div>
+{% endif %}
 {% endblock %}

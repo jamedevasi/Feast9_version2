@@ -35,13 +35,14 @@ def test_register_patient_and_appears_in_list(logged_in_client):
     resp = _register_patient(logged_in_client)
     assert resp.status_code == 302
 
-    list_resp = logged_in_client.get("/patients/")
+    # a brand-new patient has no case yet, so they are only on the full list, not the default one
+    list_resp = logged_in_client.get("/patients/?view=all")
     assert b"Test Patient" in list_resp.data
 
 
 def test_patient_search_matches_mobile(logged_in_client):
     _register_patient(logged_in_client, name="Findable Patient", mobile="9998887776")
-    resp = logged_in_client.get("/patients/?q=9998887776")
+    resp = logged_in_client.get("/patients/?view=all&q=9998887776")
     assert b"Findable Patient" in resp.data
 
 
@@ -77,7 +78,7 @@ def test_invalid_mobile_rejected(logged_in_client):
 
 def test_patient_detail_section_order(logged_in_client):
     _register_patient(logged_in_client, name="Order Patient")
-    list_resp = logged_in_client.get("/patients/?q=Order Patient")
+    list_resp = logged_in_client.get("/patients/?view=all&q=Order Patient")
     match = re.search(rb'/patients/(\d+)"', list_resp.data)
     assert match
     patient_id = match.group(1).decode()

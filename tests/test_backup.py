@@ -142,13 +142,3 @@ def test_download_requires_admin_and_is_audited(logged_in_client, backup_key):
     assert len(entries) == 1
 
 
-def test_dashboard_warns_when_no_backup_yet(logged_in_client):
-    resp = logged_in_client.get("/dashboard")
-    assert b"No backup has ever been run" in resp.data
-
-
-def test_dashboard_clear_after_successful_backup(logged_in_client, backup_key):
-    token = get_csrf(logged_in_client, "/backup/")
-    logged_in_client.post("/backup/run", data={"csrf_token": token})
-    resp = logged_in_client.get("/dashboard")
-    assert b"No backup has ever been run" not in resp.data

@@ -148,6 +148,15 @@ def test_calendar_shows_booked_appointment(logged_in_client, patient_id):
     assert b"Case Test Patient" in resp.data
 
 
+def test_calendar_shows_doctor_colour_legend(logged_in_client, patient_id):
+    _book_appointment(logged_in_client, patient_id)
+    resp = logged_in_client.get("/appointments/2026/10")
+    body = resp.data.decode()
+    assert "doctor-legend" in body
+    assert "Dr. Test Doctor" in body
+    assert "color-swatch" in body
+
+
 def _book_recurring(client, patient_id, doctor_id=None, **overrides):
     data = {"is_recurring": "on", "recur_interval": "Weekly", "recur_until": "2026-10-22"}
     data.update(overrides)
@@ -178,12 +187,51 @@ def test_recurring_capped_at_max_occurrences(logged_in_client, patient_id):
     assert len(db.list_appointments_for_patient(patient_id)) == 52
 
 
-def test_skip_sundays_excludes_sunday_occurrences(logged_in_client, patient_id):
+def test_sunday_occurrences_move_to_monday_instead_of_being_dropped(logged_in_client, patient_id):
+    # 2026-10-04 is a Sunday. Every occurrence must still get a calendar entry — a series that
+    # starts on a Sunday used to end up with none at all.
     resp, _ = _book_recurring(
         logged_in_client, patient_id, appt_date="2026-10-04", recur_until="2026-10-25", skip_sundays="on",
     )
     assert resp.status_code == 302
-    assert db.list_appointments_for_patient(patient_id) == []
+    dates = sorted(a["appt_date"] for a in db.list_appointments_for_patient(patient_id))
+    assert dates == ["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"]
+    assert all(date.fromisoformat(d).weekday() == 0 for d in dates)  # all Mondays
+
+    flashed = logged_in_client.get(resp.headers["Location"]).data.decode()
+    assert "4 occurrences fell on a Sunday and were moved to the following Monday" in flashed
+    assert "2026-10-04 → 2026-10-05" in flashed
+
+
+def test_monthly_recurrence_does_not_drift_after_a_short_month(logged_in_client, patient_id):
+    _book_recurring(
+        logged_in_client, patient_id, appt_date="2027-01-31", recur_interval="Monthly",
+        recur_until="2027-06-30", skip_sundays="",
+    )
+    dates = sorted(a["appt_date"] for a in db.list_appointments_for_patient(patient_id))
+    assert dates == ["2027-01-31", "2027-02-28", "2027-03-31", "2027-04-30", "2027-05-31", "2027-06-30"]
+
+
+def test_every_occurrence_has_its_own_calendar_entry_across_months(logged_in_client, patient_id):
+    _book_recurring(logged_in_client, patient_id, appt_date="2026-10-22", recur_until="2026-11-12")
+    assert len(db.list_appointments_for_patient(patient_id)) == 4  # Oct 22, Oct 29, Nov 5, Nov 12
+
+    october = logged_in_client.get("/appointments/2026/10").data.decode()
+    november = logged_in_client.get("/appointments/2026/11").data.decode()
+    assert october.count("calendar-appt") == 2 and october.count("🔁") == 2
+    assert november.count("calendar-appt") == 2 and november.count("🔁") == 2
+
+
+def test_recurring_series_cut_short_by_the_cap_says_so(logged_in_client, patient_id):
+    resp, _ = _book_recurring(logged_in_client, patient_id, recur_until="2099-01-01")
+    flashed = logged_in_client.get(resp.headers["Location"]).data.decode()
+    assert "Only the first 52 occurrences were booked" in flashed
+
+
+def test_recurring_series_within_the_cap_shows_no_cap_notice(logged_in_client, patient_id):
+    resp, _ = _book_recurring(logged_in_client, patient_id)
+    flashed = logged_in_client.get(resp.headers["Location"]).data.decode()
+    assert "Only the first" not in flashed
 
 
 def test_skip_sundays_unchecked_includes_sunday_occurrences(logged_in_client, patient_id):

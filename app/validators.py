@@ -1,6 +1,8 @@
 import re
 from datetime import date, datetime
 
+from app.constants import CHART_PROBLEM_FINDINGS
+
 _MOBILE_RE = re.compile(r"^[6-9]\d{9}$")
 
 
@@ -82,3 +84,27 @@ def compute_age(date_of_birth):
         return None
     today = date.today()
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+
+def chart_entry_severity(finding, status, planned_date=""):
+    """Derives a dental chart entry's severity from its finding + status (+ an optional
+    "Planned By" target date), for colour-coding the chart history — see
+    app/constants.py:CHART_PROBLEM_FINDINGS for why this is severity-based rather than a
+    flat per-status colour.
+
+    - stable: treatment is Completed (any finding), or it's an Existing, non-problem finding
+      (a healthy tooth, or dental work already done — possibly at another clinic, before this
+      one started charting) — nothing to act on.
+    - attention: a problem finding (Caries/Fracture/Other) that isn't Completed yet — whether
+      it's Existing, Planned or Ongoing, it still represents untreated disease — OR a Planned
+      entry whose target date has passed without being marked Ongoing/Completed.
+    - scheduled: anything else — a non-problem finding that's Planned or Ongoing (e.g. an
+      elective crown, or a multi-visit treatment in progress that will end in Completed).
+    """
+    if status == "Completed":
+        return "stable"
+    if status == "Planned" and planned_date and planned_date < today_iso():
+        return "attention"
+    if finding in CHART_PROBLEM_FINDINGS:
+        return "attention"
+    return "stable" if status == "Existing" else "scheduled"

@@ -13,7 +13,7 @@ def _case_for(logged_in_client, patient_id):
 
 
 def _details_tag(body):
-    match = re.search(r'<details id="referrals-details"[^>]*>', body)
+    match = re.search(r'<details class="js-collapsible" data-storage-key="section_open_referrals_[^>]*>', body)
     return match.group(0)
 
 

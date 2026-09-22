@@ -1,5 +1,6 @@
 <section class="card">
-  <h2>Clinical Attachments</h2>
+  <details class="js-collapsible" data-storage-key="section_open_attachments_{{ case.id }}">
+    <summary>Clinical Attachments{% if attachments %} <span class="hint">({{ attachments|length }})</span>{% endif %} <span class="collapsible-toggle-icon">▶ Show</span></summary>
   {% if attachments %}
   <ul class="entry-list">
     {% for a in attachments %}
@@ -45,4 +46,5 @@
     <button type="submit" class="button button-secondary">Clear All Clinical Documents</button>
   </form>
   {% endif %}
+  </details>
 </section>

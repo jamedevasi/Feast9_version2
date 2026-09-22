@@ -2,14 +2,15 @@
 {% block title %}Dashboard — Feast9{% endblock %}
 {% block content %}
 <h1>Dashboard</h1>
-{% if backup_warning %}
-<p class="allergy-alert">⚠ {{ backup_warning }} <a href="{{ url_for('backup.list_view') }}">View backups</a></p>
-{% endif %}
 
 <div class="stat-grid">
   <div class="stat-tile">
     <span class="stat-label">Follow-ups Needing Attention</span>
     <span class="stat-value">{{ overdue_followups|length + upcoming_followups|length }}</span>
+    <span class="stat-sub">
+      <span class="badge badge-overdue">{{ overdue_followups|length }} overdue</span>
+      <span class="badge badge-due-soon">{{ upcoming_followups|length }} due soon</span>
+    </span>
   </div>
   <div class="stat-tile">
     <span class="stat-label">Total Outstanding Balance</span>
@@ -30,27 +31,49 @@
 </div>
 
 <section class="card">
-  <h2>Follow-ups Needing Attention</h2>
+  <div class="card-heading">
+    <h2>Follow-ups Needing Attention</h2>
+    <p class="indicator-legend">
+      <span class="badge badge-overdue">🔴 Overdue</span>
+      <span class="badge badge-due-soon">🟡 Due in next 3 days</span>
+    </p>
+  </div>
   {% if overdue_followups or upcoming_followups %}
-  <table class="data-table">
+  <table class="data-table stack-mobile">
     <thead>
-      <tr><th>Patient</th><th>Case</th><th>Follow-up Date</th><th>Next Action</th></tr>
+      <tr><th>Status</th><th>Patient</th><th>Case</th><th>Follow-up Date</th><th>Next Action</th><th></th></tr>
     </thead>
     <tbody>
       {% for f in overdue_followups %}
       <tr class="followup-row-overdue">
-        <td>🔴 <a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
+        <td><span class="badge badge-overdue">🔴 Overdue · {{ f.days_overdue }} day{{ '' if f.days_overdue == 1 else 's' }}</span></td>
+        <td><a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
         <td><a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a></td>
         <td>{{ f.follow_up_date }}</td>
         <td>{{ f.next_action_note }}</td>
+        <td>
+          <form method="post" action="{{ url_for('cases.complete_followup', case_id=f.case_id) }}" class="done-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="dashboard">
+            <button type="submit" class="button button-small" title="Mark this follow-up as done">✓ Done</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
       {% for f in upcoming_followups %}
       <tr class="followup-row-upcoming">
-        <td>🟡 <a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
+        <td><span class="badge badge-due-soon">🟡 {% if f.days_until == 0 %}Due today{% elif f.days_until == 1 %}Due tomorrow{% else %}Due in {{ f.days_until }} days{% endif %}</span></td>
+        <td><a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
         <td><a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a></td>
         <td>{{ f.follow_up_date }}</td>
         <td>{{ f.next_action_note }}</td>
+        <td>
+          <form method="post" action="{{ url_for('cases.complete_followup', case_id=f.case_id) }}" class="done-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="dashboard">
+            <button type="submit" class="button button-small" title="Mark this follow-up as done">✓ Done</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -60,10 +83,11 @@
   {% endif %}
 </section>
 
+<div class="dashboard-columns">
 <section class="card">
   <h2>Today's Appointments</h2>
   {% if todays_appointments %}
-  <table class="data-table">
+  <table class="data-table stack-mobile">
     <thead>
       <tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Status</th></tr>
     </thead>
@@ -86,7 +110,7 @@
 <section class="card">
   <h2>Lab Requisitions Due Before Visit</h2>
   {% if open_lab_reqs_due %}
-  <table class="data-table">
+  <table class="data-table stack-mobile">
     <thead>
       <tr><th>Patient</th><th>Work</th><th>Status</th><th>Appointment</th></tr>
     </thead>
@@ -105,6 +129,10 @@
   <p class="empty-state">No open lab requisitions ahead of an upcoming visit 🎉</p>
   {% endif %}
 </section>
+</div>
 
-<p><a href="{{ url_for('patients.list_view') }}">Go to Patients →</a> · <a href="{{ url_for('appointments.index') }}">Go to Appointments →</a></p>
+<nav class="quick-links" aria-label="Quick links">
+  <a class="button button-outline" href="{{ url_for('patients.list_view') }}">Go to Patients <span aria-hidden="true">→</span></a>
+  <a class="button button-outline" href="{{ url_for('appointments.index') }}">Go to Appointments <span aria-hidden="true">→</span></a>
+</nav>
 {% endblock %}

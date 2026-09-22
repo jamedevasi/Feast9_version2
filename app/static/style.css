@@ -10,6 +10,9 @@
 
 * { box-sizing: border-box; }
 
+a { color: var(--brand); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -18,12 +21,16 @@ body {
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
-  background: white;
-  border-bottom: 1px solid var(--border);
+  gap: 1.25rem;
+  padding: 0.6rem 1.5rem;
+  background: var(--brand);
+  color: var(--on-brand, #fff);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
 }
 
 .brand {
@@ -32,30 +39,41 @@ body {
   gap: 0.5rem;
   flex-shrink: 0;
   font-weight: 700;
-  color: var(--brand);
+  font-size: 1.05rem;
+  color: inherit;
   white-space: nowrap;
 }
-.brand-logo { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
+.brand-logo { width: 30px; height: 30px; border-radius: 6px; object-fit: contain; flex-shrink: 0; background: white; padding: 2px; }
 
-.topbar nav { display: flex; align-items: center; gap: 1rem; flex: 1; }
-.topbar nav a { color: var(--text); text-decoration: none; }
-.topbar nav a:hover { color: var(--brand); }
+.topbar nav { display: flex; align-items: center; flex-wrap: wrap; gap: 0.15rem; flex: 1; }
+.topbar nav a,
+.topbar .nav-dropdown > summary {
+  color: inherit;
+  text-decoration: none;
+  padding: 0.4rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.92rem;
+}
+.topbar nav a:hover,
+.topbar .nav-dropdown > summary:hover { background: rgba(255, 255, 255, 0.18); color: inherit; }
 
 .nav-dropdown { position: relative; }
 .nav-dropdown > summary {
+  display: block;
   cursor: pointer;
   list-style: none;
-  color: var(--text);
+  font-weight: 400;
+  font-size: 0.92rem;
 }
+.nav-dropdown[open] > summary { margin-bottom: 0; }
 .nav-dropdown > summary::-webkit-details-marker { display: none; }
-.nav-dropdown > summary:hover { color: var(--brand); }
 .nav-dropdown > summary::after { content: "\25BE"; margin-left: 0.25rem; font-size: 0.7em; }
 .nav-dropdown[open] > summary::after { content: "\25B4"; }
 .nav-dropdown-menu {
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: 0.5rem;
+  margin-top: 0.4rem;
   display: flex;
   flex-direction: column;
   min-width: 10rem;
@@ -63,11 +81,11 @@ body {
   background: white;
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
-  z-index: 20;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+  z-index: 40;
 }
-.nav-dropdown-menu a { padding: 0.45rem 1rem; }
-.nav-dropdown-menu a:hover { background: var(--bg); }
+.topbar .nav-dropdown-menu a { color: var(--text); padding: 0.5rem 1rem; border-radius: 0; }
+.topbar .nav-dropdown-menu a:hover { background: var(--bg); color: var(--brand); }
 
 .logout-form { margin: 0; }
 .link-button {
@@ -78,12 +96,29 @@ body {
   font: inherit;
   padding: 0;
 }
+.topbar .link-button {
+  color: inherit;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  opacity: 0.9;
+}
+.topbar .link-button:hover { background: rgba(255, 255, 255, 0.18); opacity: 1; }
+
+/* Hamburger — a CSS-only checkbox toggle, since CSP forbids inline scripts. Hidden on wide screens. */
+.nav-toggle-input { position: absolute; opacity: 0; pointer-events: none; }
+.nav-toggle { display: none; cursor: pointer; font-size: 1.5rem; line-height: 1; padding: 0.2rem 0.5rem; border-radius: 6px; user-select: none; }
+.nav-toggle-input:focus-visible + .nav-toggle { outline: 2px solid currentColor; outline-offset: 2px; }
 
 .container {
-  max-width: 860px;
+  max-width: 1320px;
   margin: 0 auto;
-  padding: 1.5rem 1rem 3rem;
+  padding: 1.5rem 1.5rem 3rem;
 }
+
+/* Standalone forms would stretch edge-to-edge on a wide screen — keep the fields readable. */
+.container > form,
+.inline-form { max-width: 60rem; }
 
 body.auth-page {
   min-height: 100vh;
@@ -266,6 +301,10 @@ legend { font-weight: 700; padding: 0 0.4rem; }
 }
 
 .hint { color: var(--muted); font-size: 0.85rem; margin-top: -0.6rem; }
+/* The negative margin above pulls a hint snug under the field it explains — but a hint that
+   instead follows a whole form (its own sibling, after the submit button) needs normal
+   spacing, or it rides up and overlaps the button. */
+form + .hint { margin-top: 0.6rem; }
 
 .dpdp-notice {
   max-height: 8rem;
@@ -315,6 +354,7 @@ button[type="submit"], .button {
   align-items: center;
   margin-bottom: 1rem;
 }
+.card > .page-header { margin-bottom: 0.6rem; }
 
 .search-form {
   display: flex;
@@ -351,15 +391,33 @@ button[type="submit"], .button {
   padding: 1.25rem;
   margin-bottom: 1rem;
 }
+/* Section sub-titles are bold everywhere — stated explicitly so no page can end up with a light one. */
+h2, h3, h4 { font-weight: 700; }
 .card h2 { margin-top: 0; font-size: 1.05rem; }
 
 .card-warning { border: 2px solid var(--danger); }
 
-.alert-list { padding-left: 1.2rem; color: var(--danger); }
+.alert-list { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.alert-list li {
+  background: #fef2f2;
+  color: var(--danger);
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
 
 dl { display: grid; grid-template-columns: 10rem 1fr; row-gap: 0.5rem; }
 dt { font-weight: 600; color: var(--muted); }
 dd { margin: 0; }
+
+/* Pairs consecutive dt/dd fields into two columns on wide screens, so a long list of fields
+   (e.g. patient Contact Details) doesn't need to scroll as far. Only above the width where dl
+   already switches to a narrower single column, so the two breakpoints never fight. */
+@media (min-width: 901px) {
+  .dl-two-col { grid-template-columns: 10rem 1fr 10rem 1fr; column-gap: 1.5rem; }
+}
 
 .empty-state { color: var(--muted); }
 
@@ -380,14 +438,23 @@ dd { margin: 0; }
 
 .case-list { list-style: none; padding: 0; margin: 0; }
 .case-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 0;
+  padding: 0.45rem 0;
   border-bottom: 1px solid var(--border);
 }
 .case-list li:last-child { border-bottom: none; }
 .case-list a { color: var(--brand); text-decoration: none; font-weight: 600; }
+.case-row-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.case-row-meta { color: var(--muted); font-size: 0.85rem; margin-top: 0.15rem; }
+
+.case-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+}
 
 .entry-list { list-style: none; padding: 0; margin: 0 0 1rem; }
 .entry-list li { padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
@@ -407,7 +474,7 @@ dd { margin: 0; }
 
 details summary { cursor: pointer; font-weight: 700; font-size: 1.05rem; }
 details[open] summary { margin-bottom: 0.75rem; }
-.referral-toggle-icon { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+.collapsible-toggle-icon { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
 
 .badge-lab-sent { background: #ecfdf5; color: #065f46; }
 .badge-lab-received { background: #e7f0fb; color: var(--brand); }
@@ -464,9 +531,9 @@ details[open] summary { margin-bottom: 0.75rem; }
 .calendar-appt {
   display: block;
   font-size: 0.75rem;
-  padding: 0.1rem 0.3rem;
+  padding: 0.1rem 0.3rem 0.1rem 0.4rem;
   margin-bottom: 0.15rem;
-  border-left: 3px solid;
+  border-left: 6px solid;
   background: var(--bg);
   color: var(--text);
   text-decoration: none;
@@ -474,12 +541,16 @@ details[open] summary { margin-bottom: 0.75rem; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.badge-status-scheduled { background: #e7f0fb; }
-.badge-status-completed { background: #f1f8f1; }
-.badge-status-cancelled { background: #f1f3f5; color: var(--muted); }
-.badge-status-no-show { background: #fef2f2; color: var(--danger); }
-.badge-status-existing { background: #fff8e1; }
-.badge-status-planned { background: #e7f0fb; }
+/* More saturated than a typical pastel badge — this is what tells Scheduled/Completed/
+   Cancelled/No-show apart at a glance on the calendar, so it needs to read clearly, not just
+   hint at a tint. */
+.badge-status-scheduled { background: #cfe2ff; color: #1c4e80; }
+.badge-status-completed { background: #c8f0d0; color: #1a7431; }
+.badge-status-cancelled { background: #e2e5e9; color: var(--muted); }
+.badge-status-no-show { background: #fbd0ce; color: var(--danger); }
+
+.doctor-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; font-size: 0.85rem; }
+.doctor-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
 
 .stat-grid {
   display: grid;
@@ -496,21 +567,109 @@ details[open] summary { margin-bottom: 0.75rem; }
   flex-direction: column;
   gap: 0.35rem;
 }
-.stat-label { font-size: 0.8rem; color: var(--muted); }
+.stat-label { font-size: 0.85rem; font-weight: 700; color: var(--muted); }
 .stat-value { font-size: 1.6rem; font-weight: 700; }
 .stat-restricted { font-size: 1rem; color: var(--muted); font-weight: 600; }
+.stat-sub { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 
-.followup-row-overdue { background: #fef2f2; }
-.followup-row-upcoming { background: #fff8e1; }
+.card-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.75rem; }
+.card-heading h2 { margin: 0; }
+.indicator-legend { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; }
+
+/* Follow-up urgency indicators: red = already past due, amber = due within 3 days. Each
+   carries its own words as well as a colour, so the state never depends on colour alone. */
+.badge-overdue { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.badge-due-soon { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+
+.followup-row-overdue { background: #fef2f2; box-shadow: inset 4px 0 0 #dc2626; }
+.followup-row-upcoming { background: #fffbeb; box-shadow: inset 4px 0 0 #f59e0b; }
+
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.dashboard-columns > .card { margin-bottom: 0; }
 .appt-row-completed { background: #f1f8f1; }
 .lab-req-row-alert { background: #fff8e1; }
 
 .dental-chart-svg { max-width: 100%; height: auto; }
 .dental-chart-svg a { cursor: pointer; }
 .dental-chart-svg text { fill: #333; font-family: inherit; pointer-events: none; }
-.chart-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.75rem; font-size: 0.85rem; }
-.chart-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
-.chart-legend .swatch { width: 14px; height: 14px; border: 1px solid #333; display: inline-block; }
+
+/* Severity (not status) colour-coding — see app/constants.py:CHART_PROBLEM_FINDINGS for why.
+   Reused for the practitioner summary tiles, the severity legend, and each Chart History
+   entry's left-border, so all three read as the same colour language. */
+:root {
+  --severity-attention: #e74c3c;
+  --severity-scheduled: #2b6cb0;
+  --severity-stable: #2f9e44;
+}
+.severity-summary { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.75rem 0; }
+.severity-tile {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.severity-tile .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.severity-tile-attention .dot { background: var(--severity-attention); }
+.severity-tile-scheduled .dot { background: var(--severity-scheduled); }
+.severity-tile-stable .dot { background: var(--severity-stable); }
+
+.entry-list li.dental-severity-attention { border-left: 3px solid var(--severity-attention); padding-left: 0.6rem; }
+.entry-list li.dental-severity-scheduled { border-left: 3px solid var(--severity-scheduled); padding-left: 0.6rem; }
+.entry-list li.dental-severity-stable { border-left: 3px solid var(--severity-stable); padding-left: 0.6rem; }
+/* An entry a later correction has superseded is no longer part of the tooth's current state,
+   so it's shown muted rather than in a severity colour — colouring it too would make the
+   log show far more red/blue/green than the summary tiles above count (see dental_routes.py). */
+.entry-list li.dental-history-superseded { border-left: 3px solid var(--border); padding-left: 0.6rem; opacity: 0.7; }
+
+/* Every status badge on this page is deliberately uncoloured — severity (the left border) is
+   the page's one colour system, so the status text itself doesn't compete with its own hue. */
+.badge-plain {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: white;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+/* The selected tooth's own current-state panel (Add Chart Entry) and its matching group
+   further down in Chart History — both keyed off ?tooth= so clicking a tooth in the chart
+   surfaces everything already on file for it, not just a pre-filled form. */
+.selected-tooth-panel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.selected-tooth-panel .entry-list { margin: 0.5rem 0 0; }
+
+/* Chart History grouped by tooth (same left-to-right order the chart itself draws in), each
+   group newest-first — easier to scan "everything about tooth 36" than one long log. */
+.history-tooth-group { margin-bottom: 1.1rem; }
+.history-tooth-group:last-child { margin-bottom: 0; }
+.history-tooth-group h4 { margin: 0 0 0.3rem; font-size: 0.95rem; }
+/* A selection outline, not a fill colour — this is a UI "you clicked this" cue, unrelated to
+   severity, so it deliberately avoids red/blue/green/amber (any of which could be misread as
+   meaning something clinical). */
+.history-tooth-group-selected { border: 2px solid var(--brand); border-radius: 6px; padding: 0.5rem 0.6rem; }
+
+/* A compact multi-column layout for short fields (selects), used by the Add Chart Entry form —
+   Notes and the submit button opt out via .form-grid-full to keep their full width. */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0 1rem; }
+.form-grid .form-grid-full { grid-column: 1 / -1; }
 
 .reminder-copy {
   background: var(--bg);
@@ -633,3 +792,95 @@ details[open] summary { margin-bottom: 0.75rem; }
   border-radius: 6px;
   background: white;
 }
+
+/* ---------- Responsive: tablet & phone ---------- */
+
+/* Collapse the menu into a hamburger before the nav links would wrap onto a second row. */
+@media (max-width: 1100px) {
+  .topbar { flex-wrap: wrap; gap: 0.5rem 1rem; padding: 0.55rem 1rem; }
+  .brand { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .nav-toggle { display: block; }
+  .topbar nav,
+  .topbar .logout-form { display: none; flex: 1 1 100%; }
+  .nav-toggle-input:checked ~ nav { display: flex; flex-direction: column; align-items: stretch; gap: 0.1rem; padding-top: 0.4rem; border-top: 1px solid rgba(255, 255, 255, 0.25); }
+  .nav-toggle-input:checked ~ .logout-form { display: block; }
+  .topbar nav a,
+  .topbar .nav-dropdown > summary { padding: 0.65rem 0.75rem; font-size: 1rem; }
+  .topbar .link-button { width: 100%; padding: 0.65rem; }
+  /* Dropdown opens in the flow rather than floating, so it can't run off a narrow screen. */
+  .nav-dropdown-menu { position: static; margin: 0.2rem 0 0.2rem 0.75rem; box-shadow: none; }
+}
+
+@media (max-width: 900px) {
+  .container { padding: 1rem 1rem 2.5rem; }
+  .chart-grid { grid-template-columns: 1fr; }
+  dl { grid-template-columns: 8rem 1fr; }
+}
+
+@media (max-width: 640px) {
+  .container { padding: 0.85rem 0.75rem 2rem; }
+  h1 { font-size: 1.45rem; }
+  .card { padding: 0.9rem; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+  .stat-tile { padding: 0.75rem 0.85rem; }
+  .stat-value { font-size: 1.35rem; }
+
+  /* Wide tables scroll sideways inside their own box rather than stretching the whole page. */
+  .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+
+  dl { grid-template-columns: 1fr; row-gap: 0.15rem; }
+  dt { margin-top: 0.5rem; }
+
+  .page-header { flex-wrap: wrap; gap: 0.5rem; }
+  .search-form { flex-wrap: wrap; }
+  .search-form input { min-width: 0; flex: 1 1 100%; }
+  .case-actions { flex-wrap: wrap; }
+  .attachment-row { flex-direction: column; gap: 0.4rem; }
+  .view-toggle { flex-wrap: wrap; }
+
+  /* Comfortable touch targets, and 16px inputs so iOS doesn't zoom the page on focus. */
+  button[type="submit"], .button { padding: 0.7rem 1.1rem; }
+  form label input:not([type="checkbox"]):not([type="color"]),
+  form label select,
+  form label textarea { padding: 0.65rem; font-size: 1rem; }
+  .container > form, .inline-form { max-width: none; }
+
+  .auth-card { margin: 1.5rem auto; padding: 1.25rem; }
+  body.auth-page .auth-card { padding: 1.75rem 1.25rem 1.5rem; }
+}
+
+/* On a phone, tables marked .stack-mobile turn each row into a small card instead of scrolling sideways. */
+@media (max-width: 640px) {
+  .data-table.stack-mobile { display: table; width: 100%; white-space: normal; overflow: visible; }
+  .stack-mobile thead { display: none; }
+  .stack-mobile tbody, .stack-mobile tr, .stack-mobile td { display: block; width: 100%; }
+  .stack-mobile tr { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
+  .stack-mobile tr:last-child { border-bottom: none; }
+  .stack-mobile td { padding: 0.15rem 0; border: none; }
+}
+
+.done-form { margin: 0; }
+.button.button-small { padding: 0.3rem 0.7rem; font-size: 0.85rem; white-space: nowrap; }
+
+.list-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+/* Secondary action: outlined in the theme colour, fills on hover. Two classes so it beats .button. */
+.button.button-outline {
+  background: white;
+  color: var(--brand);
+  border: 1px solid var(--brand);
+  transition: background 0.15s, color 0.15s;
+}
+.button.button-outline:hover,
+.button.button-outline:focus-visible { background: var(--brand); color: var(--on-brand, #fff); }
+
+.quick-links { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.25rem; }
+.empty-state .button { margin-top: 0.25rem; }

@@ -355,7 +355,8 @@ def build_user_manual(path):
             "Always shown in this order: <b>Medical Alerts</b> (allergies/conditions at a "
             "glance), <b>Active Treatment Cases</b>, <b>Appointments</b>, and "
             "<b>Contact Details &amp; DPDP Status</b> (which also lists any data-rights requests "
-            "for this patient). A cross-case <b>Prescription History</b> is shown further down.",
+            "for this patient). Prescriptions are recorded and viewed on each treatment case "
+            "itself, not on this page.",
             BODY)],
         [Paragraph(
             "If a patient's record shows an \"Erased\" banner, an Erasure request has been "
@@ -410,13 +411,29 @@ def build_user_manual(path):
     # ── 5. Dental Chart ──
     story += section("5", "Dental Chart", (
         "A visual, whole-mouth chart reachable from a patient's page via <b>Dental Chart</b>. "
-        "It uses standard international (FDI) tooth numbering and shows both adult and baby "
-        "teeth, since many patients have a mix of both."
+        "It uses standard international (FDI) tooth numbering. An <b>Adult (Permanent) / "
+        "Mixed &amp; Paediatric</b> toggle switches between showing only the permanent teeth "
+        "or both dentitions together for a patient with a mix of adult and baby teeth — it "
+        "just changes what's displayed, any tooth can always be charted either way."
     ), [
         bullets([
             "Click any tooth in the diagram to add a new finding for it — Sound, Caries, "
             "Restoration, Crown, Root Canal, Implant, Missing/Extracted, Fracture, or Other — "
-            "and mark it as Existing, Planned, or Completed treatment.",
+            "and mark its status: <b>Existing</b> for a historic finding (e.g. work done at "
+            "another clinic, or whatever was already there), <b>Planned</b> for future "
+            "treatment, <b>Ongoing</b> for a multi-visit treatment currently underway (logged "
+            "as Completed once it's finished), or <b>Completed</b>.",
+            "A Planned entry can be given a <b>Planned By</b> target date, and optionally "
+            "linked to a Related Case's dashboard follow-up reminder for that same date — "
+            "exactly like booking a follow-up any other way, it replaces whatever follow-up "
+            "the case already had. A Planned entry whose date passes without being updated "
+            "shows up as Needs Attention automatically.",
+            "A summary strip at the top counts every tooth by <b>severity</b>, with a colour "
+            "legend: red <b>Needs Attention</b> (an untreated problem — Caries, Fracture or "
+            "Other — regardless of its exact status), blue <b>Scheduled / In Progress</b> (a "
+            "non-problem finding that's Planned or Ongoing, e.g. an elective crown), or green "
+            "<b>Stable</b> (Completed treatment, or an Existing finding that isn't a problem). "
+            "Severity, not the raw status, is what colours the Chart History list below.",
             "The chart always shows the <i>current</i> state per tooth. Every entry you add is "
             "kept permanently in the tooth's history underneath — nothing is ever overwritten "
             "or deleted. A correction is simply a new entry.",

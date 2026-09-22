@@ -26,6 +26,18 @@ def _mix(color_a, color_b, weight_b):
     return _rgb_to_hex(a[i] * (1 - weight_b) + b[i] * weight_b for i in range(3))
 
 
+def _on_color(background):
+    """White or near-black text, whichever reads better on `background` (WCAG relative
+    luminance) — the menu bar is filled with the primary color, so a light custom
+    primary must not end up with white-on-pale text."""
+    def channel(c):
+        c = c / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (channel(c) for c in _hex_to_rgb(background))
+    luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return "#ffffff" if luminance < 0.4 else "#1f2933"
+
+
 def resolve_theme():
     """Reads the admin-customizable primary/background colors (Settings > Theme) and derives
     the remaining tokens from them, so a custom theme always stays internally consistent —
@@ -40,6 +52,7 @@ def resolve_theme():
     return {
         "primary": primary,
         "background": background,
+        "on_primary": _on_color(primary),
         "accent": _mix(primary, "#ffffff", 0.88),
         "border": _mix(background, "#1f2933", 0.12),
     }
@@ -49,6 +62,7 @@ def render_theme_css(theme):
     return (
         ":root {\n"
         f"  --brand: {theme['primary']};\n"
+        f"  --on-brand: {theme['on_primary']};\n"
         f"  --bg: {theme['background']};\n"
         f"  --accent: {theme['accent']};\n"
         f"  --border: {theme['border']};\n"

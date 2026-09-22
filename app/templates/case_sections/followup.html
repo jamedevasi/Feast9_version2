@@ -16,11 +16,17 @@
     <button type="submit">Save Follow-up</button>
   </form>
   {% if case.follow_up_date %}
-  <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="follow_up_date" value="">
-    <input type="hidden" name="next_action_note" value="">
-    <button type="submit" class="button button-secondary">Clear Follow-up</button>
-  </form>
+  <div class="case-actions">
+    <form method="post" action="{{ url_for('cases.complete_followup', case_id=case.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="button">✓ Mark Follow-up Done</button>
+    </form>
+    <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="follow_up_date" value="">
+      <input type="hidden" name="next_action_note" value="">
+      <button type="submit" class="button button-secondary">Clear Follow-up</button>
+    </form>
+  </div>
   {% endif %}
 </section>

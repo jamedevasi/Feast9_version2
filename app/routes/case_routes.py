@@ -314,6 +314,21 @@ def update_followup(case_id):
     return redirect(url_for("cases.detail", case_id=case_id))
 
 
+@bp.route("/cases/<int:case_id>/followup/done", methods=["POST"])
+@login_required
+def complete_followup(case_id):
+    """Marks a follow-up as done so it drops off the dashboard. `next=dashboard` (the dashboard's
+    own button) returns there; anything else goes back to the case."""
+    validate_csrf(request.form.get("csrf_token"))
+    case = _get_case_or_404(case_id)
+    if case["follow_up_date"]:
+        db.complete_case_followup(case_id, actor=current_actor())
+        flash("Follow-up marked done.", "success")
+    if request.form.get("next") == "dashboard":
+        return redirect(url_for("dashboard.index"))
+    return redirect(url_for("cases.detail", case_id=case_id))
+
+
 @bp.route("/cases/<int:case_id>/consent", methods=["POST"])
 @login_required
 def record_consent(case_id):

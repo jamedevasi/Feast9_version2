@@ -67,8 +67,8 @@
       </select>
     </label>
     <label>Until<input type="date" name="recur_until" value="{{ appt.recur_until or '' }}"></label>
-    <label class="checkbox"><input type="checkbox" name="skip_sundays" {% if appt.skip_sundays is not defined or appt.skip_sundays %}checked{% endif %}> Skip Sundays</label>
-    <p class="hint">Generates a real, bounded set of appointments (capped at 52) — each one can be edited, cancelled, or marked no-show individually afterward.</p>
+    <label class="checkbox"><input type="checkbox" name="skip_sundays" {% if appt.skip_sundays is not defined or appt.skip_sundays %}checked{% endif %}> Move Sunday occurrences to Monday (clinic closed Sundays)</label>
+    <p class="hint">Books one appointment per occurrence, each with its own calendar entry (capped at 52) — each can be edited, cancelled, or marked no-show individually afterward.</p>
   </fieldset>
   {% endif %}
 

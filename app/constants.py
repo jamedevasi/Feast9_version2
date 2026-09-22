@@ -67,7 +67,31 @@ TOOTH_SURFACES = ["Whole Tooth", "Mesial", "Distal", "Buccal/Facial", "Lingual/P
 WHOLE_TOOTH_FINDINGS = {"Missing/Extracted", "Crown", "Root Canal", "Implant"}
 CHART_FINDINGS = ["Sound", "Caries", "Restoration", "Crown", "Root Canal", "Implant",
                    "Missing/Extracted", "Fracture", "Other"]
-CHART_STATUSES = ["Existing", "Planned", "Completed"]
+# Existing = recording a historic finding — e.g. work already done at another clinic, or
+# whatever was already there before this system started charting the patient — not something
+# being actioned now. Planned = future treatment (optionally given a target "Planned By" date,
+# see planned_date below, and linkable to the case's follow-up). Ongoing = an actively
+# in-progress multi-visit treatment; a later visit logs a new Completed entry once it's done —
+# Ongoing itself never transitions in place, per the append-only design. Completed = done.
+# The badge for each is colored via CSS class (badge-status-<status>, app/static/style.css),
+# same as every other status badge in the app — not a second Python-side color table.
+CHART_STATUSES = ["Existing", "Planned", "Ongoing", "Completed"]
+
+# Findings that represent an active, unresolved clinical problem — as opposed to Sound,
+# Restoration, Crown, Root Canal, Implant and Missing/Extracted, which describe either a
+# healthy tooth or dental work that's already done. Drives the chart's severity colour-coding
+# (app/validators.py:chart_entry_severity) — a *derived* view, layered on top of the finding
+# colours already used for the tooth-chart squares, rather than a second flat status colour
+# that would collide with them (e.g. "Restoration" and "Planned" both being blue said two
+# different things with the same colour).
+CHART_PROBLEM_FINDINGS = {"Caries", "Fracture", "Other"}
+
+CHART_SEVERITIES = ["attention", "scheduled", "stable"]
+CHART_SEVERITY_LABELS = {
+    "attention": "Needs Attention",
+    "scheduled": "Scheduled / In Progress",
+    "stable": "Stable",
+}
 
 # Login screen customisation (§5.12) — fallbacks used until an admin sets a custom
 # value in Settings > Login Screen. login_image_filename has no text default; its

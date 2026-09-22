@@ -69,8 +69,17 @@ def _validate_patient(data):
 @login_required
 def list_view():
     search = request.args.get("q", "").strip()
-    patients = db.list_patients(search=search)
-    return render_template("patients_list.html", patients=patients, search=search)
+    show_all = request.args.get("view") == "all"
+    # Receptionists get no financial data — not even indirectly through who lands on the default
+    # list — so their "active" filter never looks at payments, and no balance is fetched for them.
+    can_view_financial = can_view_financial_data()
+    patients = db.list_patients_directory(
+        search=search, only_active=not show_all, include_balance=can_view_financial,
+    )
+    return render_template(
+        "patients_list.html", patients=patients, search=search, show_all=show_all,
+        can_view_financial=can_view_financial,
+    )
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -117,10 +126,9 @@ def detail(patient_id):
     cases = db.list_cases_for_patient(patient_id)
     appointments = db.list_appointments_for_patient(patient_id)
     data_requests = db.list_data_requests_for_patient(patient_id)
-    prescriptions = db.list_prescriptions_for_patient(patient_id)
     return render_template(
         "patient_detail.html", patient=patient, cases=cases, appointments=appointments,
-        data_requests=data_requests, prescriptions=prescriptions,
+        data_requests=data_requests,
     )
 
 

@@ -35,7 +35,8 @@ def test_add_prescription(logged_in_client, patient_id):
     assert b"Amoxicillin 500mg TID x5d" in detail_resp.data
 
 
-def test_prescription_appears_in_patient_history(logged_in_client, patient_id):
+def test_prescription_is_not_shown_on_patient_page(logged_in_client, patient_id):
+    """Prescriptions are recorded and viewed on the case itself, never on the patient page."""
     resp, _ = _create_case(logged_in_client, patient_id)
     case_url = resp.headers["Location"]
     case_id = int(case_url.rstrip("/").rsplit("/", 1)[-1])
@@ -47,11 +48,5 @@ def test_prescription_appears_in_patient_history(logged_in_client, patient_id):
     )
 
     patient_resp = logged_in_client.get(f"/patients/{patient_id}")
-    assert b"Prescription History" in patient_resp.data
-    assert b"Amoxicillin 500mg TID x5d" in patient_resp.data
-    assert b"Root Canal" in patient_resp.data  # linked back to the originating case
-
-
-def test_patient_with_no_prescriptions_shows_empty_state(logged_in_client, patient_id):
-    resp = logged_in_client.get(f"/patients/{patient_id}")
-    assert b"No prescriptions recorded yet." in resp.data
+    assert b"Prescription History" not in patient_resp.data
+    assert b"Amoxicillin 500mg TID x5d" not in patient_resp.data

@@ -1,6 +1,6 @@
 <section class="card">
-  <details id="referrals-details" data-case-id="{{ case.id }}" {% if referrals %}open{% endif %}>
-    <summary>Referral Notes <span class="referral-toggle-icon">{{ '▼ Hide' if referrals else '▶ Show' }}</span></summary>
+  <details class="js-collapsible" data-storage-key="section_open_referrals_{{ case.id }}" {% if referrals %}open{% endif %}>
+    <summary>Referral Notes <span class="collapsible-toggle-icon">{{ '▼ Hide' if referrals else '▶ Show' }}</span></summary>
 
     {% if referrals %}
     <ul class="entry-list">

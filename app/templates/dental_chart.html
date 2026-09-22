@@ -4,12 +4,21 @@
 <p><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
 <h1>Dental Chart — {{ patient.name }}</h1>
 
+<div class="severity-summary">
+  {% for s in ['attention', 'scheduled', 'stable'] %}
+  <span class="severity-tile severity-tile-{{ s }}"><span class="dot"></span>{{ severity_counts[s] }} {{ severity_labels[s] }}</span>
+  {% endfor %}
+</div>
+<p class="hint">Coloured by <strong>severity</strong>, not treatment stage — Needs Attention means an untreated problem (Caries, Fracture, Other), whatever its status; a Planned crown or an Existing filling are both just Stable/Scheduled since neither is an active problem. Only a tooth's <i>current</i> entry is coloured this way — an older, superseded entry in Chart History below is shown in grey, since it no longer reflects the tooth's present state.</p>
+
 {% macro tooth_box(tooth_id, x, y) %}
 {% set entries = current_chart.get(tooth_id, []) %}
 {% set primary = entries[0] if entries else None %}
 {% set fill = finding_colors.get(primary.finding, '#ffffff') if primary else '#ffffff' %}
-<a href="?tooth={{ tooth_id }}#chart-form">
-  <rect x="{{ x }}" y="{{ y }}" width="32" height="32" fill="{{ fill }}" stroke="#333" stroke-width="1"></rect>
+{% set is_selected = form_state.tooth_id == tooth_id %}
+<a href="?tooth={{ tooth_id }}&dentition={{ dentition_view }}#chart-form">
+  <rect x="{{ x }}" y="{{ y }}" width="32" height="32" fill="{{ fill }}"
+        stroke="{{ '#e74c3c' if is_selected else '#333' }}" stroke-width="{{ '3' if is_selected else '1' }}"></rect>
   <text x="{{ x + 16 }}" y="{{ y + 20 }}" text-anchor="middle" font-size="11">{{ tooth_id }}</text>
   <title>Tooth {{ tooth_id }}{% for e in entries %} · {{ e.surface }}: {{ e.finding }} ({{ e.status }}){% endfor %}{% if not entries %} · No entries yet{% endif %}</title>
 </a>
@@ -20,30 +29,62 @@
 {% endmacro %}
 
 <section class="card">
-  <h2>Chart</h2>
-  <svg viewBox="0 0 610 190" xmlns="http://www.w3.org/2000/svg" class="dental-chart-svg">
+  <div class="page-header">
+    <h2>Chart</h2>
+    <div class="view-toggle">
+      <a class="button {% if dentition_view != 'mixed' %}button-active{% endif %}"
+         href="{{ url_for('dental.chart', patient_id=patient.id, dentition='adult') }}">Adult (Permanent)</a>
+      <a class="button {% if dentition_view == 'mixed' %}button-active{% endif %}"
+         href="{{ url_for('dental.chart', patient_id=patient.id, dentition='mixed') }}">Mixed / Paediatric</a>
+    </div>
+  </div>
+  <svg viewBox="0 0 610 {{ 190 if dentition_view == 'mixed' else 90 }}" xmlns="http://www.w3.org/2000/svg" class="dental-chart-svg">
     {{ tooth_row(teeth_upper_permanent, 10) }}
     {{ tooth_row(teeth_lower_permanent, 50) }}
+    {% if dentition_view == 'mixed' %}
     {{ tooth_row(teeth_upper_primary, 110) }}
     {{ tooth_row(teeth_lower_primary, 150) }}
+    {% endif %}
   </svg>
-  <p class="hint">Top two rows: permanent dentition (upper/lower). Bottom two rows: primary dentition (upper/lower). Click a tooth to add an entry for it.</p>
-  <div class="chart-legend">
-    {% for finding, color in finding_colors.items() %}
-    <span><span class="swatch" style="background: {{ color }};"></span>{{ finding }}</span>
-    {% endfor %}
-  </div>
+  <p class="hint">
+    {% if dentition_view == 'mixed' %}Top two rows: permanent dentition (upper/lower). Bottom two rows: primary dentition (upper/lower).
+    {% else %}Showing permanent dentition only — switch to <strong>Mixed / Paediatric</strong> above to also chart primary (baby) teeth.
+    {% endif %}
+    Click a tooth to add an entry for it.
+  </p>
 </section>
 
 <section class="card" id="chart-form">
   <h2>Add Chart Entry</h2>
+  {% if form_state.tooth_id %}
+  {% set selected_entries = current_chart.get(form_state.tooth_id, []) %}
+  <div class="selected-tooth-panel">
+    <strong>Tooth {{ form_state.tooth_id }} — current entries</strong>
+    {% if selected_entries %}
+    <ul class="entry-list">
+      {% for e in selected_entries %}
+      <li class="dental-severity-{{ e.severity }}">
+        {{ e.surface }}: {{ e.finding }}
+        <span class="badge-plain">{{ e.status }}</span>
+        {% if e.planned_date %}
+        <span class="hint">{% if e.status == 'Planned' and e.planned_date < today %}⚠ Overdue since {{ e.planned_date }}{% else %}Planned by {{ e.planned_date }}{% endif %}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">No entries yet for this tooth.</p>
+    {% endif %}
+  </div>
+  {% endif %}
   {% if errors %}
   <ul class="errors">
     {% for e in errors %}<li>{{ e }}</li>{% endfor %}
   </ul>
   {% endif %}
-  <form method="post" class="inline-form">
+  <form method="post" class="inline-form form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="dentition_view" value="{{ dentition_view }}">
     <label>Tooth
       <select name="tooth_id" required>
         <option value="">Select…</option>
@@ -53,12 +94,14 @@
         <optgroup label="Permanent — Lower">
           {% for t in teeth_lower_permanent %}<option value="{{ t }}" {% if form_state.tooth_id == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
         </optgroup>
+        {% if dentition_view == 'mixed' %}
         <optgroup label="Primary — Upper">
           {% for t in teeth_upper_primary %}<option value="{{ t }}" {% if form_state.tooth_id == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
         </optgroup>
         <optgroup label="Primary — Lower">
           {% for t in teeth_lower_primary %}<option value="{{ t }}" {% if form_state.tooth_id == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
         </optgroup>
+        {% endif %}
       </select>
     </label>
     <label>Surface
@@ -83,27 +126,47 @@
         {% for c in cases %}<option value="{{ c.id }}" {% if form_state.case_id == c.id|string %}selected{% endif %}>{{ c.title }}</option>{% endfor %}
       </select>
     </label>
-    <label>Notes<textarea name="notes">{{ form_state.notes }}</textarea></label>
-    <button type="submit">Add Entry</button>
+    <label>Planned By (optional)
+      <input type="date" name="planned_date" value="{{ form_state.planned_date }}">
+    </label>
+    <label class="checkbox form-grid-full">
+      <input type="checkbox" name="set_as_followup" {% if form_state.set_as_followup %}checked{% endif %}>
+      Also set this as the linked case's follow-up reminder (requires a Related Case and a Planned By date)
+    </label>
+    <label class="form-grid-full">Notes<textarea name="notes">{{ form_state.notes }}</textarea></label>
+    <button type="submit" class="form-grid-full">Add Entry</button>
   </form>
-  <p class="hint">Entries are append-only — a correction is a new entry, not an edit of an old one. Whole-tooth findings (Missing/Extracted, Crown, Root Canal, Implant) are always recorded against the whole tooth regardless of the surface selected.</p>
+  <p class="hint">Entries are append-only — a correction is a new entry, not an edit of an old one. Whole-tooth findings (Missing/Extracted, Crown, Root Canal, Implant) are always recorded against the whole tooth regardless of the surface selected. A Planned entry whose Planned By date has passed shows as Needs Attention. Linking to a follow-up replaces whatever follow-up the case already had, same as booking an appointment or a no-show would.</p>
 </section>
 
 <section class="card">
-  <h2>Chart History</h2>
-  {% if history %}
-  <ul class="entry-list">
-    {% for e in history %}
-    <li>
-      <span class="entry-date">{{ e.recorded_at }}</span>
-      Tooth {{ e.tooth_id }} ({{ e.dentition }}) — {{ e.surface }}: {{ e.finding }}
-      <span class="badge badge-status-{{ e.status|lower }}">{{ e.status }}</span>
-      {% if e.notes %}<p>{{ e.notes }}</p>{% endif %}
-    </li>
+  <details class="js-collapsible" data-storage-key="section_open_dental_history_{{ patient.id }}" {% if history %}open{% endif %}>
+    <summary>Chart History{% if history %} <span class="hint">({{ history|length }})</span>{% endif %} <span class="collapsible-toggle-icon">{{ '▼ Hide' if history else '▶ Show' }}</span></summary>
+    {% if history_by_tooth %}
+    {% for group in history_by_tooth %}
+    <div class="history-tooth-group{% if form_state.tooth_id == group.tooth_id %} history-tooth-group-selected{% endif %}">
+      <h4>Tooth {{ group.tooth_id }} ({{ group.dentition }})</h4>
+      <ul class="entry-list">
+        {% for e in group.entries %}
+        <li class="{{ 'dental-severity-' + e.severity if e.is_current else 'dental-history-superseded' }}">
+          <span class="entry-date">{{ e.recorded_at }}</span>
+          {{ e.surface }}: {{ e.finding }}
+          <span class="badge-plain">{{ e.status }}</span>
+          {% if not e.is_current %}<span class="hint">Superseded</span>{% endif %}
+          {% if e.planned_date %}
+          <span class="hint">{% if e.status == 'Planned' and e.planned_date < today %}⚠ Overdue since {{ e.planned_date }}{% else %}Planned by {{ e.planned_date }}{% endif %}</span>
+          {% endif %}
+          {% if e.notes %}<p>{{ e.notes }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
     {% endfor %}
-  </ul>
-  {% else %}
-  <p class="empty-state">No dental chart entries yet.</p>
-  {% endif %}
+    {% else %}
+    <p class="empty-state">No dental chart entries yet.</p>
+    {% endif %}
+  </details>
 </section>
+
+<script src="{{ url_for('static', filename='collapsible.js') }}"></script>
 {% endblock %}

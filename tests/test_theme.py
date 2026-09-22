@@ -32,6 +32,13 @@ def test_theme_css_route_is_public_and_serves_default(client):
     assert "--border:" in body
 
 
+def test_theme_css_picks_readable_text_color_for_the_menu_bar(client):
+    from app.theme import _on_color
+    assert _on_color("#4f7d32") == "#ffffff"   # the default green — white text
+    assert _on_color("#ffe08a") == "#1f2933"   # a pale yellow — dark text
+    assert "--on-brand: #ffffff;" in client.get("/theme.css").data.decode()
+
+
 def test_login_page_links_theme_stylesheet(setup_admin):
     resp = setup_admin.get("/login")
     assert "/theme.css" in resp.data.decode()

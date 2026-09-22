@@ -1,5 +1,10 @@
 <section class="card">
-  <h2>Lab Requisitions</h2>
+  {% set due_count = (lab_reqs|rejectattr('status', 'equalto', 'Received')|list|length) if upcoming_appt_date else 0 %}
+  <details class="js-collapsible" data-storage-key="section_open_lab_reqs_{{ case.id }}">
+    <summary>Lab Requisitions
+      {% if due_count %}<span class="badge badge-lab-delayed">⚠ {{ due_count }} due before visit</span>{% endif %}
+      <span class="collapsible-toggle-icon">▶ Show</span>
+    </summary>
   {% if lab_reqs %}
   <ul class="entry-list">
     {% for r in lab_reqs %}
@@ -49,4 +54,5 @@
     <label>Notes<input type="text" name="notes"></label>
     <button type="submit">Add Lab Requisition</button>
   </form>
+  </details>
 </section>

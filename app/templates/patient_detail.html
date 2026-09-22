@@ -32,11 +32,23 @@
     <a class="button" href="{{ url_for('cases.new', patient_id=patient.id) }}">+ New Case</a>
   </div>
   {% if cases %}
-  <ul class="case-list">
+  {% set closed_case_count = cases|rejectattr('status', 'equalto', 'Active')|list|length %}
+  {% if closed_case_count %}
+  <label class="case-filter-toggle">
+    <input type="checkbox" id="show-all-cases"> Show all cases (including {{ closed_case_count }} closed)
+  </label>
+  {% endif %}
+  <ul class="case-list" id="case-list">
     {% for c in cases %}
-    <li>
-      <a href="{{ url_for('cases.detail', case_id=c.id) }}">{{ c.title }}</a>
-      <span class="badge badge-{{ 'active' if c.status == 'Active' else 'closed' }}">{{ c.status }}</span>
+    <li{% if c.status != 'Active' %} class="case-row-closed" hidden{% endif %}>
+      <div class="case-row-main">
+        <a href="{{ url_for('cases.detail', case_id=c.id) }}">{{ c.title }}</a>
+        <span class="badge badge-{{ 'active' if c.status == 'Active' else 'closed' }}">{{ c.status }}</span>
+        {% if c.doctor_name %}<span class="hint">{{ c.doctor_name }}</span>{% endif %}
+      </div>
+      <div class="case-row-meta">
+        Opened {{ c.created_at[:10] }}{% if c.latest_visit_note %} · {{ c.latest_visit_note|truncate(70) }}{% endif %}
+      </div>
     </li>
     {% endfor %}
   </ul>
@@ -71,7 +83,7 @@
   {% if patient.is_anonymized %}
   <p class="allergy-alert">⚠ This patient's contact details were erased on {{ patient.anonymized_at }} per a DPDP Erasure request. Clinical and financial records are preserved.</p>
   {% endif %}
-  <dl>
+  <dl class="dl-two-col">
     <dt>Date of Birth</dt>
     <dd>{{ patient.date_of_birth or '—' }}{% if patient.computed_age is not none %} (Age {{ patient.computed_age }}){% endif %}</dd>
     <dt>Sex</dt><dd>{{ patient.sex or '—' }}</dd>
@@ -107,20 +119,5 @@
   <a class="button" href="{{ url_for('dpdp.new_data_request', patient_id=patient.id) }}">+ New Data-Rights Request</a>
 </section>
 
-<section class="card">
-  <h2>Prescription History</h2>
-  {% if prescriptions %}
-  <ul class="entry-list">
-    {% for rx in prescriptions %}
-    <li>
-      <span class="entry-date">{{ rx.prescribed_date }}</span>
-      <a href="{{ url_for('cases.detail', case_id=rx.case_id) }}">{{ rx.case_title }}</a>
-      <p>{{ rx.rx_details }}</p>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="empty-state">No prescriptions recorded yet.</p>
-  {% endif %}
-</section>
+<script src="{{ url_for('static', filename='patient_case_filter.js') }}"></script>
 {% endblock %}
