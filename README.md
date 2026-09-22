@@ -94,6 +94,21 @@ python seed_demo_data.py
 
 Safe to re-run — it's idempotent and won't duplicate existing rows.
 
+### Faster one-command setup
+
+`dev_bootstrap.py` combines steps 4's `/setup` and this seeding step into one command —
+useful for a throwaway local instance where clicking through `/setup` by hand isn't worth it:
+
+```powershell
+python dev_bootstrap.py
+```
+
+It creates a bootstrap admin account (default username `admin`, password
+`DevPassword123!` — override with `--username`/`--password`) only if one doesn't already
+exist, then seeds demo data the same as `seed_demo_data.py` (pass `--no-seed` to skip
+that part). It prints the login credentials to use at `/login`. Like `seed_demo_data.py`,
+it's safe to re-run — it never touches an existing admin account.
+
 ## 6. Running the test suite
 
 ```powershell
