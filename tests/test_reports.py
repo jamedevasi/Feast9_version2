@@ -223,3 +223,43 @@ def test_ledger_ignores_unknown_options(logged_in_client, patient_id):
     resp = logged_in_client.get("/reports/?view=bogus&group=drop_table&balance=x&period_on=y")
     assert resp.status_code == 200
     assert b"Cases Ledger" in resp.data
+
+
+def test_period_presets_month_year_and_financial_year():
+    from app.routes.reports_routes import period_presets
+
+    groups = dict(period_presets(date(2026, 2, 14)))
+    assert groups["Month"] == [("Feb 2026", "2026-02-01", "2026-02-28"), ("Jan 2026", "2026-01-01", "2026-01-31")]
+    assert groups["Calendar year"][0] == ("2026", "2026-01-01", "2026-12-31")
+    # Feb is still in the FY that started the previous April.
+    assert groups["Financial year"] == [
+        ("FY 2025–26", "2025-04-01", "2026-03-31"),
+        ("FY 2024–25", "2024-04-01", "2025-03-31"),
+    ]
+    # From April on, the current FY starts this year; January's "last month" crosses the year.
+    assert dict(period_presets(date(2026, 4, 1)))["Financial year"][0] == ("FY 2026–27", "2026-04-01", "2027-03-31")
+    assert dict(period_presets(date(2026, 1, 10)))["Month"][1] == ("Dec 2025", "2025-12-01", "2025-12-31")
+
+
+def test_period_preset_links_keep_ledger_options_and_mark_active(logged_in_client):
+    fy_start = date.today().year if date.today().month >= 4 else date.today().year - 1
+    start, end = f"{fy_start}-04-01", f"{fy_start + 1}-03-31"
+    body = logged_in_client.get(f"/reports/?view=payments&group=method&start={start}&end={end}").data.decode()
+    assert "period-chip period-chip-active" in body
+    assert f"start={start}&amp;end={end}" in body
+    assert "view=payments" in body and "group=method" in body
+
+
+def test_ledger_highlights_active_quick_view(logged_in_client):
+    def active(qs):
+        body = logged_in_client.get(f"/reports/{qs}").data.decode()
+        marker = 'period-chip period-chip-active"\n       href="/reports/?'
+        i = body.find(marker)
+        return None if i < 0 else body[body.index(">", i) + 1:body.index("</a>", i)]
+
+    assert active("") == "Pending payments"  # the default view
+    assert active("?view=cases&balance=outstanding&group=doctor") == "Pending payments"  # grouping ignored
+    assert active("?view=cases&balance=&period_on=closed") == "Cases closed in period"
+    assert active("?view=payments") == "Payments received in period"
+    assert active("?view=payments&method=UPI") is None  # a filter no preset has
+    assert "Custom filters" in logged_in_client.get("/reports/?view=cases&status=Active").data.decode()

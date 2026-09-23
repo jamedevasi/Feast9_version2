@@ -24,6 +24,43 @@ def _period_from_request():
     return start, end
 
 
+def _month_bounds(year, month):
+    first = date(year, month, 1)
+    next_first = date(year + (month == 12), month % 12 + 1, 1)
+    return first, next_first - timedelta(days=1)
+
+
+def period_presets(today=None):
+    """Quick period links for the Reports filter: this/last month, this/last calendar year,
+    and this/last Indian financial year (1 Apr – 31 Mar). Returned as (group, [(label, start,
+    end), ...]) so the template can lay each group out as one row. A period's end may be in
+    the future (e.g. 31 Dec) — the queries are plain date ranges, so that's harmless."""
+    today = today or date.today()
+    this_m = _month_bounds(today.year, today.month)
+    day_before = this_m[0] - timedelta(days=1)
+    last_m = _month_bounds(day_before.year, day_before.month)
+    fy = today.year if today.month >= 4 else today.year - 1  # the FY's starting year
+
+    def fy_range(y):
+        return (f"FY {y}–{str(y + 1)[2:]}", date(y, 4, 1), date(y + 1, 3, 31))
+
+    def year_range(y):
+        return (str(y), date(y, 1, 1), date(y, 12, 31))
+
+    groups = [
+        ("Month", [
+            (this_m[0].strftime("%b %Y"), *this_m),
+            (last_m[0].strftime("%b %Y"), *last_m),
+        ]),
+        ("Calendar year", [year_range(today.year), year_range(today.year - 1)]),
+        ("Financial year", [fy_range(fy), fy_range(fy - 1)]),
+    ]
+    return [
+        (name, [(label, s.isoformat(), e.isoformat()) for label, s, e in items])
+        for name, items in groups
+    ]
+
+
 def _report_context(start, end):
     """Shared by the on-screen report and the print view — same numbers either way."""
     return {
@@ -67,6 +104,23 @@ LEDGER_SUM_FIELDS = {"cases": ("total_cost", "paid", "balance"), "payments": ("a
 LEDGER_STATUSES = {"", "Active", "Closed"}
 LEDGER_BALANCES = {"": "Any balance", "outstanding": "Outstanding only", "paid": "Fully paid"}
 LEDGER_PERIOD_ON = {"": "All time", "opened": "Opened in period", "closed": "Closed in period"}
+
+
+# One-click presets recreating the three reports the ledger replaced. A preset is "active"
+# when the current filters match it exactly — grouping is ignored, since grouping pending
+# payments by doctor is still the pending-payments view.
+LEDGER_QUICK_VIEWS = [
+    ("Pending payments", {"view": "cases", "status": "", "balance": "outstanding", "period_on": ""}),
+    ("Cases closed in period", {"view": "cases", "status": "", "balance": "", "period_on": "closed"}),
+    ("Payments received in period", {"view": "payments", "method": ""}),
+]
+
+
+def _active_quick_view(params):
+    for label, preset in LEDGER_QUICK_VIEWS:
+        if all(params.get(k) == v for k, v in preset.items()):
+            return label
+    return None
 
 
 def _group_key(view, group, row):
@@ -138,6 +192,9 @@ def _ledger_from_request(start, end):
             "view": view, "group": group, "status": status,
             "balance": balance, "period_on": period_on, "method": method,
         },
+        "quick_view": _active_quick_view({
+            "view": view, "status": status, "balance": balance, "period_on": period_on, "method": method,
+        }),
         "row_count": len(rows),
         "groups": groups,
         "totals": {f: sum(r[f] for r in rows) for f in sum_fields},
@@ -147,6 +204,7 @@ def _ledger_from_request(start, end):
 def _ledger_options():
     return {
         "ledger_groups": LEDGER_GROUPS,
+        "ledger_quick_views": LEDGER_QUICK_VIEWS,
         "ledger_balances": LEDGER_BALANCES,
         "ledger_period_on": LEDGER_PERIOD_ON,
         "payment_methods": db.list_payment_methods(),
@@ -161,6 +219,7 @@ def view_reports():
     return render_template(
         "reports.html", start=start, end=end,
         ledger=_ledger_from_request(start, end), **_ledger_options(),
+        period_presets=period_presets(),
         **_report_context(start, end),
     )
 

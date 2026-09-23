@@ -20,6 +20,14 @@
     <span class="stat-value">₹{{ '%.2f'|format(kpis.revenue_collected) }}</span>
   </div>
   <div class="stat-tile">
+    <span class="stat-label">Total Patients</span>
+    <span class="stat-value">{{ kpis.total_patients }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">Active Cases</span>
+    <span class="stat-value">{{ kpis.active_cases }}</span>
+  </div>
+  <div class="stat-tile">
     <span class="stat-label">New Patients</span>
     <span class="stat-value">{{ kpis.new_patients }}</span>
   </div>
@@ -47,16 +55,44 @@
     <canvas id="chart-monthly-revenue" role="img" aria-label="Monthly revenue collected for {{ year }}"></canvas>
   </section>
   <section class="card chart-card">
-    <h2>Monthly New Patients</h2>
-    <canvas id="chart-monthly-patients" role="img" aria-label="New patients registered per month for {{ year }}"></canvas>
+    <h2>Patients — Total vs New</h2>
+    <canvas id="chart-patients-total-new" role="img" aria-label="Total patients on file at each month-end, and new patients registered each month, for {{ year }}"></canvas>
   </section>
   <section class="card chart-card">
     <h2>Monthly New Cases</h2>
     <canvas id="chart-monthly-cases" role="img" aria-label="New cases opened per month for {{ year }}"></canvas>
   </section>
   <section class="card chart-card">
+    <h2>Active Cases (month-end)</h2>
+    <canvas id="chart-active-cases" role="img" aria-label="Cases open at the end of each month of {{ year }}"></canvas>
+    {% if not chart_data.yearly_active_cases %}<p class="hint chart-note">A year-by-year trend appears here once there's more than one year of cases.</p>{% endif %}
+  </section>
+  {% if chart_data.yearly_active_cases %}
+  <section class="card chart-card">
+    <h2>Active Cases — Year-end Trend</h2>
+    <canvas id="chart-active-cases-yearly" role="img" aria-label="Cases open at the end of each year"></canvas>
+  </section>
+  {% endif %}
+  <section class="card chart-card">
     <h2>Monthly Appointments</h2>
     <canvas id="chart-monthly-appointments" role="img" aria-label="Appointments booked per month for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Busiest Days — Appointments</h2>
+    <canvas id="chart-weekday-appointments" role="img" aria-label="Appointments by day of the week for {{ year }}, excluding cancelled"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Busiest Days — Revenue</h2>
+    <canvas id="chart-weekday-revenue" role="img" aria-label="Revenue collected by day of the week for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Patient Demographics</h2>
+    {% if chart_data.demographics.values()|sum %}
+    <canvas id="chart-demographics" role="img" aria-label="Patients on file by men, women and children under 18"></canvas>
+    <p class="hint chart-note">Patients on file at the end of {{ year }}. Children = under 18, whatever their sex.</p>
+    {% else %}
+    <p class="empty-state">No patients on file by the end of {{ year }}.</p>
+    {% endif %}
   </section>
   <section class="card chart-card">
     <h2>Case Status</h2>
@@ -75,14 +111,39 @@
     {% endif %}
   </section>
   <section class="card chart-card">
-    <h2>Procedure Popularity</h2>
+    <h2>Top Procedures</h2>
     {% if chart_data.procedure_popularity %}
     <canvas id="chart-procedure-popularity" role="img" aria-label="Most common procedures for {{ year }}"></canvas>
     {% else %}
     <p class="empty-state">No procedures recorded on any case opened in {{ year }}.</p>
     {% endif %}
   </section>
+  <section class="card chart-card chart-card-wide">
+    <h2>Revenue by Procedure Type</h2>
+    {% if chart_data.revenue_by_procedure %}
+    <canvas id="chart-revenue-by-procedure" role="img" aria-label="Monthly revenue collected in {{ year }}, split by procedure type"></canvas>
+    {% else %}
+    <p class="empty-state">No revenue collected in {{ year }}.</p>
+    {% endif %}
+  </section>
 </div>
+
+{% if chart_data.revenue_by_procedure %}
+<details class="card chart-table">
+  <summary>Revenue by Procedure Type — table</summary>
+  <p class="hint">Payments dated in {{ year }}. A case with several procedures has each payment split equally between them.</p>
+  <div class="table-scroll">
+  <table class="data-table ledger-table">
+    <thead><tr><th>Procedure</th>{% for m in chart_data.months %}<th class="num">{{ m }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+    <tbody>
+      {% for s in chart_data.revenue_by_procedure %}
+      <tr><td>{{ s.name }}</td>{% for v in s["values"] %}<td class="num">{{ '%.0f'|format(v) if v else '—' }}</td>{% endfor %}<td class="num"><strong>₹{{ '%.0f'|format(s["values"]|sum) }}</strong></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endif %}
 
 <script type="application/json" id="analytics-data">{{ chart_data|tojson }}</script>
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>

@@ -13,6 +13,18 @@
   </span>
 </form>
 
+<div class="period-presets">
+  {% for group_name, items in period_presets %}
+  <span class="period-preset-group">
+    <span class="period-preset-label">{{ group_name }}</span>
+    {% for label, p_start, p_end in items %}
+    <a class="period-chip{% if p_start == start and p_end == end %} period-chip-active{% endif %}"
+       href="{{ url_for('reports.view_reports', start=p_start, end=p_end, **ledger.params) }}">{{ label }}</a>
+    {% endfor %}
+  </span>
+  {% endfor %}
+</div>
+
 <div class="stat-grid">
   <div class="stat-tile">
     <span class="stat-label">Revenue Collected</span>

@@ -13,6 +13,12 @@ def _selected_year():
     return int(raw) if raw.isdigit() else date.today().year
 
 
+def _last_value(series):
+    """Last non-None entry of a month-end series (None marks months not reached yet)."""
+    values = [v for v in series if v is not None]
+    return values[-1] if values else 0
+
+
 @bp.route("/")
 @login_required
 @financial_access_required
@@ -32,12 +38,25 @@ def view_analytics():
         "appointment_status": db.get_appointment_status_breakdown(year),
         "doctor_revenue": db.get_doctor_revenue_share(year),
         "procedure_popularity": db.get_procedure_popularity(year),
+        "monthly_total_patients": db.get_monthly_total_patients(year),
+        "monthly_active_cases": db.get_monthly_active_cases(year),
+        "weekday": db.get_weekday_activity(year),
+        "demographics": db.get_patient_demographics(year),
+        "revenue_by_procedure": db.get_monthly_revenue_by_procedure(year),
     }
+    # The year-over-year line only means something once there are 2+ years of cases.
+    yearly_active = db.get_yearly_active_cases()
+    chart_data["yearly_active_cases"] = yearly_active if len(yearly_active) >= 2 else []
+
+    # Year-end (or latest, for the current year) values of the two month-end series.
+    kpis = db.get_analytics_kpis(year)
+    kpis["total_patients"] = _last_value(chart_data["monthly_total_patients"])
+    kpis["active_cases"] = _last_value(chart_data["monthly_active_cases"])
 
     return render_template(
         "analytics.html",
         years=years,
         year=year,
-        kpis=db.get_analytics_kpis(year),
+        kpis=kpis,
         chart_data=chart_data,
     )

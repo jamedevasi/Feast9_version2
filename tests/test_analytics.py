@@ -128,6 +128,12 @@ def test_analytics_page_renders_charts_and_kpis(logged_in_client, patient_id):
     assert "No-show Rate" in body
     assert 'id="chart-monthly-revenue"' in body
     assert 'id="chart-appointment-status"' in body
+    for chart in ("patients-total-new", "active-cases", "weekday-appointments", "weekday-revenue",
+                  "demographics"):
+        assert f'id="chart-{chart}"' in body
+    assert "Revenue by Procedure Type" in body  # empty state here — no payments recorded yet
+    assert 'id="chart-monthly-patients"' not in body  # folded into Total vs New, not duplicated
+    assert "Total Patients" in body and "Active Cases" in body
     assert "vendor/chart.umd.min.js" in body
     assert "analytics.js" in body
 
@@ -140,3 +146,83 @@ def test_receptionist_blocked_from_analytics(logged_in_client, patient_id):
     assert logged_in_client.get("/analytics/").status_code == 403
     dash = logged_in_client.get("/dashboard")
     assert b'href="/analytics/"' not in dash.data
+
+
+def test_total_patients_and_active_cases_month_end(logged_in_client, patient_id):
+    _create_case(logged_in_client, patient_id, title="Open Case")
+    totals = db.get_monthly_total_patients(YEAR)
+    active = db.get_monthly_active_cases(YEAR)
+    assert totals[MONTH_INDEX] >= 1 and active[MONTH_INDEX] >= 1
+    # Months that haven't happened yet stop the line rather than drawing a flat future.
+    assert all(v is None for v in totals[MONTH_INDEX + 1:])
+    assert all(v is None for v in active[MONTH_INDEX + 1:])
+    # A past year ends with nothing open if no case existed then.
+    assert db.get_monthly_active_cases(2000) == [0] * 12
+
+
+def test_active_cases_excludes_closed_and_yearly_trend_needs_two_years(logged_in_client, patient_id):
+    case_id, case_url, _ = _case_for(logged_in_client, patient_id, title="Soon Closed")
+    token = get_csrf(logged_in_client, case_url)
+    logged_in_client.post(f"/cases/{case_id}/close", data={"csrf_token": token})
+    assert db.get_monthly_active_cases(YEAR)[MONTH_INDEX] == 0
+    assert len(db.get_yearly_active_cases()) == 1
+    resp = logged_in_client.get("/analytics/")
+    assert b'id="chart-active-cases-yearly"' not in resp.data
+    assert b"more than one year of cases" in resp.data
+
+
+def test_weekday_activity_monday_first_and_skips_cancelled(logged_in_client, patient_id):
+    conn = db.get_db()
+    # 2026-09-21 is a Monday, 2026-09-27 a Sunday.
+    for appt_date, status in [("2026-09-21", "Scheduled"), ("2026-09-21", "Cancelled"), ("2026-09-27", "Completed")]:
+        conn.execute(
+            "INSERT INTO appointments (patient_id, appt_date, start_time, status, created_at) VALUES (?, ?, '10:00', ?, ?)",
+            (patient_id, appt_date, status, "2026-09-01 10:00:00"),
+        )
+    conn.commit()
+    conn.close()
+    weekday = db.get_weekday_activity(2026)
+    assert weekday["labels"][0] == "Mon" and weekday["labels"][6] == "Sun"
+    assert weekday["appointments"][0] == 1  # the cancelled Monday booking isn't counted
+    assert weekday["appointments"][6] == 1
+
+
+def test_patient_demographics_children_override_sex(logged_in_client, patient_id):
+    from tests.conftest import register_patient
+
+    register_patient(logged_in_client, name="Adult Man", sex="Male", date_of_birth="1980-05-05")
+    register_patient(
+        logged_in_client, name="Young Girl", sex="Female", date_of_birth=f"{YEAR - 8}-01-01",
+        guardian_name="Parent", guardian_relation="Mother", guardian_mobile="9812345678",
+    )
+    demo = db.get_patient_demographics(YEAR)
+    assert demo["Men"] == 1
+    assert demo["Women"] == 1  # the fixture patient (born 1990, Female)
+    assert demo["Children"] == 1
+
+
+def test_revenue_by_procedure_splits_payment_across_procedures(logged_in_client, patient_id):
+    case_id, case_url, _ = _case_for(
+        logged_in_client, patient_id, title="Two Procedures", procedures=["Scaling", "Filling"], total_cost="1000",
+    )
+    _add_payment(logged_in_client, case_id, case_url, 600)
+    series = {s["name"]: s for s in db.get_monthly_revenue_by_procedure(YEAR)}
+    assert series["Scaling"]["values"][MONTH_INDEX] == 300
+    assert series["Filling"]["values"][MONTH_INDEX] == 300
+    assert not any(s["is_other"] for s in series.values())
+
+
+def test_revenue_by_procedure_folds_tail_into_other(logged_in_client, patient_id):
+    names = ["P1", "P2", "P3", "P4", "P5", "P6", "P7"]
+    conn = db.get_db()
+    for i, name in enumerate(names):
+        conn.execute("INSERT INTO procedure_types (name, is_active) VALUES (?, 1)", (name,))
+    conn.commit()
+    conn.close()
+    for i, name in enumerate(names):
+        case_id, case_url, _ = _case_for(logged_in_client, patient_id, title=f"Case {name}", procedures=[name], total_cost="10000")
+        _add_payment(logged_in_client, case_id, case_url, 1000 - i * 100)  # P1 earns most
+    series = db.get_monthly_revenue_by_procedure(YEAR)
+    assert [s["name"] for s in series[:5]] == ["P1", "P2", "P3", "P4", "P5"]
+    assert series[-1]["is_other"] and series[-1]["name"] == "Other (2 types)"
+    assert series[-1]["values"][MONTH_INDEX] == 500 + 400

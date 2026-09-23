@@ -9,10 +9,12 @@
   </div>
 
   <div class="ledger-presets">
-    <span class="hint">Quick views:</span>
-    <a href="{{ url_for('reports.view_reports', start=start, end=end, view='cases', balance='outstanding') }}#ledger">Pending payments</a>
-    <a href="{{ url_for('reports.view_reports', start=start, end=end, view='cases', balance='', period_on='closed') }}#ledger">Cases closed in period</a>
-    <a href="{{ url_for('reports.view_reports', start=start, end=end, view='payments') }}#ledger">Payments received in period</a>
+    <span class="period-preset-label">Quick views</span>
+    {% for label, preset in ledger_quick_views %}
+    <a class="period-chip{% if ledger.quick_view == label %} period-chip-active{% endif %}"
+       href="{{ url_for('reports.view_reports', start=start, end=end, **preset) }}#ledger">{{ label }}</a>
+    {% endfor %}
+    {% if not ledger.quick_view %}<span class="hint">Custom filters</span>{% endif %}
   </div>
 
   <form method="get" action="{{ url_for('reports.view_reports') }}#ledger" class="ledger-filters">

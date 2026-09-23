@@ -2654,6 +2654,172 @@ def get_procedure_popularity(year, limit=8):
     return [{"name": name, "count": n} for name, n in ranked]
 
 
+def _month_ends(year):
+    """The last day of each month of `year`, as ISO strings, Jan..Dec."""
+    ends = []
+    for m in range(1, 13):
+        nxt = date(year + (m == 12), m % 12 + 1, 1)
+        ends.append((nxt - timedelta(days=1)).isoformat())
+    return ends
+
+
+def get_monthly_total_patients(year):
+    """Patients on file at each month-end of the year (cumulative, registered on or before
+    that day) — the 'Total' line beside the monthly new-patient bars. Months that haven't
+    ended yet in the current year are None, so the line stops at today instead of drawing a
+    flat future. Anonymised (DPDP-erased) patients still count: the record exists."""
+    today = date.today().isoformat()
+    conn = get_db()
+    out = []
+    for end in _month_ends(year):
+        if end[:7] > today[:7]:
+            out.append(None)
+            continue
+        out.append(conn.execute(
+            "SELECT COUNT(*) AS n FROM patients WHERE created_at != '' AND DATE(created_at) <= ?",
+            (min(end, today),),
+        ).fetchone()["n"])
+    conn.close()
+    return out
+
+
+def _active_cases_on(conn, day):
+    """Cases open at the end of `day`: opened on or before it, and not closed by then."""
+    return conn.execute(
+        """SELECT COUNT(*) AS n FROM cases
+           WHERE created_at != '' AND DATE(created_at) <= ?
+             AND (closed_at = '' OR closed_at IS NULL OR DATE(closed_at) > ?)""",
+        (day, day),
+    ).fetchone()["n"]
+
+
+def get_monthly_active_cases(year):
+    """Open cases at each month-end — reconstructed from created_at/closed_at, since case
+    status is only ever stored as the current value. None for months not reached yet."""
+    today = date.today().isoformat()
+    conn = get_db()
+    out = []
+    for end in _month_ends(year):
+        if end[:7] > today[:7]:
+            out.append(None)
+        else:
+            out.append(_active_cases_on(conn, min(end, today)))
+    conn.close()
+    return out
+
+
+def get_yearly_active_cases():
+    """Open cases at each year-end (or today, for the current year), oldest first — the
+    multi-year trend line. Only years that have any case activity are included."""
+    today = date.today().isoformat()
+    conn = get_db()
+    years = sorted({
+        int(r["y"]) for r in conn.execute(
+            "SELECT DISTINCT substr(created_at, 1, 4) AS y FROM cases WHERE created_at != ''"
+        ).fetchall() if r["y"] and r["y"].isdigit()
+    })
+    out = [{"year": y, "active": _active_cases_on(conn, min(f"{y}-12-31", today))} for y in years]
+    conn.close()
+    return out
+
+
+WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def get_weekday_activity(year):
+    """Appointment volume and revenue collected by day of week, Mon..Sun. Cancelled
+    appointments are left out — they never took up the chair. Revenue is by payment date."""
+    conn = get_db()
+    # SQLite's %w is 0=Sunday..6=Saturday; (w + 6) % 7 maps it to 0=Monday..6=Sunday.
+    appts = conn.execute(
+        """SELECT (CAST(strftime('%w', appt_date) AS INTEGER) + 6) % 7 AS d, COUNT(*) AS n
+           FROM appointments
+           WHERE substr(appt_date, 1, 4) = ? AND status != 'Cancelled'
+           GROUP BY d""",
+        (str(year),),
+    ).fetchall()
+    revenue = conn.execute(
+        """SELECT (CAST(strftime('%w', payment_date) AS INTEGER) + 6) % 7 AS d, COALESCE(SUM(amount), 0) AS total
+           FROM payments WHERE substr(payment_date, 1, 4) = ? GROUP BY d""",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    appt_by_day = {r["d"]: r["n"] for r in appts}
+    rev_by_day = {r["d"]: r["total"] for r in revenue}
+    return {
+        "labels": WEEKDAY_LABELS,
+        "appointments": [appt_by_day.get(d, 0) for d in range(7)],
+        "revenue": [rev_by_day.get(d, 0) for d in range(7)],
+    }
+
+
+def get_patient_demographics(year):
+    """Men / Women / Children (under 18) among patients on file at the end of the year (or
+    today). Age is today's age from date_of_birth, falling back to the age recorded at
+    registration — the same under-18 test the registration form's guardian rule uses.
+    Anonymised (erased) patients are excluded: their details are gone."""
+    cutoff = min(f"{year}-12-31", date.today().isoformat())
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT date_of_birth, age, sex FROM patients
+           WHERE created_at != '' AND DATE(created_at) <= ? AND COALESCE(is_anonymized, 0) = 0""",
+        (cutoff,),
+    ).fetchall()
+    conn.close()
+    counts = {"Men": 0, "Women": 0, "Children": 0, "Unknown": 0}
+    for r in rows:
+        age = compute_age(r["date_of_birth"])
+        if age is None:
+            age = r["age"]
+        if age is not None and age < 18:
+            counts["Children"] += 1
+        elif r["sex"] == "Male":
+            counts["Men"] += 1
+        elif r["sex"] == "Female":
+            counts["Women"] += 1
+        else:
+            counts["Unknown"] += 1
+    return counts
+
+
+def get_monthly_revenue_by_procedure(year, top_n=5):
+    """Revenue collected each month (by payment date), split by the procedure types on the
+    paying case. A case with several procedures has each payment split equally across them —
+    there's no per-procedure price to apportion by — and one with none counts as
+    'Unspecified'. The top_n procedures by yearly total keep their own series; the rest fold
+    into 'Other' so the colour palette never has to invent a hue."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT CAST(substr(pay.payment_date, 6, 2) AS INTEGER) AS m, pay.amount,
+                  c.procedures_json, c.custom_procedure
+           FROM payments pay JOIN cases c ON c.id = pay.case_id
+           WHERE substr(pay.payment_date, 1, 4) = ?""",
+        (str(year),),
+    ).fetchall()
+    conn.close()
+    by_proc = {}
+    for r in rows:
+        try:
+            procedures = list(json.loads(r["procedures_json"] or "[]"))
+        except ValueError:
+            procedures = []
+        if r["custom_procedure"]:
+            procedures.append(r["custom_procedure"])
+        procedures = procedures or ["Unspecified"]
+        share = r["amount"] / len(procedures)
+        for p in procedures:
+            by_proc.setdefault(p, [0.0] * 12)[r["m"] - 1] += share
+    ranked = sorted(by_proc, key=lambda p: sum(by_proc[p]), reverse=True)
+    # Folding a single leftover into "Other" would only hide its name — it gets the last slot.
+    keep = ranked if len(ranked) <= top_n + 1 else ranked[:top_n]
+    series = [{"name": p, "values": [round(v, 2) for v in by_proc[p]], "is_other": False} for p in keep]
+    rest = ranked[len(keep):]
+    if rest:
+        other = [round(sum(by_proc[p][i] for p in rest), 2) for i in range(12)]
+        series.append({"name": f"Other ({len(rest)} types)", "values": other, "is_other": True})
+    return series
+
+
 # ── Dental charting (§14 item) ──────────────────────────────────────────────
 # Append-only, like visit notes/prescriptions — a correction is a new entry, never an edit of
 # an old one; "current state" is derived (latest entry per tooth+surface), and the append-only
