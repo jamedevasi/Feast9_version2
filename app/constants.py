@@ -80,10 +80,11 @@ CHART_STATUSES = ["Existing", "Planned", "Ongoing", "Completed"]
 # Findings that represent an active, unresolved clinical problem — as opposed to Sound,
 # Restoration, Crown, Root Canal, Implant and Missing/Extracted, which describe either a
 # healthy tooth or dental work that's already done. Drives the chart's severity colour-coding
-# (app/validators.py:chart_entry_severity) — a *derived* view, layered on top of the finding
-# colours already used for the tooth-chart squares, rather than a second flat status colour
-# that would collide with them (e.g. "Restoration" and "Planned" both being blue said two
-# different things with the same colour).
+# (app/validators.py:chart_entry_severity) — the *only* colour language on the dental chart:
+# the tooth squares, summary tiles and Chart History all use it. The squares used to have a
+# separate per-finding colour table too, which the page's 3-colour severity legend didn't
+# explain (a Planned Crown showed amber) — dropped in favour of severity alone (user request
+# 2026-09-23); a tooth's findings are still in its hover title and the selected-tooth panel.
 CHART_PROBLEM_FINDINGS = {"Caries", "Fracture", "Other"}
 
 CHART_SEVERITIES = ["attention", "scheduled", "stable"]
@@ -111,15 +112,3 @@ DEFAULT_CLINIC_NAME = "Feast9"
 DEFAULT_THEME_PRIMARY_COLOR = "#4f7d32"
 DEFAULT_THEME_BACKGROUND_COLOR = "#f3f9ec"
 
-# Presentation only (SVG is a presentation layer, never the source of truth — feast9_v2_agents.md §14).
-CHART_FINDING_COLORS = {
-    "Sound": "#e9f7ef",
-    "Caries": "#e74c3c",
-    "Restoration": "#3498db",
-    "Crown": "#f1c40f",
-    "Root Canal": "#9b59b6",
-    "Implant": "#1abc9c",
-    "Missing/Extracted": "#95a5a6",
-    "Fracture": "#e67e22",
-    "Other": "#bdc3c7",
-}

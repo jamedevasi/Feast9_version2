@@ -33,8 +33,9 @@
         </div>
         {% for a in appts_by_day.get(iso_date, []) %}
         <a class="calendar-appt badge-status-{{ a.status|lower|replace(' ', '-') }}" href="{{ url_for('appointments.edit', appt_id=a.id) }}"
-           style="border-left-color: {{ a.doctor_color or '#adb5bd' }};">
-          {% if a.series_id %}🔁{% endif %}{{ a.start_time }} {{ a.patient_name }}
+           title="{{ a.doctor_name }}">
+          <span class="appt-dot" style="background: {{ a.doctor_color or '#adb5bd' }};"></span>
+          <span class="appt-label">{% if a.series_id %}🔁{% endif %}{{ a.start_time }} {{ a.patient_name }}</span>
         </a>
         {% endfor %}
       </td>
@@ -46,7 +47,7 @@
 </table>
 </div>
 
-<p class="hint">Coloured bar shows the doctor. Badge colour shows status — Scheduled (blue), Completed (green), Cancelled (grey), No-show (red).</p>
+<p class="hint">Dot shows the doctor. Badge colour shows status — Scheduled (blue), Completed (green), Cancelled (grey), No-show (red).</p>
 
 {% if doctors %}
 <div class="doctor-legend">

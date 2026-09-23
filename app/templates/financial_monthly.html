@@ -49,6 +49,21 @@
     <p><button type="submit">Save Overhead Expenses</button></p>
   </form>
   <p>Total Overhead: ₹{{ '%.2f'|format(overhead_total) }}</p>
+
+  <details class="clone-overhead">
+    <summary>Clone this month's expenses into future months</summary>
+    <form method="post" action="{{ url_for('financial.monthly_clone') }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="month" value="{{ month }}">
+      <input type="hidden" name="view" value="{{ view }}">
+      <label>Clone into the next
+        <input type="number" name="clone_count" min="1" max="24" value="3" class="input-narrow"> month(s)
+      </label>
+      <label><input type="checkbox" name="overwrite"> Overwrite months that already have expenses saved</label>
+      <button type="submit">Clone</button>
+    </form>
+    <p class="hint">Uses the figures currently saved above for {{ month }} — save any changes first.</p>
+  </details>
 </section>
 
 {% if view == 'long' %}

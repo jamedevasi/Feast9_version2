@@ -221,10 +221,15 @@ def new():
 
     patient_id_arg = request.args.get("patient_id", "").strip()
     clear_followup = request.args.get("clear_followup", "")
-    if clear_followup.isdigit() and not patient_id_arg:
+    prefill_title = ""
+    if clear_followup.isdigit():
         case = db.get_case(int(clear_followup))
         if case:
-            patient_id_arg = str(case["patient_id"])
+            if not patient_id_arg:
+                patient_id_arg = str(case["patient_id"])
+            # Booking from a follow-up: carry its Next Action Note over as the appointment
+            # title — still just a prefill, editable before saving.
+            prefill_title = case["next_action_note"] or ""
 
     prefill_patient = db.get_patient(int(patient_id_arg)) if patient_id_arg.isdigit() else None
     prefill_date = normalize_date(request.args.get("date", "")) or today_iso()
@@ -236,7 +241,7 @@ def new():
         "appt_date": prefill_date,
         "start_time": "",
         "end_time": "",
-        "title": "",
+        "title": prefill_title,
         "notes": "",
         "status": "Scheduled",
         "arrived_at": "",

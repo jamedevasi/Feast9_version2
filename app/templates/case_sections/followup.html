@@ -7,26 +7,31 @@
   <p class="empty-state">No follow-up set.</p>
   {% endif %}
 
-  <p><a class="button" href="{{ url_for('appointments.new', clear_followup=case.id) }}">📅 Book Appointment</a></p>
-
-  <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}" class="inline-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Follow-up Date<input type="date" name="follow_up_date" value="{{ case.follow_up_date or '' }}"></label>
-    <label>Next Action Note<input type="text" name="next_action_note" value="{{ case.next_action_note or '' }}"></label>
-    <button type="submit">Save Follow-up</button>
-  </form>
-  {% if case.follow_up_date %}
-  <div class="case-actions">
+  {# Actions on the current follow-up, in one row: Book Appointment is the main next step,
+     Mark Done a secondary one, Clear the destructive one (right-aligned, red outline). #}
+  <div class="followup-actions">
+    <a class="button" href="{{ url_for('appointments.new', clear_followup=case.id) }}">📅 Book Appointment</a>
+    {% if case.follow_up_date %}
     <form method="post" action="{{ url_for('cases.complete_followup', case_id=case.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="button">✓ Mark Follow-up Done</button>
+      <button type="submit" class="button button-outline">✓ Mark Follow-up Done</button>
     </form>
-    <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}">
+    <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}" class="followup-clear">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="follow_up_date" value="">
       <input type="hidden" name="next_action_note" value="">
       <button type="submit" class="button button-secondary">Clear Follow-up</button>
     </form>
+    {% endif %}
   </div>
-  {% endif %}
+
+  <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}" class="inline-form followup-edit">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h3>{{ 'Change follow-up' if case.follow_up_date else 'Set a follow-up' }}</h3>
+    <div class="followup-edit-row">
+      <label>Follow-up Date<input type="date" name="follow_up_date" value="{{ case.follow_up_date or '' }}"></label>
+      <label class="followup-note">Next Action Note<input type="text" name="next_action_note" value="{{ case.next_action_note or '' }}"></label>
+      <button type="submit">Save Follow-up</button>
+    </div>
+  </form>
 </section>

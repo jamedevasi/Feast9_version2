@@ -9,7 +9,6 @@ from app import db
 from app.auth import current_actor, login_required
 from app.constants import (
     ALL_TEETH,
-    CHART_FINDING_COLORS,
     CHART_FINDINGS,
     CHART_SEVERITIES,
     CHART_SEVERITY_LABELS,
@@ -120,6 +119,13 @@ def chart(patient_id):
             severity_counts[entry["severity"]] += 1
             current_entry_ids.add(entry["id"])
 
+    # A tooth's square in the SVG takes its most severe current entry's colour — a tooth with
+    # caries on one surface and a sound other surface still needs attention.
+    tooth_severity = {
+        tooth_id: min((e["severity"] for e in entries), key=CHART_SEVERITIES.index)
+        for tooth_id, entries in current_chart.items() if entries
+    }
+
     # Only a tooth/surface's *current* entry gets a severity colour in Chart History — an
     # older entry a later correction has superseded no longer describes the tooth's present
     # state, so colouring it too would make the log show far more red/blue/green than the
@@ -160,7 +166,7 @@ def chart(patient_id):
         surfaces=TOOTH_SURFACES,
         findings=CHART_FINDINGS,
         statuses=CHART_STATUSES,
-        finding_colors=CHART_FINDING_COLORS,
+        tooth_severity=tooth_severity,
         dentition_view=dentition_view,
         severity_counts=severity_counts,
         severity_labels=CHART_SEVERITY_LABELS,

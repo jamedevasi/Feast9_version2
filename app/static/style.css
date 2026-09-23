@@ -57,6 +57,16 @@ body {
 .topbar nav a:hover,
 .topbar .nav-dropdown > summary:hover { background: rgba(255, 255, 255, 0.18); color: inherit; }
 
+/* The current section stays visibly marked (not just on hover) so a user can tell where they
+   are without reading the page title — a pill background plus a bottom accent bar, since the
+   hover background alone would be indistinguishable once the pointer moves away. */
+.topbar nav a.nav-active,
+.topbar .nav-dropdown > summary.nav-active {
+  background: rgba(255, 255, 255, 0.22);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.85);
+}
+
 .nav-dropdown { position: relative; }
 .nav-dropdown > summary {
   display: block;
@@ -86,6 +96,7 @@ body {
 }
 .topbar .nav-dropdown-menu a { color: var(--text); padding: 0.5rem 1rem; border-radius: 0; }
 .topbar .nav-dropdown-menu a:hover { background: var(--bg); color: var(--brand); }
+.topbar .nav-dropdown-menu a.nav-active { background: var(--bg); color: var(--brand); font-weight: 600; }
 
 .logout-form { margin: 0; }
 .link-button {
@@ -303,8 +314,11 @@ legend { font-weight: 700; padding: 0 0.4rem; }
 .hint { color: var(--muted); font-size: 0.85rem; margin-top: -0.6rem; }
 /* The negative margin above pulls a hint snug under the field it explains — but a hint that
    instead follows a whole form (its own sibling, after the submit button) needs normal
-   spacing, or it rides up and overlaps the button. */
-form + .hint { margin-top: 0.6rem; }
+   spacing, or it rides up and overlaps the button. Same fix for the calendar legend caption,
+   which follows the whole scrollable table, not a single field — it was riding up into the
+   table's last row. */
+form + .hint,
+.calendar-scroll + .hint { margin-top: 0.75rem; }
 
 .dpdp-notice {
   max-height: 8rem;
@@ -358,9 +372,20 @@ button[type="submit"], .button {
 
 .search-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  /* Bottom-align, not stretch: a labelled date input is taller than a button, and stretching
+     made every button in the row that tall. */
+  align-items: flex-end;
 }
+.search-form label { margin-bottom: 0; }
+.search-form .button { white-space: nowrap; }
+/* A plain link in a filter bar sits on the buttons' text line, not the row's bottom edge. */
+.search-form > a:not(.button) { padding-bottom: 0.6rem; }
+/* Secondary actions (exports) pushed to the right end of a filter bar. */
+.container > form.toolbar-wide { max-width: none; }
+.search-form .toolbar-end { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .search-form input {
   flex: 1;
   padding: 0.5rem;
@@ -431,10 +456,25 @@ dd { margin: 0; }
 .badge-active { background: #ecfdf5; color: #065f46; }
 .badge-closed { background: #f1f3f5; color: var(--muted); }
 
-.button-secondary { background: white; color: var(--danger); border: 1px solid var(--danger); }
+/* Two classes, so it outranks `button[type="submit"], .button` above (0,1,1) — as a bare
+   .button-secondary it lost to that rule and every destructive submit button rendered solid
+   brand-green, indistinguishable from the primary action next to it. */
+.button.button-secondary, button.button-secondary { background: white; color: var(--danger); border: 1px solid var(--danger); }
 
 .case-actions { display: flex; gap: 0.5rem; align-items: flex-start; }
 .case-actions form { margin: 0; }
+
+/* Case > Follow-up: one action row for the current follow-up (Clear pushed to the far right,
+   away from the constructive actions), then the edit form with date/note/save on one line. */
+.followup-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.75rem 0 1rem; }
+.followup-actions form { margin: 0; }
+.followup-actions .followup-clear { margin-left: auto; }
+.followup-edit { max-width: none; }
+.followup-edit h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--muted); font-weight: 600; }
+.followup-edit-row { display: flex; flex-wrap: wrap; gap: 0 1rem; align-items: flex-end; }
+.followup-edit-row label { margin-bottom: 0.6rem; }
+.followup-edit-row .followup-note { flex: 1 1 16rem; min-width: 0; }
+.followup-edit-row button { margin-bottom: 0.6rem; }
 
 .case-list { list-style: none; padding: 0; margin: 0; }
 .case-list li {
@@ -475,6 +515,10 @@ dd { margin: 0; }
 details summary { cursor: pointer; font-weight: 700; font-size: 1.05rem; }
 details[open] summary { margin-bottom: 0.75rem; }
 .collapsible-toggle-icon { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+
+.clone-overhead { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.clone-overhead summary { font-weight: 600; font-size: 0.92rem; }
+.input-narrow { width: 4rem; }
 
 .badge-lab-sent { background: #ecfdf5; color: #065f46; }
 .badge-lab-received { background: #e7f0fb; color: var(--brand); }
@@ -529,17 +573,34 @@ details[open] summary { margin-bottom: 0.75rem; }
 .calendar-day-header a { color: var(--brand); text-decoration: none; font-weight: 700; }
 
 .calendar-appt {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.75rem;
-  padding: 0.1rem 0.3rem 0.1rem 0.4rem;
+  padding: 0.15rem 0.3rem;
   margin-bottom: 0.15rem;
-  border-left: 6px solid;
+  border-radius: 3px;
   background: var(--bg);
   color: var(--text);
   text-decoration: none;
+}
+.appt-label {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A dot icon carries the doctor, kept deliberately separate from the status badge's fill
+   colour — a coloured left border used to blend into a same-hue status badge (e.g. a doctor
+   assigned blue was unreadable against the blue "Scheduled" badge), which a dot next to the
+   text doesn't. */
+.appt-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
 }
 /* More saturated than a typical pastel badge — this is what tells Scheduled/Completed/
    Cancelled/No-show apart at a glance on the calendar, so it needs to read clearly, not just
@@ -622,6 +683,11 @@ details[open] summary { margin-bottom: 0.75rem; }
 .severity-tile-attention .dot { background: var(--severity-attention); }
 .severity-tile-scheduled .dot { background: var(--severity-scheduled); }
 .severity-tile-stable .dot { background: var(--severity-stable); }
+/* Tooth squares in the chart SVG — a tint of the same severity colour (not solid) so the
+   tooth number stays readable on it. CSS beats the rect's fill="#ffffff" attribute. */
+.dental-chart-svg rect.tooth-severity-attention { fill: var(--severity-attention); fill-opacity: 0.45; }
+.dental-chart-svg rect.tooth-severity-scheduled { fill: var(--severity-scheduled); fill-opacity: 0.4; }
+.dental-chart-svg rect.tooth-severity-stable { fill: var(--severity-stable); fill-opacity: 0.4; }
 
 .entry-list li.dental-severity-attention { border-left: 3px solid var(--severity-attention); padding-left: 0.6rem; }
 .entry-list li.dental-severity-scheduled { border-left: 3px solid var(--severity-scheduled); padding-left: 0.6rem; }
@@ -742,6 +808,25 @@ details[open] summary { margin-bottom: 0.75rem; }
   grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
   gap: 1rem;
 }
+
+/* Side by side instead of full-width-and-stacked — a card holding just a few dt/dd rows
+   otherwise stretches its dl's value column across the whole container width, leaving most of
+   the card visually empty (Reports' Revenue Overview / Profitability cards). */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.summary-grid .card { margin-bottom: 0; }
+.summary-grid dl { grid-template-columns: 10rem minmax(0, 16rem); }
+/* Summary cards' headline figures laid out side by side rather than as a tall label column. */
+.figure-row { display: flex; flex-wrap: wrap; gap: 0.75rem 2.5rem; }
+.figure-row > div { display: flex; flex-direction: column; gap: 0.15rem; }
+.figure-value { font-size: 1.25rem; font-weight: 700; }
+.figure-row + .hint { margin-top: 0.5rem; }
+.figure-links { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; margin: 0.5rem 0 0; }
+.summary-grid > .card > h2 + .data-table, .summary-grid > .card > .empty-state:last-child { margin-bottom: 0; }
 .chart-card { height: 320px; display: flex; flex-direction: column; position: relative; }
 .chart-card canvas { flex: 1; min-height: 0; }
 
@@ -768,8 +853,8 @@ details[open] summary { margin-bottom: 0.75rem; }
   display: inline-block;
   width: 0.9rem;
   height: 0.9rem;
-  border-radius: 3px;
-  border: 1px solid var(--border);
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
   vertical-align: middle;
 }
 
@@ -835,6 +920,8 @@ details[open] summary { margin-bottom: 0.75rem; }
   .search-form { flex-wrap: wrap; }
   .search-form input { min-width: 0; flex: 1 1 100%; }
   .case-actions { flex-wrap: wrap; }
+  .followup-edit-row label, .followup-edit-row .followup-note { flex: 1 1 100%; }
+  .followup-actions .followup-clear { margin-left: 0; }
   .attachment-row { flex-direction: column; gap: 0.4rem; }
   .view-toggle { flex-wrap: wrap; }
 

@@ -149,6 +149,58 @@ def monthly_save():
     return redirect(url_for("financial.monthly", month=month, view=request.form.get("view", "short")))
 
 
+MAX_OVERHEAD_CLONE_MONTHS = 24
+
+
+def _add_month_str(month, n):
+    year, mon = int(month[:4]), int(month[5:7])
+    total = (mon - 1) + n
+    return f"{year + total // 12}-{total % 12 + 1:02d}"
+
+
+@bp.route("/monthly/clone", methods=["POST"])
+@login_required
+@financial_access_required
+def monthly_clone():
+    """Copies the source month's already-saved overhead figures (rent/salary/etc. rarely
+    change month to month) forward into the next N months — one upsert per target month, each
+    still individually audited, rather than a bulk-insert that would bypass the per-month audit
+    trail every other overhead save gets."""
+    validate_csrf(request.form.get("csrf_token"))
+    source_month = _valid_month(request.form.get("month"))
+    view = request.form.get("view", "short")
+    try:
+        count = int(request.form.get("clone_count", "0"))
+    except ValueError:
+        count = 0
+    count = max(0, min(count, MAX_OVERHEAD_CLONE_MONTHS))
+    overwrite = request.form.get("overwrite") == "on"
+
+    if count == 0:
+        flash("Enter how many months (1–24) to clone into.", "warning")
+        return redirect(url_for("financial.monthly", month=source_month, view=view))
+
+    source = db.get_monthly_overhead_expenses(source_month)
+    amounts = [source[field] for field in OVERHEAD_FIELDS]
+    actor = current_actor()
+    cloned, skipped = [], []
+    for n in range(1, count + 1):
+        target_month = _add_month_str(source_month, n)
+        if not overwrite and db.has_monthly_overhead_expenses(target_month):
+            skipped.append(target_month)
+            continue
+        db.upsert_monthly_overhead_expenses(target_month, *amounts, actor=actor)
+        cloned.append(target_month)
+
+    if cloned:
+        flash(f"Cloned {source_month}'s overhead expenses to {len(cloned)} month(s): {', '.join(cloned)}.",
+              "success")
+    if skipped:
+        flash(f"Skipped {len(skipped)} month(s) that already have expenses saved — "
+              f"check \"Overwrite existing months\" to replace them: {', '.join(skipped)}.", "warning")
+    return redirect(url_for("financial.monthly", month=source_month, view=view))
+
+
 @bp.route("/capital-investments")
 @login_required
 @financial_access_required

@@ -2270,6 +2270,13 @@ def get_monthly_overhead_expenses(month):
     return {"month": month, **{f: 0.0 for f in _OVERHEAD_FIELDS}}
 
 
+def has_monthly_overhead_expenses(month):
+    conn = get_db()
+    row = conn.execute("SELECT 1 FROM monthly_overhead_expenses WHERE month = ?", (month,)).fetchone()
+    conn.close()
+    return row is not None
+
+
 def upsert_monthly_overhead_expenses(month, rent, staff_salary, electricity, emi, cleaning_disposal,
                                       other_expense, actor=None):
     conn = get_db()

@@ -141,6 +141,24 @@ def test_new_appointment_form_prefills_patient_from_clear_followup(logged_in_cli
     assert f'value="{patient_id}"'.encode() in resp.data
 
 
+def test_new_appointment_form_prefills_title_from_followup_note(logged_in_client, patient_id):
+    case_id, case_url = _case_for(logged_in_client, patient_id)
+    token = get_csrf(logged_in_client, case_url)
+    logged_in_client.post(
+        f"/cases/{case_id}/followup",
+        data={"follow_up_date": "2026-09-20", "next_action_note": "Crown fitting & review", "csrf_token": token},
+    )
+    resp = logged_in_client.get(f"/appointments/new?clear_followup={case_id}")
+    assert resp.status_code == 200
+    assert b'name="title" value="Crown fitting &amp; review"' in resp.data
+
+
+def test_new_appointment_form_title_blank_without_followup(logged_in_client, patient_id):
+    resp = logged_in_client.get(f"/appointments/new?patient_id={patient_id}")
+    assert resp.status_code == 200
+    assert b'name="title" value=""' in resp.data
+
+
 def test_calendar_shows_booked_appointment(logged_in_client, patient_id):
     _book_appointment(logged_in_client, patient_id)
     resp = logged_in_client.get("/appointments/2026/10")

@@ -111,8 +111,12 @@ def _register_security_headers(app):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # style-src allows 'unsafe-inline' — script-src stays locked to 'self' (the actual
+        # XSS vector); a handful of templates use style="..." for genuinely per-record dynamic
+        # colour (doctor calendar colours, report progress-bar widths) that can't be expressed
+        # as a static class, and 'self' alone silently drops every such attribute with no error.
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; frame-ancestors 'none'"
         )
         return response

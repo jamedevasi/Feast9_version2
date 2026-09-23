@@ -1,4 +1,5 @@
-"""Local dev convenience: create the bootstrap admin account (if none exists yet) and seed
+    
+    """Local dev convenience: create the bootstrap admin account (if none exists yet) and seed
 demo data in one command, instead of clicking through /setup then running seed_demo_data.py
 by hand. Safe to re-run — an existing admin account is left untouched (credentials are only
 printed, never reset) and seed_demo_data.run() is already idempotent.

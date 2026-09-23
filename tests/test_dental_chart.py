@@ -289,7 +289,30 @@ def test_selecting_a_tooth_with_no_entries_says_so(logged_in_client, patient_id)
 def test_selecting_a_tooth_highlights_it_in_the_svg(logged_in_client, patient_id):
     resp = logged_in_client.get(f"/patients/{patient_id}/dental-chart?tooth=24")
     body = resp.data.decode()
-    assert 'stroke="#e74c3c" stroke-width="3"' in body
+    assert 'stroke="#111" stroke-width="3"' in body
+
+
+def _tooth_rect(body, tooth_id):
+    anchor = body.index(f"?tooth={tooth_id}&")
+    return body[anchor:body.index("</rect>", anchor)]
+
+
+def test_tooth_square_coloured_by_severity_not_finding(logged_in_client, patient_id):
+    """A Planned Crown is 'scheduled' severity — the square must use the legend's severity
+    colour, not a separate per-finding colour the legend doesn't explain."""
+    db.add_dental_chart_entry(patient_id, None, "24", "Whole Tooth", "Crown", "Planned", "")
+    body = logged_in_client.get(f"/patients/{patient_id}/dental-chart").data.decode()
+    rect = _tooth_rect(body, "24")
+    assert 'class="tooth-severity-scheduled"' in rect
+    assert "#f1c40f" not in body
+    assert "class=" not in _tooth_rect(body, "25")  # no entries -> plain white
+
+
+def test_tooth_square_takes_most_severe_surface(logged_in_client, patient_id):
+    db.add_dental_chart_entry(patient_id, None, "36", "Mesial", "Restoration", "Existing", "")
+    db.add_dental_chart_entry(patient_id, None, "36", "Occlusal/Incisal", "Caries", "Existing", "")
+    body = logged_in_client.get(f"/patients/{patient_id}/dental-chart").data.decode()
+    assert 'class="tooth-severity-attention"' in _tooth_rect(body, "36")
 
 
 def test_no_tooth_selected_shows_no_selected_tooth_panel(logged_in_client, patient_id):

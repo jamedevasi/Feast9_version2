@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Feast9{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('auth.login_image') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('auth.theme_css') }}">
 </head>
@@ -13,25 +14,27 @@
     <div class="brand"><img class="brand-logo" src="{{ url_for('auth.login_image') }}" alt="">{{ clinic_name_nav }}</div>
     <input type="checkbox" id="nav-toggle" class="nav-toggle-input" aria-label="Toggle menu">
     <label for="nav-toggle" class="nav-toggle" aria-hidden="true">☰</label>
+    {% set current_bp = request.blueprint %}
+    {% set settings_bps = ('settings', 'users', 'audit', 'backup', 'doctors', 'procedure_types', 'import_data') %}
     <nav>
-      <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
-      <a href="{{ url_for('patients.list_view') }}">Patients</a>
-      <a href="{{ url_for('appointments.index') }}">Appointments</a>
+      <a href="{{ url_for('dashboard.index') }}" class="{{ 'nav-active' if current_bp == 'dashboard' }}">Dashboard</a>
+      <a href="{{ url_for('patients.list_view') }}" class="{{ 'nav-active' if current_bp in ('patients', 'cases', 'clinical', 'dental') }}">Patients</a>
+      <a href="{{ url_for('appointments.index') }}" class="{{ 'nav-active' if current_bp == 'appointments' }}">Appointments</a>
       {% if can_view_financial_nav %}
-      <a href="{{ url_for('reports.view_reports') }}">Reports</a>
-      <a href="{{ url_for('analytics.view_analytics') }}">Analytics</a>
-      <a href="{{ url_for('financial.index') }}">Financial Assessment</a>
+      <a href="{{ url_for('reports.view_reports') }}" class="{{ 'nav-active' if current_bp == 'reports' }}">Reports</a>
+      <a href="{{ url_for('analytics.view_analytics') }}" class="{{ 'nav-active' if current_bp == 'analytics' }}">Analytics</a>
+      <a href="{{ url_for('financial.index') }}" class="{{ 'nav-active' if current_bp == 'financial' }}">Financial Assessment</a>
       {% endif %}
-      <a href="{{ url_for('dpdp.list_view') }}">DPDP Requests{% if pending_data_requests_count %} ({{ pending_data_requests_count }}){% endif %}</a>
-      <a href="{{ url_for('account.index') }}">My Account</a>
+      <a href="{{ url_for('dpdp.list_view') }}" class="{{ 'nav-active' if current_bp == 'dpdp' }}">DPDP Requests{% if pending_data_requests_count %} ({{ pending_data_requests_count }}){% endif %}</a>
+      <a href="{{ url_for('account.index') }}" class="{{ 'nav-active' if current_bp in ('account', 'totp', 'google_auth') }}">My Account</a>
       {% if session.get('role') == 'admin' %}
-      <details class="nav-dropdown">
-        <summary>Settings</summary>
+      <details class="nav-dropdown" {% if current_bp in settings_bps %}open{% endif %}>
+        <summary class="{{ 'nav-active' if current_bp in settings_bps }}">Settings</summary>
         <div class="nav-dropdown-menu">
-          <a href="{{ url_for('settings.index') }}">Settings Home</a>
-          <a href="{{ url_for('users.list_view') }}">Users</a>
-          <a href="{{ url_for('audit.list_view') }}">Audit Log</a>
-          <a href="{{ url_for('backup.list_view') }}">Backups</a>
+          <a href="{{ url_for('settings.index') }}" class="{{ 'nav-active' if current_bp == 'settings' }}">Settings Home</a>
+          <a href="{{ url_for('users.list_view') }}" class="{{ 'nav-active' if current_bp == 'users' }}">Users</a>
+          <a href="{{ url_for('audit.list_view') }}" class="{{ 'nav-active' if current_bp == 'audit' }}">Audit Log</a>
+          <a href="{{ url_for('backup.list_view') }}" class="{{ 'nav-active' if current_bp == 'backup' }}">Backups</a>
         </div>
       </details>
       {% endif %}

@@ -14,11 +14,11 @@
 {% macro tooth_box(tooth_id, x, y) %}
 {% set entries = current_chart.get(tooth_id, []) %}
 {% set primary = entries[0] if entries else None %}
-{% set fill = finding_colors.get(primary.finding, '#ffffff') if primary else '#ffffff' %}
+{% set severity = tooth_severity.get(tooth_id) %}
 {% set is_selected = form_state.tooth_id == tooth_id %}
 <a href="?tooth={{ tooth_id }}&dentition={{ dentition_view }}#chart-form">
-  <rect x="{{ x }}" y="{{ y }}" width="32" height="32" fill="{{ fill }}"
-        stroke="{{ '#e74c3c' if is_selected else '#333' }}" stroke-width="{{ '3' if is_selected else '1' }}"></rect>
+  <rect x="{{ x }}" y="{{ y }}" width="32" height="32" fill="#ffffff"{% if severity %} class="tooth-severity-{{ severity }}"{% endif %}
+        stroke="{{ '#111' if is_selected else '#333' }}" stroke-width="{{ '3' if is_selected else '1' }}"></rect>
   <text x="{{ x + 16 }}" y="{{ y + 20 }}" text-anchor="middle" font-size="11">{{ tooth_id }}</text>
   <title>Tooth {{ tooth_id }}{% for e in entries %} · {{ e.surface }}: {{ e.finding }} ({{ e.status }}){% endfor %}{% if not entries %} · No entries yet{% endif %}</title>
 </a>

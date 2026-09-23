@@ -3,12 +3,14 @@
 {% block content %}
 <h1>Reports</h1>
 
-<form method="get" action="{{ url_for('reports.view_reports') }}" class="search-form">
+<form method="get" action="{{ url_for('reports.view_reports') }}" class="search-form toolbar-wide">
   <label>From <input type="date" name="start" value="{{ start }}"></label>
   <label>To <input type="date" name="end" value="{{ end }}"></label>
   <button type="submit">Apply</button>
-  <a class="button" href="{{ url_for('reports.report_pdf', start=start, end=end) }}">🖨 Print Report (PDF)</a>
-  <a class="button" href="{{ url_for('reports.download_pending_xlsx') }}">📊 Download Pending (Excel)</a>
+  <span class="toolbar-end">
+    <a class="button button-outline" href="{{ url_for('reports.report_pdf', start=start, end=end) }}" target="_blank" rel="noopener">🖨 Print Report (PDF)</a>
+    <a class="button button-outline" href="{{ url_for('reports.download_pending_xlsx') }}">📊 Download Pending (Excel)</a>
+  </span>
 </form>
 
 <div class="stat-grid">
@@ -30,29 +32,29 @@
   </div>
 </div>
 
+<div class="summary-grid">
 <section class="card">
   <h2>Revenue Overview — All Time</h2>
-  <dl>
-    <dt>Billed</dt><dd>₹{{ '%.2f'|format(revenue_overview.billed) }}</dd>
-    <dt>Collected</dt><dd>₹{{ '%.2f'|format(revenue_overview.collected) }}</dd>
-    <dt>Outstanding</dt><dd>₹{{ '%.2f'|format(revenue_overview.outstanding) }}</dd>
-  </dl>
+  <div class="figure-row">
+    <div><span class="stat-label">Billed</span><span class="figure-value">₹{{ '%.2f'|format(revenue_overview.billed) }}</span></div>
+    <div><span class="stat-label">Collected</span><span class="figure-value">₹{{ '%.2f'|format(revenue_overview.collected) }}</span></div>
+    <div><span class="stat-label">Outstanding</span><span class="figure-value">₹{{ '%.2f'|format(revenue_overview.outstanding) }}</span></div>
+  </div>
 </section>
 
 <section class="card">
   <h2>Profitability — All Time</h2>
-  <dl>
-    <dt>Net Profit (Billed &minus; Expenses, across {{ financial_summary.case_count }} cases)</dt>
-    <dd class="{{ 'profit-loss' if financial_summary.total_profit < 0 else 'profit-positive' }}">₹{{ '%.2f'|format(financial_summary.total_profit) }}</dd>
-    <dt>Cases Currently in Loss</dt>
-    <dd>{% if financial_summary.loss_case_count %}<span class="profit-loss">{{ financial_summary.loss_case_count }}</span>{% else %}0{% endif %}</dd>
-  </dl>
-  <p>
-    <a href="{{ url_for('financial.index') }}">View Financial Assessment (per-case detail &amp; expense entry) →</a>
-    &nbsp;·&nbsp;
-    <a href="{{ url_for('financial.monthly') }}">Monthly Evaluation (overhead &amp; net profit) →</a>
+  <div class="figure-row">
+    <div><span class="stat-label">Net Profit</span><span class="figure-value {{ 'profit-loss' if financial_summary.total_profit < 0 else 'profit-positive' }}">₹{{ '%.2f'|format(financial_summary.total_profit) }}</span></div>
+    <div><span class="stat-label">Cases in Loss</span><span class="figure-value">{% if financial_summary.loss_case_count %}<span class="profit-loss">{{ financial_summary.loss_case_count }}</span>{% else %}0{% endif %}</span></div>
+  </div>
+  <p class="hint">Billed &minus; Expenses, across {{ financial_summary.case_count }} cases.</p>
+  <p class="figure-links">
+    <a href="{{ url_for('financial.index') }}">Financial Assessment →</a>
+    <a href="{{ url_for('financial.monthly') }}">Monthly Evaluation →</a>
   </p>
 </section>
+</div>
 
 <section class="card">
   <h2>Pending Payments by Patient &amp; Case</h2>
@@ -79,6 +81,7 @@
   {% endif %}
 </section>
 
+<div class="summary-grid">
 <section class="card">
   <h2>Doctor-wise Revenue by Period</h2>
   {% if doctor_revenue %}
@@ -125,6 +128,7 @@
   <p class="badge badge-active">All clear — no lapsed patients 🎉</p>
   {% endif %}
 </section>
+</div>
 
 <section class="card">
   <h2>Payments Received in Period</h2>
