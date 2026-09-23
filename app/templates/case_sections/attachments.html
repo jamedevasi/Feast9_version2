@@ -12,7 +12,7 @@
         <span class="entry-date">{{ a.uploaded_at }}</span>
       </div>
       {% if session.get('role') in ('admin', 'doctor') %}
-      <form method="post" action="{{ url_for('clinical.delete_attachment', attachment_id=a.id) }}" onsubmit="return confirm('Delete this attachment?');">
+      <form method="post" action="{{ url_for('clinical.delete_attachment', attachment_id=a.id) }}" data-confirm="Delete this attachment?">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="button button-secondary">Delete</button>
       </form>
@@ -40,7 +40,7 @@
 
   {% if session.get('role') in ('admin', 'doctor') and attachments %}
   <form method="post" action="{{ url_for('clinical.clear_attachments', case_id=case.id) }}" class="inline-form"
-        onsubmit="return confirm('This permanently deletes ALL clinical documents (X-rays, photos, lab reports, etc.) for this case. If this case\'s records must be retained, do not proceed — this cannot be undone.');">
+        data-confirm="This permanently deletes ALL clinical documents (X-rays, photos, lab reports, etc.) for this case. If this case's records must be retained, do not proceed — this cannot be undone.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Reason for clearing all documents<input type="text" name="reason" required placeholder="e.g. Not required to be retained for this case"></label>
     <button type="submit" class="button button-secondary">Clear All Clinical Documents</button>

@@ -510,6 +510,21 @@ dd { margin: 0; }
 .inline-form label { margin-bottom: 0.6rem; }
 .inline-form textarea { min-height: 4rem; }
 
+/* Case page add/revise forms: fields sized to their content and sharing rows, instead of every
+   field — a date, an amount — stacked full-width (60rem of mostly empty input box). A field's
+   width follows its input type via :has(), so the section partials need no per-field classes.
+   Textareas, checkboxes, hints and anything else keep a full row of their own. */
+.case-page .inline-form { max-width: none; display: flex; flex-wrap: wrap; gap: 0 1rem; align-items: flex-end; }
+.case-page .inline-form > * { flex: 1 1 100%; }
+.case-page .inline-form > label:has(input[type="date"]) { flex: 0 0 11rem; }
+.case-page .inline-form > label:has(input[type="number"]) { flex: 0 0 10rem; }
+.case-page .inline-form > label:has(input[type="text"]),
+.case-page .inline-form > label:has(select) { flex: 1 1 13rem; }
+.case-page .inline-form > label:has(input[type="file"]) { flex: 1 1 18rem; }
+.case-page .inline-form > button,
+.case-page .inline-form > .button,
+.case-page .inline-form > canvas { flex: 0 0 auto; margin-bottom: 0.6rem; }
+
 .balance-line { font-size: 1.1rem; }
 
 details summary { cursor: pointer; font-weight: 700; font-size: 1.05rem; }
@@ -825,6 +840,18 @@ details[open] summary { margin-bottom: 0.75rem; }
 .figure-row > div { display: flex; flex-direction: column; gap: 0.15rem; }
 .figure-value { font-size: 1.25rem; font-weight: 700; }
 .figure-row + .hint { margin-top: 0.5rem; }
+
+/* Reports > merged Case/Payment ledger. */
+.ledger-presets { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; margin-bottom: 0.75rem; }
+.ledger-presets .hint { margin: 0; }
+.ledger-filters { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: flex-end; }
+.ledger-filters label { margin-bottom: 0; }
+.ledger-filters select { min-width: 9rem; }
+.ledger-filters + .ledger-scope { margin: 0.6rem 0 0.4rem; }
+.ledger-table .num { text-align: right; white-space: nowrap; }
+.ledger-table tr.ledger-group td { background: var(--bg); font-weight: 700; border-top: 2px solid var(--border); }
+.ledger-count { color: var(--muted); font-weight: 400; }
+.ledger-table tfoot tr.ledger-total td { font-weight: 700; border-top: 2px solid var(--text, #333); }
 .figure-links { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; margin: 0.5rem 0 0; }
 .summary-grid > .card > h2 + .data-table, .summary-grid > .card > .empty-state:last-child { margin-bottom: 0; }
 .chart-card { height: 320px; display: flex; flex-direction: column; position: relative; }
@@ -931,6 +958,7 @@ details[open] summary { margin-bottom: 0.75rem; }
   form label select,
   form label textarea { padding: 0.65rem; font-size: 1rem; }
   .container > form, .inline-form { max-width: none; }
+  .case-page .inline-form > label { flex: 1 1 100% !important; }
 
   .auth-card { margin: 1.5rem auto; padding: 1.25rem; }
   body.auth-page .auth-card { padding: 1.75rem 1.25rem 1.5rem; }

@@ -1,0 +1,137 @@
+{# Merged Case/Payment ledger — replaces the separate Pending Payments / Payments Received /
+   Cases Closed sections. Options come back from reports_routes._ledger_from_request. #}
+{% set p = ledger.params %}
+{% set is_cases = ledger.view == 'cases' %}
+<section class="card" id="ledger">
+  <div class="card-heading">
+    <h2>{{ 'Cases' if is_cases else 'Payments' }} Ledger</h2>
+    <a class="button button-outline" href="{{ url_for('reports.download_ledger_xlsx', start=start, end=end, view=p.view, group=p.group, status=p.status, balance=p.balance, period_on=p.period_on, method=p.method) }}">📊 Download (Excel)</a>
+  </div>
+
+  <div class="ledger-presets">
+    <span class="hint">Quick views:</span>
+    <a href="{{ url_for('reports.view_reports', start=start, end=end, view='cases', balance='outstanding') }}#ledger">Pending payments</a>
+    <a href="{{ url_for('reports.view_reports', start=start, end=end, view='cases', balance='', period_on='closed') }}#ledger">Cases closed in period</a>
+    <a href="{{ url_for('reports.view_reports', start=start, end=end, view='payments') }}#ledger">Payments received in period</a>
+  </div>
+
+  <form method="get" action="{{ url_for('reports.view_reports') }}#ledger" class="ledger-filters">
+    <input type="hidden" name="start" value="{{ start }}">
+    <input type="hidden" name="end" value="{{ end }}">
+    <label>Show
+      <select name="view">
+        <option value="cases" {% if is_cases %}selected{% endif %}>Cases</option>
+        <option value="payments" {% if not is_cases %}selected{% endif %}>Payments</option>
+      </select>
+    </label>
+    {% if is_cases %}
+    <label>Status
+      <select name="status">
+        <option value="" {% if not p.status %}selected{% endif %}>Any status</option>
+        {% for s in ['Active', 'Closed'] %}<option value="{{ s }}" {% if p.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Balance
+      <select name="balance">
+        {% for value, label in ledger_balances.items() %}<option value="{{ value }}" {% if p.balance == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Date filter
+      <select name="period_on">
+        {% for value, label in ledger_period_on.items() %}<option value="{{ value }}" {% if p.period_on == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    {% else %}
+    <label>Method
+      <select name="method">
+        <option value="">Any method</option>
+        {% for m in payment_methods %}<option value="{{ m }}" {% if p.method|lower == m|lower %}selected{% endif %}>{{ m }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label>Group by
+      <select name="group">
+        {% for value, label in ledger_groups[ledger.view].items() %}<option value="{{ value }}" {% if p.group == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Apply</button>
+  </form>
+  <p class="hint ledger-scope">
+    {% if is_cases %}
+      {% if p.period_on == 'opened' %}Cases opened {{ start }} to {{ end }}{% elif p.period_on == 'closed' %}Cases closed {{ start }} to {{ end }}{% else %}All cases, any date{% endif %}.
+      Paid and Balance are all-time, as on the case page.
+    {% else %}
+      Payments dated {{ start }} to {{ end }}.
+    {% endif %}
+    {{ ledger.row_count }} row{{ '' if ledger.row_count == 1 else 's' }}.
+  </p>
+
+  {% if ledger.row_count %}
+  <table class="data-table ledger-table">
+    <thead>
+      {% if is_cases %}
+      <tr><th>Patient</th><th>Case</th><th>Doctor</th><th>Status</th><th>Opened</th><th>Closed</th><th class="num">Total Cost</th><th class="num">Paid</th><th class="num">Balance</th></tr>
+      {% else %}
+      <tr><th>Date</th><th>Patient</th><th>Case</th><th>Doctor</th><th class="num">Amount</th><th>Method</th><th>Reference</th></tr>
+      {% endif %}
+    </thead>
+    <tbody>
+      {% for grp in ledger.groups %}
+      {% if ledger.group %}
+      <tr class="ledger-group">
+        {% if is_cases %}
+        <td colspan="6">{{ grp.label }} <span class="ledger-count">· {{ grp.rows|length }}</span></td>
+        <td class="num">₹{{ '%.2f'|format(grp.totals.total_cost) }}</td>
+        <td class="num">₹{{ '%.2f'|format(grp.totals.paid) }}</td>
+        <td class="num">₹{{ '%.2f'|format(grp.totals.balance) }}</td>
+        {% else %}
+        <td colspan="4">{{ grp.label }} <span class="ledger-count">· {{ grp.rows|length }}</span></td>
+        <td class="num">₹{{ '%.2f'|format(grp.totals.amount) }}</td>
+        <td colspan="2"></td>
+        {% endif %}
+      </tr>
+      {% endif %}
+      {% for row in grp.rows %}
+      <tr>
+        {% if is_cases %}
+        <td><a href="{{ url_for('patients.detail', patient_id=row.patient_id) }}">{{ row.patient_name }}</a></td>
+        <td><a href="{{ url_for('cases.detail', case_id=row.case_id) }}">{{ row.case_title }}</a></td>
+        <td>{{ row.doctor_name or '—' }}</td>
+        <td>{{ row.status }}</td>
+        <td>{{ row.created_at[:10] }}</td>
+        <td>{{ row.closed_at[:10] if row.closed_at else '—' }}</td>
+        <td class="num">₹{{ '%.2f'|format(row.total_cost) }}</td>
+        <td class="num">₹{{ '%.2f'|format(row.paid) }}</td>
+        <td class="num">₹{{ '%.2f'|format(row.balance) }}</td>
+        {% else %}
+        <td>{{ row.payment_date }}</td>
+        <td><a href="{{ url_for('patients.detail', patient_id=row.patient_id) }}">{{ row.patient_name }}</a></td>
+        <td><a href="{{ url_for('cases.detail', case_id=row.case_id) }}">{{ row.case_title }}</a></td>
+        <td>{{ row.doctor_name or '—' }}</td>
+        <td class="num">₹{{ '%.2f'|format(row.amount) }}</td>
+        <td>{{ row.method or '—' }}</td>
+        <td>{{ row.reference or '—' }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="ledger-total">
+        {% if is_cases %}
+        <td colspan="6">Total · {{ ledger.row_count }}</td>
+        <td class="num">₹{{ '%.2f'|format(ledger.totals.total_cost) }}</td>
+        <td class="num">₹{{ '%.2f'|format(ledger.totals.paid) }}</td>
+        <td class="num">₹{{ '%.2f'|format(ledger.totals.balance) }}</td>
+        {% else %}
+        <td colspan="4">Total · {{ ledger.row_count }}</td>
+        <td class="num">₹{{ '%.2f'|format(ledger.totals.amount) }}</td>
+        <td colspan="2"></td>
+        {% endif %}
+      </tr>
+    </tfoot>
+  </table>
+  {% else %}
+  <p class="empty-state">No {{ 'cases' if is_cases else 'payments' }} match these filters.</p>
+  {% endif %}
+</section>

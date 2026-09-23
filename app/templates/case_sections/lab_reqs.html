@@ -34,7 +34,7 @@
         <input type="text" name="notes" value="{{ r.notes }}" placeholder="Notes">
         <button type="submit">Update</button>
       </form>
-      <form method="post" action="{{ url_for('clinical.delete_lab_req', req_id=r.id) }}" onsubmit="return confirm('Delete this lab requisition?');">
+      <form method="post" action="{{ url_for('clinical.delete_lab_req', req_id=r.id) }}" data-confirm="Delete this lab requisition?">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="button button-secondary">Delete</button>
       </form>

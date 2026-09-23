@@ -11,7 +11,7 @@
         <p>{{ r.reason }}</p>
         {% if r.notes %}<p>{{ r.notes }}</p>{% endif %}
         <a href="{{ url_for('clinical.referral_pdf', case_id=case.id, ref_id=r.id) }}" target="_blank" rel="noopener">📄 Print</a>
-        <form method="post" action="{{ url_for('clinical.delete_referral', ref_id=r.id) }}" onsubmit="return confirm('Delete this referral?');">
+        <form method="post" action="{{ url_for('clinical.delete_referral', ref_id=r.id) }}" data-confirm="Delete this referral?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="button button-secondary">Delete</button>
         </form>

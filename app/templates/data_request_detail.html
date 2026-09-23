@@ -28,7 +28,7 @@
     This cannot be undone.</p>
   {% endif %}
   <form method="post" action="{{ url_for('dpdp.resolve', request_id=entry.id) }}"
-        onsubmit="return confirm('Update this request{{ ' and, if Completed, erase the patient\'s contact details' if entry.request_type == 'Erasure' else '' }}?');">
+        data-confirm="Update this request{{ ' and, if Completed, erase the patient\'s contact details' if entry.request_type == 'Erasure' else '' }}?">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Status
       <select name="status">

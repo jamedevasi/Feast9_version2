@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
   <h1>Backups</h1>
-  <form method="post" action="{{ url_for('backup.run') }}" onsubmit="return confirm('Run a backup now?');">
+  <form method="post" action="{{ url_for('backup.run') }}" data-confirm="Run a backup now?">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="button">Run Backup Now</button>
   </form>

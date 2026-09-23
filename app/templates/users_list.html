@@ -22,7 +22,7 @@
       <td>{{ u.created_at }}</td>
       <td>
         {% if u.is_active %}
-        <form method="post" action="{{ url_for('users.deactivate', user_id=u.id) }}" onsubmit="return confirm('Deactivate this user?');">
+        <form method="post" action="{{ url_for('users.deactivate', user_id=u.id) }}" data-confirm="Deactivate this user?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="link-button">Deactivate</button>
         </form>
@@ -33,13 +33,13 @@
         </form>
         {% endif %}
         {% if u.totp_enabled %}
-        <form method="post" action="{{ url_for('users.reset_totp', user_id=u.id) }}" onsubmit="return confirm('Reset 2FA for this user? They will need to set it up again.');">
+        <form method="post" action="{{ url_for('users.reset_totp', user_id=u.id) }}" data-confirm="Reset 2FA for this user? They will need to set it up again.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="link-button">Reset 2FA</button>
         </form>
         {% endif %}
         {% if u.google_email %}
-        <form method="post" action="{{ url_for('users.unlink_google', user_id=u.id) }}" onsubmit="return confirm('Unlink this user\'s Google account?');">
+        <form method="post" action="{{ url_for('users.unlink_google', user_id=u.id) }}" data-confirm="Unlink this user's Google account?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="link-button">Unlink Google</button>
         </form>

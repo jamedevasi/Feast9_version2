@@ -119,11 +119,9 @@ def test_reports_page_renders_all_sections(logged_in_client, patient_id):
     resp = logged_in_client.get("/reports/")
     body = resp.data.decode()
     assert "Revenue Overview" in body
-    assert "Pending Payments by Patient" in body
+    assert "Cases Ledger" in body  # merged Pending/Payments/Closed table (default: pending)
     assert "Doctor-wise Revenue" in body
     assert "Patient Retention" in body
-    assert "Payments Received in Period" in body
-    assert "Cases Closed in Period" in body
     assert "Full Report Case" in body
 
 
@@ -139,11 +137,21 @@ def test_reports_pdf_download(logged_in_client, patient_id):
     assert resp.data[:4] == b"%PDF"
 
 
-def test_download_pending_excel(logged_in_client, patient_id):
-    resp = logged_in_client.get("/reports/pending.xlsx")
+def test_download_ledger_excel_matches_current_view(logged_in_client, patient_id):
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    case_id, case_url, _ = _case_for(logged_in_client, patient_id, title="Excel Case", total_cost="1000")
+    _add_payment(logged_in_client, case_id, case_url, 250)
+    resp = logged_in_client.get("/reports/ledger.xlsx?view=payments&group=method")
     assert resp.status_code == 200
     assert resp.headers["Content-Type"].startswith("application/vnd.openxmlformats")
-    assert "pending_payments.xlsx" in resp.headers.get("Content-Disposition", "")
+    ws = load_workbook(BytesIO(resp.data)).active
+    rows = [[c.value for c in r] for r in ws.iter_rows()]
+    assert rows[0][:5] == ["Date", "Patient", "Case", "Doctor", "Amount"]
+    assert any(r[2] == "Excel Case" and r[4] == 250 for r in rows)
+    assert rows[-1][0].startswith("Total") and rows[-1][4] == 250
+    assert any(str(r[0]).startswith("Subtotal") for r in rows)
 
 
 def test_receptionist_blocked_from_reports(logged_in_client, patient_id):
@@ -153,7 +161,8 @@ def test_receptionist_blocked_from_reports(logged_in_client, patient_id):
 
     assert logged_in_client.get("/reports/").status_code == 403
     assert logged_in_client.get("/reports/report.pdf").status_code == 403
-    assert logged_in_client.get("/reports/pending.xlsx").status_code == 403
+    assert logged_in_client.get("/reports/ledger.xlsx").status_code == 403
+    assert logged_in_client.get("/reports/ledger.xlsx?view=payments").status_code == 403
 
     dash = logged_in_client.get("/dashboard")
     assert b'href="/reports/"' not in dash.data
@@ -174,3 +183,43 @@ def test_reports_shows_profitability_summary_not_full_table(logged_in_client, pa
     assert b'name="lab_amount_' not in resp.data
     assert b'name="consultant_fee_' not in resp.data
     assert b'name="misc_expense_' not in resp.data
+
+
+def test_ledger_default_is_pending_payments(logged_in_client, patient_id):
+    _case_for(logged_in_client, patient_id, title="Owes Money", total_cost="1000")
+    paid_id, paid_url, _ = _case_for(logged_in_client, patient_id, title="Settled Up", total_cost="300")
+    _add_payment(logged_in_client, paid_id, paid_url, 300)
+    body = logged_in_client.get("/reports/").data.decode()
+    assert "Owes Money" in body
+    assert "Settled Up" not in body
+    # "Any balance" (present-but-empty) is a real choice, not a fallback to the default.
+    body = logged_in_client.get("/reports/?view=cases&balance=").data.decode()
+    assert "Settled Up" in body
+
+
+def test_ledger_cases_closed_in_period(logged_in_client, patient_id):
+    case_id, case_url, _ = _case_for(logged_in_client, patient_id, title="Closed One", total_cost="0")
+    token = get_csrf(logged_in_client, case_url)
+    logged_in_client.post(f"/cases/{case_id}/close", data={"csrf_token": token})
+    _case_for(logged_in_client, patient_id, title="Still Open", total_cost="0")
+    body = logged_in_client.get(
+        f"/reports/?view=cases&balance=&period_on=closed&start={TODAY}&end={TODAY}"
+    ).data.decode()
+    assert "Closed One" in body
+    assert "Still Open" not in body
+
+
+def test_ledger_payments_view_grouped_with_subtotals(logged_in_client, patient_id):
+    case_id, case_url, _ = _case_for(logged_in_client, patient_id, title="Grouped Case", total_cost="5000")
+    _add_payment(logged_in_client, case_id, case_url, 100)
+    _add_payment(logged_in_client, case_id, case_url, 250)
+    body = logged_in_client.get("/reports/?view=payments&group=patient").data.decode()
+    assert "Payments Ledger" in body
+    assert 'class="ledger-group"' in body
+    assert "₹350.00" in body  # the patient's subtotal (and the grand total)
+
+
+def test_ledger_ignores_unknown_options(logged_in_client, patient_id):
+    resp = logged_in_client.get("/reports/?view=bogus&group=drop_table&balance=x&period_on=y")
+    assert resp.status_code == 200
+    assert b"Cases Ledger" in resp.data

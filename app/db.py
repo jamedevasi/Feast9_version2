@@ -2068,6 +2068,93 @@ def get_pending_payments():
     return pending
 
 
+def get_case_ledger(start, end, status="", balance="", period_on=""):
+    """One row per case for the Reports page's merged Case/Payment ledger (Cases view) — the
+    single filterable table that replaced the separate 'Pending Payments by Patient & Case' and
+    'Cases Closed in Period' sections. Paid/Balance are live-computed across all time, same as
+    get_pending_payments.
+
+    status: '' (any) / 'Active' / 'Closed'. balance: '' (any) / 'outstanding' (> 0) / 'paid'
+    (<= 0). period_on: '' (no date filter) / 'opened' (created_at in start..end) / 'closed'
+    (closed_at in start..end) — DATE()-wrapped, both being timestamps (§5.9)."""
+    where, params = [], []
+    if status in ("Active", "Closed"):
+        where.append("c.status = ?")
+        params.append(status)
+    if period_on == "opened":
+        where.append("DATE(c.created_at) BETWEEN ? AND ?")
+        params += [start, end]
+    elif period_on == "closed":
+        where.append("c.closed_at != '' AND DATE(c.closed_at) BETWEEN ? AND ?")
+        params += [start, end]
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT c.id AS case_id, c.title AS case_title, c.status, c.total_cost,
+                  c.created_at, c.closed_at,
+                  p.id AS patient_id, p.name AS patient_name, p.mobile,
+                  COALESCE(d.name, '') AS doctor_name,
+                  COALESCE((SELECT SUM(amount) FROM payments WHERE case_id = c.id), 0) AS paid
+           FROM cases c
+           JOIN patients p ON p.id = c.patient_id
+           LEFT JOIN doctors d ON d.id = c.doctor_id"""
+        + (" WHERE " + " AND ".join(where) if where else ""),
+        params,
+    ).fetchall()
+    conn.close()
+    ledger = []
+    for r in rows:
+        row = dict(r)
+        row["balance"] = row["total_cost"] - row["paid"]
+        if balance == "outstanding" and row["balance"] <= 0:
+            continue
+        if balance == "paid" and row["balance"] > 0:
+            continue
+        ledger.append(row)
+    if balance == "outstanding":
+        ledger.sort(key=lambda r: r["balance"], reverse=True)
+    elif period_on == "closed":
+        ledger.sort(key=lambda r: r["closed_at"], reverse=True)
+    else:
+        ledger.sort(key=lambda r: r["created_at"], reverse=True)
+    return ledger
+
+
+def get_payment_ledger(start, end, method=""):
+    """One row per payment dated start..end (payment_date is date-only — no DATE() needed) for
+    the ledger's Payments view, which replaced 'Payments Received in Period'. method, when
+    given, matches case-insensitively — it's a free-text field ('UPI' vs 'upi')."""
+    sql = """SELECT pay.id, pay.payment_date, pay.amount, pay.method, pay.reference,
+                    c.id AS case_id, c.title AS case_title,
+                    p.id AS patient_id, p.name AS patient_name,
+                    COALESCE(d.name, '') AS doctor_name
+             FROM payments pay
+             JOIN cases c ON c.id = pay.case_id
+             JOIN patients p ON p.id = pay.patient_id
+             LEFT JOIN doctors d ON d.id = c.doctor_id
+             WHERE pay.payment_date BETWEEN ? AND ?"""
+    params = [start, end]
+    if method:
+        sql += " AND LOWER(TRIM(pay.method)) = LOWER(TRIM(?))"
+        params.append(method)
+    sql += " ORDER BY pay.payment_date DESC, pay.id DESC"
+    conn = get_db()
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def list_payment_methods():
+    """Distinct payment methods ever recorded (free text, so de-duplicated case-insensitively)
+    — the ledger's Method filter options."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT MIN(TRIM(method)) AS method FROM payments
+           WHERE TRIM(method) != '' GROUP BY LOWER(TRIM(method)) ORDER BY 1"""
+    ).fetchall()
+    conn.close()
+    return [r["method"] for r in rows]
+
+
 def get_doctor_revenue_by_period(start, end):
     """Billed = total_cost of cases opened in the period; collected = payments against
     those same cases (a subquery, not a join, so a case with several payments doesn't
