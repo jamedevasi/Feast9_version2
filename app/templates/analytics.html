@@ -11,96 +11,72 @@
       {% endfor %}
     </select>
   </label>
+  <label class="checkbox-inline{% if not yoy_available %} is-disabled{% endif %}">
+    <input type="checkbox" name="compare" value="yoy" id="compare-toggle"
+           {% if compare %}checked{% endif %} {% if not yoy_available %}disabled{% endif %}>
+    Compare with {{ prev_year }}
+  </label>
   <button type="submit">Apply</button>
 </form>
+{% if not yoy_available %}
+<p class="hint yoy-note">Year-on-year comparison becomes available once {{ prev_year }} has data.</p>
+{% elif compare %}
+<p class="hint yoy-note">Comparing {{ year }} with {{ prev_year }} — last year is shown in grey on the charts{% if kpi_compare_label != prev_year|string %}; the tiles compare {{ year }} so far with the same period of {{ prev_year }}{% endif %}.</p>
+{% endif %}
 
 <div class="stat-grid">
   <div class="stat-tile">
     <span class="stat-label">Revenue Collected</span>
     <span class="stat-value">₹{{ '%.2f'|format(kpis.revenue_collected) }}</span>
+    {% if compare %}{% set d = kpi_deltas.revenue_collected %}<span class="stat-delta">{% if d is none %}— no {{ prev_year }} base{% else %}{{ '▲' if d > 0 else ('▼' if d < 0 else '＝') }} {{ '%.0f'|format(d|abs) }}% vs {{ kpi_compare_label }}{% endif %}</span>{% endif %}
   </div>
   <div class="stat-tile">
     <span class="stat-label">Total Patients</span>
     <span class="stat-value">{{ kpis.total_patients }}</span>
+    {% if compare %}{% set d = kpi_deltas.total_patients %}<span class="stat-delta">{% if d is none %}— no {{ prev_year }} base{% else %}{{ '▲' if d > 0 else ('▼' if d < 0 else '＝') }} {{ '%.0f'|format(d|abs) }}% vs {{ kpi_compare_label }}{% endif %}</span>{% endif %}
   </div>
   <div class="stat-tile">
     <span class="stat-label">Active Cases</span>
     <span class="stat-value">{{ kpis.active_cases }}</span>
+    {% if compare %}{% set d = kpi_deltas.active_cases %}<span class="stat-delta">{% if d is none %}— no {{ prev_year }} base{% else %}{{ '▲' if d > 0 else ('▼' if d < 0 else '＝') }} {{ '%.0f'|format(d|abs) }}% vs {{ kpi_compare_label }}{% endif %}</span>{% endif %}
   </div>
   <div class="stat-tile">
     <span class="stat-label">New Patients</span>
     <span class="stat-value">{{ kpis.new_patients }}</span>
+    {% if compare %}{% set d = kpi_deltas.new_patients %}<span class="stat-delta">{% if d is none %}— no {{ prev_year }} base{% else %}{{ '▲' if d > 0 else ('▼' if d < 0 else '＝') }} {{ '%.0f'|format(d|abs) }}% vs {{ kpi_compare_label }}{% endif %}</span>{% endif %}
   </div>
   <div class="stat-tile">
     <span class="stat-label">New Cases</span>
     <span class="stat-value">{{ kpis.new_cases }}</span>
+    {% if compare %}{% set d = kpi_deltas.new_cases %}<span class="stat-delta">{% if d is none %}— no {{ prev_year }} base{% else %}{{ '▲' if d > 0 else ('▼' if d < 0 else '＝') }} {{ '%.0f'|format(d|abs) }}% vs {{ kpi_compare_label }}{% endif %}</span>{% endif %}
   </div>
   <div class="stat-tile">
     <span class="stat-label">Cases Closed</span>
     <span class="stat-value">{{ kpis.cases_closed }}</span>
+    {% if compare %}{% set d = kpi_deltas.cases_closed %}<span class="stat-delta">{% if d is none %}— no {{ prev_year }} base{% else %}{{ '▲' if d > 0 else ('▼' if d < 0 else '＝') }} {{ '%.0f'|format(d|abs) }}% vs {{ kpi_compare_label }}{% endif %}</span>{% endif %}
   </div>
   <div class="stat-tile">
     <span class="stat-label">Average Case Value</span>
     <span class="stat-value">₹{{ '%.2f'|format(kpis.avg_case_value) }}</span>
+    {% if compare %}{% set d = kpi_deltas.avg_case_value %}<span class="stat-delta">{% if d is none %}— no {{ prev_year }} base{% else %}{{ '▲' if d > 0 else ('▼' if d < 0 else '＝') }} {{ '%.0f'|format(d|abs) }}% vs {{ kpi_compare_label }}{% endif %}</span>{% endif %}
   </div>
   <div class="stat-tile">
     <span class="stat-label">No-show Rate</span>
     <span class="stat-value">{{ '%.1f'|format(kpis.no_show_rate) }}%</span>
+    {% if compare %}{% set d = kpi_deltas.no_show_rate %}<span class="stat-delta">{% if d is none %}— no {{ prev_year }} base{% else %}{{ '▲' if d > 0 else ('▼' if d < 0 else '＝') }} {{ '%.0f'|format(d|abs) }}% vs {{ kpi_compare_label }}{% endif %}</span>{% endif %}
   </div>
 </div>
 
+{# Grouped by subject so related charts sit side by side: Revenue, Patients, Cases, Appointments. #}
+<h2 class="chart-group-title">Revenue</h2>
 <div class="chart-grid">
   <section class="card chart-card">
     <h2>Monthly Revenue</h2>
     <canvas id="chart-monthly-revenue" role="img" aria-label="Monthly revenue collected for {{ year }}"></canvas>
   </section>
   <section class="card chart-card">
-    <h2>Patients — Total vs New</h2>
-    <canvas id="chart-patients-total-new" role="img" aria-label="Total patients on file at each month-end, and new patients registered each month, for {{ year }}"></canvas>
-  </section>
-  <section class="card chart-card">
-    <h2>Monthly New Cases</h2>
-    <canvas id="chart-monthly-cases" role="img" aria-label="New cases opened per month for {{ year }}"></canvas>
-  </section>
-  <section class="card chart-card">
-    <h2>Active Cases (month-end)</h2>
-    <canvas id="chart-active-cases" role="img" aria-label="Cases open at the end of each month of {{ year }}"></canvas>
-    {% if not chart_data.yearly_active_cases %}<p class="hint chart-note">A year-by-year trend appears here once there's more than one year of cases.</p>{% endif %}
-  </section>
-  {% if chart_data.yearly_active_cases %}
-  <section class="card chart-card">
-    <h2>Active Cases — Year-end Trend</h2>
-    <canvas id="chart-active-cases-yearly" role="img" aria-label="Cases open at the end of each year"></canvas>
-  </section>
-  {% endif %}
-  <section class="card chart-card">
-    <h2>Monthly Appointments</h2>
-    <canvas id="chart-monthly-appointments" role="img" aria-label="Appointments booked per month for {{ year }}"></canvas>
-  </section>
-  <section class="card chart-card">
-    <h2>Busiest Days — Appointments</h2>
-    <canvas id="chart-weekday-appointments" role="img" aria-label="Appointments by day of the week for {{ year }}, excluding cancelled"></canvas>
-  </section>
-  <section class="card chart-card">
     <h2>Busiest Days — Revenue</h2>
     <canvas id="chart-weekday-revenue" role="img" aria-label="Revenue collected by day of the week for {{ year }}"></canvas>
-  </section>
-  <section class="card chart-card">
-    <h2>Patient Demographics</h2>
-    {% if chart_data.demographics.values()|sum %}
-    <canvas id="chart-demographics" role="img" aria-label="Patients on file by men, women and children under 18"></canvas>
-    <p class="hint chart-note">Patients on file at the end of {{ year }}. Children = under 18, whatever their sex.</p>
-    {% else %}
-    <p class="empty-state">No patients on file by the end of {{ year }}.</p>
-    {% endif %}
-  </section>
-  <section class="card chart-card">
-    <h2>Case Status</h2>
-    <canvas id="chart-case-status" role="img" aria-label="Active vs closed cases opened in {{ year }}"></canvas>
-  </section>
-  <section class="card chart-card">
-    <h2>Appointment Status</h2>
-    <canvas id="chart-appointment-status" role="img" aria-label="Appointment status breakdown for {{ year }}"></canvas>
   </section>
   <section class="card chart-card">
     <h2>Doctor-wise Revenue Share</h2>
@@ -108,14 +84,6 @@
     <canvas id="chart-doctor-revenue" role="img" aria-label="Revenue collected per doctor for {{ year }}"></canvas>
     {% else %}
     <p class="empty-state">No revenue collected against any doctor in {{ year }}.</p>
-    {% endif %}
-  </section>
-  <section class="card chart-card">
-    <h2>Top Procedures</h2>
-    {% if chart_data.procedure_popularity %}
-    <canvas id="chart-procedure-popularity" role="img" aria-label="Most common procedures for {{ year }}"></canvas>
-    {% else %}
-    <p class="empty-state">No procedures recorded on any case opened in {{ year }}.</p>
     {% endif %}
   </section>
   <section class="card chart-card chart-card-wide">
@@ -144,6 +112,67 @@
   </div>
 </details>
 {% endif %}
+
+<h2 class="chart-group-title">Patients</h2>
+<div class="chart-grid">
+  <section class="card chart-card">
+    <h2>Patients — Total vs New</h2>
+    <canvas id="chart-patients-total-new" role="img" aria-label="Total patients on file at each month-end, and new patients registered each month, for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Patient Demographics</h2>
+    {% if chart_data.demographics.values()|sum %}
+    <canvas id="chart-demographics" role="img" aria-label="Patients on file by men, women and children under 18"></canvas>
+    <p class="hint chart-note">Patients on file at the end of {{ year }}. Children = under 18, whatever their sex.</p>
+    {% else %}
+    <p class="empty-state">No patients on file by the end of {{ year }}.</p>
+    {% endif %}
+  </section>
+</div>
+
+<h2 class="chart-group-title">Cases</h2>
+<div class="chart-grid">
+  <section class="card chart-card">
+    <h2>Cases — Active vs New</h2>
+    <canvas id="chart-cases-active-new" role="img" aria-label="Cases open at each month-end, and new cases opened each month, for {{ year }}"></canvas>
+    {% if not chart_data.yearly_active_cases %}<p class="hint chart-note">A year-by-year trend appears once there's more than one year of cases.</p>{% endif %}
+  </section>
+  {% if chart_data.yearly_active_cases %}
+  <section class="card chart-card">
+    <h2>Active Cases — Year-end Trend</h2>
+    <canvas id="chart-active-cases-yearly" role="img" aria-label="Cases open at the end of each year"></canvas>
+  </section>
+  {% endif %}
+  <section class="card chart-card">
+    <h2>Case Status</h2>
+    <canvas id="chart-case-status" role="img" aria-label="Active vs closed cases opened in {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Top Procedures</h2>
+    {% if chart_data.procedure_popularity %}
+    <canvas id="chart-procedure-popularity" role="img" aria-label="Most common procedures for {{ year }}"></canvas>
+    {% else %}
+    <p class="empty-state">No procedures recorded on any case opened in {{ year }}.</p>
+    {% endif %}
+  </section>
+</div>
+
+<h2 class="chart-group-title">Appointments</h2>
+<div class="chart-grid">
+  <section class="card chart-card">
+    <h2>Monthly Appointments</h2>
+    <canvas id="chart-monthly-appointments" role="img" aria-label="Appointments booked per month for {{ year }}"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Busiest Days — Appointments</h2>
+    <canvas id="chart-weekday-appointments" role="img" aria-label="Appointments by day of the week for {{ year }}, excluding cancelled"></canvas>
+  </section>
+  <section class="card chart-card">
+    <h2>Appointment Status</h2>
+    <canvas id="chart-appointment-status" role="img" aria-label="Appointment status breakdown for {{ year }}"></canvas>
+  </section>
+</div>
+
 
 <script type="application/json" id="analytics-data">{{ chart_data|tojson }}</script>
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>

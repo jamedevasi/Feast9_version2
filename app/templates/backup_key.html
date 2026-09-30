@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Backup Key — Feast9{% endblock %}
+{% block content %}
+<h1>{% if just_created %}Backups Are Set Up{% else %}Backup Key{% endif %}</h1>
+
+{% if just_created %}
+{% if first_backup_ok %}
+<p class="flash flash-success">The first backup has been made. From now on, a backup is made automatically every day while Feast9 is running.</p>
+{% else %}
+<p class="flash flash-warning">Backups are set up, but the first backup didn't finish. Use Back Up Now on the Backup &amp; Data page to try again.</p>
+{% endif %}
+{% endif %}
+
+<section class="card">
+  <h2>Save this backup key somewhere safe</h2>
+  <p>Backups are locked with this key. <strong>A backup can only be opened with it</strong>, so if this computer fails, whoever restores Feast9 will need it.</p>
+  <p class="backup-key" data-copy title="Click to copy">{{ key }}</p>
+  <p class="flash flash-success" data-copy-feedback hidden>Copied.</p>
+  <ul>
+    <li>Save it in a password manager, or print this page and keep it somewhere locked.</li>
+    <li>Keep it apart from the backups: don't save it on the same USB drive or in the same folder.</li>
+    <li>Don't email or message it. Anyone with this key and a backup file can read patient records.</li>
+  </ul>
+  <p class="muted-note">You can see it again later from Backup &amp; Data, after entering your password.</p>
+  <p><a class="button" href="{{ url_for('backup.list_view') }}">{% if just_created %}I've saved the key — continue{% else %}Back to Backup &amp; Data{% endif %}</a></p>
+</section>
+{% endblock %}

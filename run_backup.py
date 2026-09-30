@@ -1,6 +1,8 @@
-"""Create a Feast9 backup. Schedule this nightly via cron or Windows Task Scheduler — see
-BACKUP.md for scheduling examples, off-site destination setup, and the restore-testing
-procedure that makes a backup count as valid."""
+"""Create a Feast9 backup from the command line. The app makes its daily backup itself while
+it's running (Backup & Data page settings); this script is for cron / Task Scheduler on a
+server where that isn't enough — see BACKUP.md, including the restore-testing procedure that
+makes a backup count as valid. Uses the same key (env var or the key file created in the
+app) and the same copy-folder / keep settings."""
 import sys
 
 from app import db

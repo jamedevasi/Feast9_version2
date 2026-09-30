@@ -69,9 +69,27 @@ def test_admin_can_add_and_list_procedure_type(logged_in_client):
 
 
 def test_procedure_type_name_required(logged_in_client):
+    before = len(db.list_procedure_types(active_only=False))
     resp = _add_procedure_type(logged_in_client, name="")
     assert resp.status_code == 302
-    assert db.list_procedure_types(active_only=False) == []
+    assert len(db.list_procedure_types(active_only=False)) == before
+
+
+def test_standard_case_types_shipped_and_idempotent(logged_in_client):
+    from app.constants import STANDARD_PROCEDURE_TYPES
+
+    names = [p["name"] for p in db.list_procedure_types(active_only=False)]
+    assert set(STANDARD_PROCEDURE_TYPES) <= set(names)
+    db.init_db()  # every startup re-runs the seed — it must not duplicate anything
+    assert len(db.list_procedure_types(active_only=False)) == len(names)
+
+
+def test_deactivated_standard_case_type_stays_deactivated(logged_in_client):
+    pt = next(p for p in db.list_procedure_types() if p["name"] == "Biopsy")
+    db.set_procedure_type_active(pt["id"], False)
+    db.init_db()
+    assert db.get_procedure_type(pt["id"])["is_active"] == 0
+    assert "Biopsy" not in [p["name"] for p in db.list_procedure_types()]
 
 
 def test_deactivate_and_reactivate_procedure_type(logged_in_client):

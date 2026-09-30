@@ -15,6 +15,21 @@
     }
   }, true);
 
+  // Top-nav dropdowns (<details class="nav-dropdown">, e.g. Settings) are native <details>,
+  // which only close when their own summary is clicked — close them on a click anywhere
+  // else, or on Escape, like a normal menu.
+  function closeNavDropdowns(except) {
+    Array.prototype.forEach.call(document.querySelectorAll("details.nav-dropdown[open]"), function (menu) {
+      if (menu !== except) menu.removeAttribute("open");
+    });
+  }
+  document.addEventListener("click", function (e) {
+    closeNavDropdowns(e.target.closest && e.target.closest("details.nav-dropdown"));
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeNavDropdowns(null);
+  });
+
   // Click-to-copy (appointment reminder text). The element right after it, if it has
   // data-copy-feedback, is shown for 2s as a "Copied" confirmation.
   document.addEventListener("click", function (e) {

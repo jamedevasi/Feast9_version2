@@ -1,0 +1,17 @@
+<tr>
+  <td>{{ e.started_at }}</td>
+  <td>{{ e.finished_at or '—' }}</td>
+  <td>
+    {% if e.status == 'success' %}<span class="badge badge-active">Completed</span>
+    {% elif e.status == 'running' %}<span class="badge badge-plain">In progress</span>
+    {% elif e.status == 'removed' %}<span class="badge badge-closed" title="Deleted to keep only the most recent backups">Removed</span>
+    {% else %}<span class="badge badge-overdue" title="{{ e.error_message }}">Failed</span>{% endif %}
+  </td>
+  <td>{{ '%.1f MB'|format(e.file_size / 1048576) if e.file_size and e.file_size >= 1048576 else ('%.0f KB'|format(e.file_size / 1024) if e.file_size else '—') }}</td>
+  <td>{% if not e.offsite_status or e.offsite_status == 'not_configured' %}—{% elif e.offsite_status == 'success' %}Copied{% else %}<span title="{{ e.offsite_status }}">Not copied</span>{% endif %}</td>
+  <td>
+    {% if e.status == 'success' %}
+    <a href="{{ url_for('backup.download', backup_id=e.id) }}">Download</a>
+    {% endif %}
+  </td>
+</tr>

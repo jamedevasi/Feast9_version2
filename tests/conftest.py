@@ -12,6 +12,10 @@ def app(tmp_path, monkeypatch):
     data_dir.mkdir()
     monkeypatch.setattr(app_config, "DATA_DIR", str(data_dir))
     monkeypatch.setattr(app_config, "DB_PATH", str(data_dir / "feast9.db"))
+    # Never pick up a real backup key/command from the machine running the tests.
+    monkeypatch.setattr(app_config, "BACKUP_ENCRYPTION_KEY", "")
+    monkeypatch.setattr(app_config, "BACKUP_KEY_FILE", str(tmp_path / "keys" / "backup.key"))
+    monkeypatch.setattr(app_config, "BACKUP_OFFSITE_COMMAND", "")
 
     application = create_app()
     application.testing = True

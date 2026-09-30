@@ -7,6 +7,12 @@
       document.getElementById("year-form").submit();
     });
   }
+  var compareToggle = document.getElementById("compare-toggle");
+  if (compareToggle) {
+    compareToggle.addEventListener("change", function () {
+      document.getElementById("year-form").submit();
+    });
+  }
 
   if (typeof Chart === "undefined") {
     return; // vendor script failed to load — the page still works without charts
@@ -60,7 +66,26 @@
     return "rgba(" + r + ", " + g + ", " + b + ", " + alpha + ")";
   }
 
-  function lineChart(canvasId, label, values, labels) {
+  // Year-on-year overlay: last year as a dashed grey line, drawn behind this year's marks.
+  var PREV = data.previous || null;
+  var PREV_COLOR = "#8a94a0";
+  function previousDataset(values) {
+    return {
+      type: "line",
+      label: String(PREV.year),
+      data: values,
+      borderColor: PREV_COLOR,
+      backgroundColor: PREV_COLOR,
+      borderDash: [6, 4],
+      borderWidth: 2,
+      pointRadius: 2,
+      tension: 0.25,
+      fill: false,
+      order: 5,
+    };
+  }
+
+  function lineChart(canvasId, label, values, labels, previousValues) {
     var el = document.getElementById(canvasId);
     if (!el) return;
     new Chart(el, {
@@ -77,11 +102,12 @@
           pointBackgroundColor: BLUE,
           tension: 0.25,
           fill: true,
-        }],
+        }].concat(previousValues ? [previousDataset(previousValues)] : []),
       },
       options: {
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        interaction: previousValues ? { mode: "index", intersect: false } : undefined,
+        plugins: { legend: { display: !!previousValues } },
         scales: {
           y: { beginAtZero: true, grid: { color: GRID }, ticks: { precision: 0 } },
           x: { grid: { display: false } },
@@ -148,7 +174,7 @@
     });
   }
 
-  function columnChart(canvasId, label, labels, values, isCurrency) {
+  function columnChart(canvasId, label, labels, values, isCurrency, previousValues) {
     // Single-series vertical bars — one hue, since the bars differ only in magnitude.
     var el = document.getElementById(canvasId);
     if (!el) return;
@@ -163,11 +189,19 @@
           maxBarThickness: 36,
           borderRadius: 4,
           borderSkipped: "start",
-        }],
+        }].concat(previousValues ? [{
+          label: String(PREV.year),
+          data: previousValues,
+          backgroundColor: PREV_COLOR,
+          maxBarThickness: 36,
+          borderRadius: 4,
+          borderSkipped: "start",
+        }] : []),
       },
       options: {
         maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: isCurrency ? currencyTooltip : {} },
+        interaction: previousValues ? { mode: "index", intersect: false } : undefined,
+        plugins: { legend: { display: !!previousValues }, tooltip: isCurrency ? currencyTooltip : {} },
         scales: {
           y: {
             beginAtZero: true, grid: { color: GRID },
@@ -179,8 +213,8 @@
     });
   }
 
-  function totalVsNewChart(canvasId, totals, news) {
-    // Same unit (patients) on one axis: running total as a line, monthly additions as bars.
+  function totalVsNewChart(canvasId, totals, news, totalLabel, newLabel, previousNews) {
+    // Same unit on one axis: a month-end level as a line, that month's additions as bars.
     var el = document.getElementById(canvasId);
     if (!el) return;
     new Chart(el, {
@@ -188,15 +222,17 @@
         labels: data.months,
         datasets: [
           {
-            type: "line", label: "Total patients", data: totals, order: 0,
+            type: "line", label: totalLabel, data: totals, order: 0,
             borderColor: CATEGORICAL[0], backgroundColor: CATEGORICAL[0],
             borderWidth: 2, pointRadius: 3, tension: 0.25,
           },
           {
-            type: "bar", label: "New patients", data: news, order: 1,
+            type: "bar", label: newLabel, data: news, order: 1,
             backgroundColor: CATEGORICAL[1], maxBarThickness: 24, borderRadius: 4, borderSkipped: "start",
           },
-        ],
+        ].concat(previousNews ? [Object.assign(previousDataset(previousNews), {
+          label: newLabel + " " + PREV.year,
+        })] : []),
       },
       options: {
         maintainAspectRatio: false,
@@ -242,9 +278,12 @@
     });
   }
 
-  lineChart("chart-monthly-revenue", "Revenue (₹)", data.monthly_revenue);
-  totalVsNewChart("chart-patients-total-new", data.monthly_total_patients, data.monthly_new_patients);
-  lineChart("chart-active-cases", "Active cases", data.monthly_active_cases);
+  lineChart("chart-monthly-revenue", String(data.year || "Revenue"), data.monthly_revenue, null,
+            PREV && PREV.monthly_revenue);
+  totalVsNewChart("chart-patients-total-new", data.monthly_total_patients, data.monthly_new_patients,
+                  "Total patients", "New patients", PREV && PREV.monthly_new_patients);
+  totalVsNewChart("chart-cases-active-new", data.monthly_active_cases, data.monthly_new_cases,
+                  "Active cases (month-end)", "New cases", PREV && PREV.monthly_new_cases);
   if (data.yearly_active_cases && data.yearly_active_cases.length) {
     lineChart(
       "chart-active-cases-yearly", "Active cases",
@@ -252,10 +291,12 @@
       data.yearly_active_cases.map(function (y) { return String(y.year); })
     );
   }
-  columnChart("chart-weekday-appointments", "Appointments", data.weekday.labels, data.weekday.appointments, false);
-  columnChart("chart-weekday-revenue", "Revenue", data.weekday.labels, data.weekday.revenue, true);
-  lineChart("chart-monthly-cases", "New Cases", data.monthly_new_cases);
-  lineChart("chart-monthly-appointments", "Appointments", data.monthly_appointments);
+  columnChart("chart-weekday-appointments", String(data.year || "Appointments"), data.weekday.labels,
+              data.weekday.appointments, false, PREV && PREV.weekday.appointments);
+  columnChart("chart-weekday-revenue", String(data.year || "Revenue"), data.weekday.labels,
+              data.weekday.revenue, true, PREV && PREV.weekday.revenue);
+  lineChart("chart-monthly-appointments", String(data.year || "Appointments"), data.monthly_appointments, null,
+            PREV && PREV.monthly_appointments);
 
   stackedShareChart("chart-case-status", [
     { label: "Active", value: data.case_status.Active, color: BLUE },

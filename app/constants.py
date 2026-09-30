@@ -35,6 +35,46 @@ APPOINTMENT_STATUSES = ["Scheduled", "Completed", "Cancelled", "No-show"]
 RECURRENCE_INTERVALS = ["Weekly", "Biweekly", "Monthly"]
 MAX_RECURRING_OCCURRENCES = 52
 
+# Standard dental case types shipped with the app (user request 2026-09-23) — added on startup
+# by db._seed_standard_procedure_types wherever the name is missing, so a fresh install is
+# usable immediately. Admins still manage the list under Settings > Case Types; a type they
+# deactivate stays deactivated (it's matched by name, active or not). The first seven match
+# the names the demo data and early installs already used, so no case is orphaned.
+STANDARD_PROCEDURE_TYPES = [
+    "Consultation",
+    "Scaling",
+    "Filling",
+    "Root Canal Treatment",
+    "Crown",
+    "Extraction",
+    "Implant",
+    "Dental X-ray (IOPA)",
+    "OPG (Full-mouth X-ray)",
+    "Deep Cleaning (Root Planing)",
+    "Re-Root Canal Treatment",
+    "Pulpotomy",
+    "Pulpectomy",
+    "Post & Core",
+    "Bridge",
+    "Inlay / Onlay",
+    "Veneers",
+    "Surgical Extraction",
+    "Wisdom Tooth Surgery",
+    "Complete Denture",
+    "Partial Denture",
+    "Orthodontic Treatment (Braces)",
+    "Clear Aligners",
+    "Retainer",
+    "Teeth Whitening",
+    "Gum Surgery",
+    "Frenectomy",
+    "Fluoride Application",
+    "Pit & Fissure Sealant",
+    "Space Maintainer",
+    "Night Guard",
+    "Biopsy",
+]
+
 # Bulk patient import (§2/§3 excel_import.py — "Bulk 8,000-row xlsx import").
 MAX_IMPORT_ROWS = 8000
 

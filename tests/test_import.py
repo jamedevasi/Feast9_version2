@@ -1,9 +1,9 @@
-import io
+﻿import io
 
 from openpyxl import Workbook, load_workbook
 
 from app import db
-from app.excel_import import TEMPLATE_HEADERS
+from app.excel_import import CASES_SHEET_HEADERS, TEMPLATE_HEADERS
 from tests.conftest import get_csrf
 from tests.test_roles import _create_user, _login, _logout
 
@@ -42,7 +42,7 @@ BAD_SEX_ROW = [
 
 
 def _upload(client, content, filename="patients.xlsx"):
-    token = get_csrf(client, "/import/")
+    token = get_csrf(client, "/backup/")
     return client.post(
         "/import/patients",
         data={"file": (io.BytesIO(content), filename), "csrf_token": token},
@@ -57,8 +57,11 @@ def test_download_template_has_expected_headers(logged_in_client):
 
     wb = load_workbook(io.BytesIO(resp.data))
     ws = wb.active
+    assert ws.title == "Patients & Cases"
     header_row = next(ws.iter_rows(values_only=True))
-    assert list(header_row) == TEMPLATE_HEADERS
+    assert list(header_row) == CASES_SHEET_HEADERS
+    # The rest of this file uploads the original one-sheet layout (TEMPLATE_HEADERS) —
+    # still accepted, so older filled-in templates keep working.
 
 
 def test_import_valid_rows(logged_in_client):
@@ -119,7 +122,7 @@ def test_missing_required_columns_rejected(logged_in_client):
 
     resp = _upload(logged_in_client, buf.getvalue())
     assert resp.status_code == 302
-    follow = logged_in_client.get("/import/")
+    follow = logged_in_client.get("/backup/")
     assert b"Missing required column" in follow.data
     assert db.list_patients() == []
 
@@ -160,7 +163,7 @@ def test_non_admin_blocked_from_import(logged_in_client):
     _logout(logged_in_client)
     _login(logged_in_client, "importrecep")
 
-    assert logged_in_client.get("/import/").status_code == 403
+    assert logged_in_client.get("/backup/").status_code == 403
     assert logged_in_client.get("/import/template.xlsx").status_code == 403
 
     content = _build_workbook([VALID_ROW])
@@ -168,6 +171,23 @@ def test_non_admin_blocked_from_import(logged_in_client):
     assert resp.status_code == 403
 
 
-def test_settings_hub_links_to_import_data(logged_in_client):
+def test_import_and_export_live_on_backup_page(logged_in_client):
     resp = logged_in_client.get("/settings/")
-    assert b'href="/import/"' in resp.data
+    assert b'href="/backup/"' in resp.data
+    assert b'href="/import/"' not in resp.data
+
+    body = logged_in_client.get("/backup/").data
+    for fragment in (b'id="system-backup"', b'id="export"', b'id="import"',
+                     b'action="/import/patients"', b'href="/import/export.xlsx"', b'href="/import/template.xlsx"'):
+        assert fragment in body
+
+    old = logged_in_client.get("/import/")
+    assert old.status_code == 302 and old.headers["Location"].endswith("/backup/#import")
+
+
+def test_backup_page_shows_last_excel_export(logged_in_client):
+    assert b"Never downloaded" in logged_in_client.get("/backup/").data
+    logged_in_client.get("/import/export.xlsx")
+    body = logged_in_client.get("/backup/").data
+    assert b"Never downloaded" not in body
+    assert b"Downloaded " in body

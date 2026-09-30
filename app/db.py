@@ -5,7 +5,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 
 from app import config as app_config
-from app.constants import MAX_RECURRING_OCCURRENCES
+from app.constants import MAX_RECURRING_OCCURRENCES, STANDARD_PROCEDURE_TYPES
 from app.validators import compute_age, now_iso
 
 _PATIENT_COLUMNS = [
@@ -138,6 +138,20 @@ def _migrate_dental_chart_planned_date(conn):
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(dental_chart_entries)")}
     if "planned_date" not in columns:
         conn.execute("ALTER TABLE dental_chart_entries ADD COLUMN planned_date TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+
+
+def _seed_standard_procedure_types(conn):
+    """Adds each STANDARD_PROCEDURE_TYPES name not already present (case-insensitive, active or
+    not) — so it's safe on every startup, never duplicates, and never re-activates a type an
+    admin switched off. Not audited: it's shipped master data, not a user action."""
+    existing = {r["name"].strip().lower() for r in conn.execute("SELECT name FROM procedure_types")}
+    now = now_iso()
+    for name in STANDARD_PROCEDURE_TYPES:
+        if name.lower() not in existing:
+            conn.execute(
+                "INSERT INTO procedure_types (name, is_active, created_at) VALUES (?, 1, ?)", (name, now)
+            )
     conn.commit()
 
 
@@ -423,6 +437,7 @@ def init_db():
     _migrate_admin_google(conn)
     _migrate_case_financial_assessments_consumables(conn)
     _migrate_dental_chart_planned_date(conn)
+    _seed_standard_procedure_types(conn)
     conn.close()
 
 
@@ -456,6 +471,16 @@ def list_audit_log(limit=200):
     rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_last_audit_event(action):
+    """Most recent audit row for an action, or None (e.g. when the last Plan-B export ran)."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM audit_log WHERE action = ? ORDER BY id DESC LIMIT 1", (action,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def write_audit_now(actor, action, entity, entity_id, before_summary="", after_summary="", outcome="success"):
@@ -496,6 +521,30 @@ def start_backup_log():
     backup_id = cur.lastrowid
     conn.close()
     return backup_id
+
+
+def claim_backup_run(since):
+    """Starts a backup_log row only if no backup (manual or scheduled, any outcome) has been
+    started since `since` — one atomic statement, so when two app processes' schedulers wake
+    together only one of them gets a row id; the other gets None and does nothing."""
+    conn = get_db()
+    cur = conn.execute(
+        """INSERT INTO backup_log (started_at, status)
+           SELECT ?, 'running' WHERE NOT EXISTS (SELECT 1 FROM backup_log WHERE started_at >= ?)""",
+        (now_iso(), since),
+    )
+    conn.commit()
+    backup_id = cur.lastrowid if cur.rowcount else None
+    conn.close()
+    return backup_id
+
+
+def mark_backup_removed(backup_id):
+    """An old backup file deleted to keep only the most recent N — the row stays as history."""
+    conn = get_db()
+    conn.execute("UPDATE backup_log SET status = 'removed' WHERE id = ?", (backup_id,))
+    conn.commit()
+    conn.close()
 
 
 def finish_backup_log(backup_id, status, file_path="", file_size=0, offsite_status="", error_message=""):
@@ -898,21 +947,147 @@ def add_patient(data):
     return patient_id
 
 
-def bulk_add_patients(rows, actor=None):
-    """Insert many validated patient dicts in a single transaction — the Excel bulk
-    import (up to MAX_IMPORT_ROWS per row, feast9_v2_agents.md's 'Bulk 8,000-row xlsx
-    import'), where one connect/commit per row would be needlessly slow for a batch
-    this size. Every row is marked is_historic_import=1."""
+# ── Excel workbook import / Plan-B export (app/excel_import.py, app/excel_export.py) ──
+
+def get_import_lookups():
+    """Everything the workbook importer needs to resolve references before it writes
+    anything: existing patient/case/payment ids, and doctor / case-type names."""
+    conn = get_db()
+    patients = [dict(r) for r in conn.execute("SELECT id, name, mobile FROM patients")]
+    cases = {
+        r["id"]: {"patient_id": r["patient_id"], "paid": r["paid"]}
+        for r in conn.execute(
+            """SELECT c.id, c.patient_id,
+                      COALESCE((SELECT SUM(amount) FROM payments WHERE case_id = c.id), 0) AS paid
+               FROM cases c"""
+        )
+    }
+    doctors = [dict(r) for r in conn.execute("SELECT id, name FROM doctors WHERE is_active = 1")]
+    procedure_types = [r["name"] for r in conn.execute("SELECT name FROM procedure_types WHERE is_active = 1")]
+    conn.close()
+    return {"patients": patients, "cases": cases, "doctors": doctors, "procedure_types": procedure_types}
+
+
+def import_workbook(new_patients, new_cases, new_payments, actor=None):
+    """Writes a validated workbook import in ONE transaction — either every valid row lands
+    or none do (one connect/commit for up to MAX_IMPORT_ROWS rows per sheet, not one per
+    row). Imported patients are marked is_historic_import=1. Cases and payments may point at rows created earlier in the same call:
+    a case's `patient` is ("id", patient_id) or ("new", index into new_patients); a
+    payment's `case` is ("id", case_id) or ("new", index into new_cases). Payments keep
+    their per-payment `payment_added` audit row, same as one entered on the case page."""
     conn = get_db()
     now = now_iso()
-    ids = [_insert_patient_row(conn, data, is_historic_import=True, now=now) for data in rows]
-    _write_audit(
-        conn, actor, "patients_bulk_imported", "patient", None,
-        after_summary=f"{len(ids)} patients imported",
-    )
+    patient_ids = []
+    for data in new_patients:
+        patient_id = _insert_patient_row(conn, data, is_historic_import=True, now=now)
+        if data.get("last_visited_date"):  # the older version's "Last Visited" — not a form field
+            conn.execute("UPDATE patients SET last_visited_date = ? WHERE id = ?",
+                         (data["last_visited_date"], patient_id))
+        patient_ids.append(patient_id)
+
+    case_ids, case_patient_ids = [], []
+    for data in new_cases:
+        kind, value = data["patient"]
+        patient_id = patient_ids[value] if kind == "new" else value
+        row = {col: data.get(col, _CASE_DEFAULTS.get(col)) for col in _CASE_CREATE_COLUMNS}
+        row.update({
+            "patient_id": patient_id,
+            "status": data["status"],
+            "created_at": data["created_at"],
+            "updated_at": now,
+            "closed_at": data["closed_at"],
+            "follow_up_date": data["follow_up_date"],
+            "next_action_note": data["next_action_note"],
+            "consent_recorded": 0, "consent_recorded_at": "", "consent_notes": "",
+        })
+        columns = ", ".join(row.keys())
+        placeholders = ", ".join(f":{k}" for k in row.keys())
+        cur = conn.execute(f"INSERT INTO cases ({columns}) VALUES ({placeholders})", row)
+        case_ids.append(cur.lastrowid)
+        case_patient_ids.append(patient_id)
+
+    for data in new_payments:
+        kind, value = data["case"]
+        if kind == "new":
+            case_id, patient_id = case_ids[value], case_patient_ids[value]
+        else:
+            case_id = value
+            patient_id = conn.execute("SELECT patient_id FROM cases WHERE id = ?", (case_id,)).fetchone()["patient_id"]
+        conn.execute(
+            """INSERT INTO payments (case_id, patient_id, payment_date, amount, method, reference, notes, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (case_id, patient_id, data["payment_date"], data["amount"],
+             data["method"], data["reference"], data["notes"], now),
+        )
+        _write_audit(
+            conn, actor, "payment_added", "case", case_id,
+            after_summary=f"amount={data['amount']}, method={data['method'] or '—'}, source=excel import",
+        )
+
+    if patient_ids:
+        _write_audit(conn, actor, "patients_bulk_imported", "patient", None,
+                     after_summary=f"{len(patient_ids)} patients imported")
+    if case_ids:
+        _write_audit(conn, actor, "cases_bulk_imported", "case", None,
+                     after_summary=f"{len(case_ids)} cases imported")
     conn.commit()
     conn.close()
-    return ids
+    return {"patients": len(patient_ids), "cases": len(case_ids), "payments": len(new_payments)}
+
+
+def get_export_snapshot():
+    """Every table the Plan-B Excel export needs, read on one connection inside one read
+    transaction so the sheets agree with each other (no payment for a case that isn't
+    on the Cases sheet because it was added between two queries)."""
+    conn = get_db()
+    conn.execute("BEGIN")
+    queries = {
+        "patients": """
+            SELECT p.*,
+                   (SELECT MAX(v.visit_date) FROM case_visit_notes v WHERE v.patient_id = p.id) AS last_visit_note_date
+            FROM patients p ORDER BY p.name COLLATE NOCASE, p.id""",
+        "cases": """
+            SELECT c.*, p.name AS patient_name, p.mobile AS patient_mobile, d.name AS doctor_name,
+                   COALESCE((SELECT SUM(amount) FROM payments WHERE case_id = c.id), 0) AS paid
+            FROM cases c
+            JOIN patients p ON p.id = c.patient_id
+            LEFT JOIN doctors d ON d.id = c.doctor_id
+            ORDER BY p.name COLLATE NOCASE, c.created_at, c.id""",
+        "payments": """
+            SELECT pay.*, p.name AS patient_name, c.title AS case_title
+            FROM payments pay
+            JOIN cases c ON c.id = pay.case_id
+            JOIN patients p ON p.id = pay.patient_id
+            ORDER BY pay.payment_date, pay.id""",
+        "appointments": """
+            SELECT a.*, p.name AS patient_name, p.mobile AS patient_mobile, d.name AS doctor_name
+            FROM appointments a
+            JOIN patients p ON p.id = a.patient_id
+            LEFT JOIN doctors d ON d.id = a.doctor_id
+            ORDER BY a.appt_date, a.start_time, a.id""",
+        "visit_notes": """
+            SELECT v.*, p.name AS patient_name, c.title AS case_title
+            FROM case_visit_notes v
+            JOIN cases c ON c.id = v.case_id
+            JOIN patients p ON p.id = v.patient_id
+            ORDER BY v.visit_date, v.id""",
+        "prescriptions": """
+            SELECT rx.*, p.name AS patient_name, c.title AS case_title
+            FROM prescriptions rx
+            JOIN cases c ON c.id = rx.case_id
+            JOIN patients p ON p.id = rx.patient_id
+            ORDER BY rx.prescribed_date, rx.id""",
+        "lab_requisitions": """
+            SELECT l.*, p.name AS patient_name, c.title AS case_title
+            FROM lab_requisitions l
+            JOIN cases c ON c.id = l.case_id
+            JOIN patients p ON p.id = l.patient_id
+            ORDER BY l.sent_date, l.id""",
+    }
+    snapshot = {key: [dict(r) for r in conn.execute(sql).fetchall()] for key, sql in queries.items()}
+    conn.rollback()
+    conn.close()
+    return snapshot
 
 
 def update_patient(patient_id, data, actor=None):
@@ -2502,8 +2677,24 @@ def get_analytics_years():
     return sorted(years, reverse=True)
 
 
-def get_analytics_kpis(year):
-    start, end = f"{year}-01-01", f"{year}-12-31"
+def get_years_with_activity():
+    """Like get_analytics_years, but only years that really have data — the year-on-year
+    comparison is only offered when the previous year is one of these."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT DISTINCT substr(created_at, 1, 4) AS y FROM cases WHERE created_at != ''
+           UNION SELECT DISTINCT substr(created_at, 1, 4) FROM patients WHERE created_at != ''
+           UNION SELECT DISTINCT substr(appt_date, 1, 4) FROM appointments WHERE appt_date != ''
+           UNION SELECT DISTINCT substr(payment_date, 1, 4) FROM payments WHERE payment_date != ''"""
+    ).fetchall()
+    conn.close()
+    return {int(r["y"]) for r in rows if r["y"] and r["y"].isdigit()}
+
+
+def get_analytics_kpis(year, until=None):
+    """until (ISO date) cuts the year short — used to compare this year so far with the same
+    stretch of last year, instead of a partial year against a full one."""
+    start, end = f"{year}-01-01", until or f"{year}-12-31"
     conn = get_db()
     revenue = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS n FROM payments WHERE payment_date BETWEEN ? AND ?", (start, end)
@@ -2726,22 +2917,24 @@ def get_yearly_active_cases():
 WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
-def get_weekday_activity(year):
+def get_weekday_activity(year, until=None):
     """Appointment volume and revenue collected by day of week, Mon..Sun. Cancelled
-    appointments are left out — they never took up the chair. Revenue is by payment date."""
+    appointments are left out — they never took up the chair. Revenue is by payment date.
+    until (ISO date) cuts the year short, for a like-for-like year-on-year comparison."""
+    until = until or f"{year}-12-31"
     conn = get_db()
     # SQLite's %w is 0=Sunday..6=Saturday; (w + 6) % 7 maps it to 0=Monday..6=Sunday.
     appts = conn.execute(
         """SELECT (CAST(strftime('%w', appt_date) AS INTEGER) + 6) % 7 AS d, COUNT(*) AS n
            FROM appointments
-           WHERE substr(appt_date, 1, 4) = ? AND status != 'Cancelled'
+           WHERE substr(appt_date, 1, 4) = ? AND appt_date <= ? AND status != 'Cancelled'
            GROUP BY d""",
-        (str(year),),
+        (str(year), until),
     ).fetchall()
     revenue = conn.execute(
         """SELECT (CAST(strftime('%w', payment_date) AS INTEGER) + 6) % 7 AS d, COALESCE(SUM(amount), 0) AS total
-           FROM payments WHERE substr(payment_date, 1, 4) = ? GROUP BY d""",
-        (str(year),),
+           FROM payments WHERE substr(payment_date, 1, 4) = ? AND payment_date <= ? GROUP BY d""",
+        (str(year), until),
     ).fetchall()
     conn.close()
     appt_by_day = {r["d"]: r["n"] for r in appts}

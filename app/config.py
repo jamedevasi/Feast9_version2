@@ -11,6 +11,26 @@ SECRET_KEY = os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 BACKUP_ENCRYPTION_KEY = os.environ.get("BACKUP_ENCRYPTION_KEY", "")
 
+# Where the key lives when an admin creates it from the Backup & Data page ("Set Up
+# Backups") instead of setting the env var above. Deliberately outside DATA_DIR: a copy of
+# the data folder (a synced folder, a stolen USB stick) must not carry the key with it.
+BACKUP_KEY_FILE = os.environ.get(
+    "BACKUP_KEY_FILE", os.path.join(os.path.expanduser("~"), ".feast9", "backup.key")
+)
+
+
+def backup_key():
+    """The backup encryption key: the env var if set, else the key file, else ''. A function,
+    read fresh each time, so a key created from the web page takes effect without a restart
+    (and tests can monkeypatch both sources)."""
+    if BACKUP_ENCRYPTION_KEY:
+        return BACKUP_ENCRYPTION_KEY
+    try:
+        with open(BACKUP_KEY_FILE, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
 # Optional shell command to push the encrypted backup off-site (rclone/rsync to S3, Backblaze
 # B2, or a second server — see BACKUP.md). "{file}" is replaced with the backup's local path.
 # The provider is an intentionally deferred operational decision (feast9_v2_agents.md §15) —

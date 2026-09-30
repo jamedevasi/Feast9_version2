@@ -1,37 +1,169 @@
 {% extends "base.html" %}
-{% block title %}Backups — Feast9{% endblock %}
+{% block title %}Backup & Data — Feast9{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Backups</h1>
-  <form method="post" action="{{ url_for('backup.run') }}" data-confirm="Run a backup now?">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="button">Run Backup Now</button>
-  </form>
+<h1>Backup &amp; Data</h1>
+<p class="muted-note">Keep two kinds of copy. A <strong>backup</strong> is a locked copy of everything, used to bring Feast9 back after a computer or server problem. An <strong>Excel copy</strong> is a spreadsheet you can open and keep working in if Feast9 is unavailable, and bring back in afterwards.</p>
+
+<div class="stat-grid">
+  <div class="stat-tile">
+    <span class="stat-label">Backup</span>
+    {% if status.level == 'ok' %}<span class="badge badge-active">Up to date</span>
+    {% elif not status.configured %}<span class="badge badge-overdue">Not set up</span>
+    {% elif status.level == 'warning' %}<span class="badge badge-due-soon">Needs attention</span>
+    {% else %}<span class="badge badge-overdue">Not working</span>{% endif %}
+    <span class="muted-note">{% if status.last_ok %}Last backup: {{ status.last_ok.started_at }} ({{ status.last_ok_age }}){% else %}No backup made yet{% endif %}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">Copy kept elsewhere</span>
+    {% if status.offsite_configured %}<span class="badge badge-active">Yes</span>
+    {% else %}<span class="badge badge-due-soon">No</span>{% endif %}
+    <span class="muted-note">{% if status.offsite_configured %}Each backup is also copied to a second location.{% elif status.configured %}Backups are only kept on this computer. Add a copy folder in the backup settings below.{% else %}Set up backups first.{% endif %}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">Excel copy</span>
+    {% if last_export %}<span class="badge badge-plain">Downloaded {{ last_export_age }}</span>
+    {% else %}<span class="badge badge-due-soon">Never downloaded</span>{% endif %}
+    <span class="muted-note">{% if last_export %}{{ last_export.ts_utc }}{% else %}Download one so the clinic can keep working if Feast9 is unavailable.{% endif %}</span>
+  </div>
 </div>
 
-{% if entries %}
-<table class="data-table">
-  <thead>
-    <tr><th>Started</th><th>Finished</th><th>Status</th><th>Size</th><th>Off-site</th><th></th></tr>
-  </thead>
-  <tbody>
-    {% for e in entries %}
-    <tr>
-      <td>{{ e.started_at }}</td>
-      <td>{{ e.finished_at or '—' }}</td>
-      <td>{{ e.status }}{% if e.error_message %} — {{ e.error_message }}{% endif %}</td>
-      <td>{{ '%.1f KB'|format(e.file_size / 1024) if e.file_size else '—' }}</td>
-      <td>{{ e.offsite_status or '—' }}</td>
-      <td>
-        {% if e.status == 'success' %}
-        <a href="{{ url_for('backup.download', backup_id=e.id) }}">Download</a>
-        {% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p class="empty-state">No backups yet.</p>
+{% if status.level != 'ok' %}
+<p class="flash flash-warning">{{ status.message }}</p>
 {% endif %}
+
+<nav class="page-sections" aria-label="Sections on this page">
+  <a href="#system-backup">Backup</a>
+  <a href="#export">Excel Copy</a>
+  <a href="#import">Import from Excel</a>
+</nav>
+
+{% if result %}
+<section class="card" id="import-results">
+  <h2>Import Results</h2>
+  <p><strong>{{ result.imported_count }}</strong> patient(s) imported, <strong>{{ result.cases_imported }}</strong> case(s) imported, <strong>{{ result.payments_imported }}</strong> payment(s) imported.</p>
+  {% if result.unchanged_total %}
+  <p class="muted-note">Already in Feast9, left as they were: {{ result.unchanged['Patients'] }} patient(s), {{ result.unchanged['Cases'] }} case(s).</p>
+  {% endif %}
+  {% if result.skipped %}
+  <p><strong>{{ result.skipped|length }}</strong> row(s) skipped:</p>
+  <table class="data-table">
+    <thead><tr><th>Sheet</th><th>Row</th><th>Patient / Case</th><th>Reason(s) Skipped</th></tr></thead>
+    <tbody>
+      {% for s in result.skipped %}
+      <tr>
+        <td>{{ s.sheet }}</td>
+        <td>{{ s.row }}</td>
+        <td>{{ s.name or '—' }}</td>
+        <td>{{ s.errors|join('; ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted-note">Fix these rows and upload a spreadsheet containing only them. Don't upload the whole file again: the rows that were just imported would be reported as duplicates.</p>
+  {% else %}
+  <p class="empty-state">No rows were skipped.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card" id="system-backup">
+  <div class="card-heading">
+    <h2>Backup</h2>
+    {% if status.configured %}
+    <form method="post" action="{{ url_for('backup.run') }}" data-confirm="Make a backup now?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="button">Back Up Now</button>
+    </form>
+    {% endif %}
+  </div>
+  <p>A locked copy of all patient records, cases, payments and uploaded files (X-rays, photos, lab reports). It can't be opened in Excel. It's used to bring Feast9 back after a computer problem.</p>
+
+  {% if not status.configured %}
+  <div class="setup-panel">
+    <h3>Set up backups</h3>
+    <p>Clicking <strong>Set Up Backups</strong> will:</p>
+    <ol>
+      <li>Create a backup key. It locks your backups so only the clinic can open them. You'll see it once, to save somewhere safe.</li>
+      <li>Make the first backup straight away.</li>
+      <li>Turn on an automatic backup every day at {{ backup_time_label }} while Feast9 is running. You can change the time afterwards.</li>
+    </ol>
+    <form method="post" action="{{ url_for('backup.setup') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="button">Set Up Backups</button>
+    </form>
+  </div>
+  {% else %}
+  <form method="post" action="{{ url_for('backup.save_settings') }}" class="backup-settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h3>Backup settings</h3>
+    {% if settings_errors %}
+    <ul class="flash flash-warning">{% for e in settings_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+    <label class="checkbox"><input type="checkbox" name="auto_enabled" value="1" {% if settings.auto_enabled %}checked{% endif %}> Make a backup automatically every day</label>
+    <label>At this time<input type="time" name="backup_time" value="{{ settings.time }}" required></label>
+    <p class="hint">Feast9 must be running then. If the computer is off, the backup is made the next time Feast9 starts.</p>
+    <label>Also save a copy in this folder (optional)<input type="text" name="copy_folder" value="{{ settings.copy_folder }}" placeholder="e.g. E:\Feast9 Backups"></label>
+    <p class="hint">Use a USB drive, another computer's shared folder, or a OneDrive / Google Drive folder, so a copy survives if this computer is lost or broken. Leave empty to keep backups on this computer only.</p>
+    <label>Number of backups to keep<input type="number" name="keep_count" value="{{ settings.keep_count }}" min="1" max="{{ max_keep }}" required></label>
+    <p class="hint">Older backups are deleted automatically to save disk space.</p>
+    <div class="form-actions">
+      <button type="submit">Save Settings</button>
+      <a href="{{ url_for('backup.show_key') }}">Show backup key</a>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if entries %}
+  <h3>History</h3>
+  <table class="data-table">
+    <thead>
+      <tr><th>Started</th><th>Finished</th><th>Result</th><th>Size</th><th>Copy elsewhere</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for e in entries[:10] %}{% include "backup_row.html" %}{% endfor %}
+    </tbody>
+  </table>
+  {% if entries|length > 10 %}
+  <details class="older-backups">
+    <summary>Show {{ entries|length - 10 }} older backup(s)</summary>
+    <table class="data-table">
+      <tbody>
+        {% for e in entries[10:] %}{% include "backup_row.html" %}{% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+  {% elif status.configured %}
+  <p class="empty-state">No backups yet.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="export">
+  <div class="card-heading">
+    <h2>Excel Copy (Plan B)</h2>
+    <a class="button" href="{{ url_for('import_data.export') }}">📤 Download Excel Copy</a>
+  </div>
+  <p>Everything in one spreadsheet, to keep the clinic running if Feast9 is unavailable: upcoming appointments, patients with their allergies and medical conditions, cases with balances and follow-ups, payments, visit notes, prescriptions and lab work.</p>
+  <p>While Feast9 is down, add new patients and cases as new rows, and raise a case's Paid amount when a payment comes in. When Feast9 is back, import the file below. Only what you added or changed is brought in.</p>
+  <p class="muted-note">This file contains every patient's health and payment details. Keep it on a secure computer, don't email or share it, and delete old copies. Download a fresh copy regularly, for example at the end of each day.</p>
+</section>
+
+<section class="card" id="import">
+  <div class="card-heading">
+    <h2>Import from Excel</h2>
+    <a class="button button-outline" href="{{ url_for('import_data.template') }}">📥 Download Template</a>
+  </div>
+  <p>Bring in patients, cases and payments from a spreadsheet: an Excel copy you kept working in, records from the earlier version of Feast9, or paper records typed into the template.</p>
+  <ul class="muted-note">
+    <li><strong>From the earlier version:</strong> the template's first columns (A to V) match its Excel export exactly. Copy them from its "Patients &amp; Cases" sheet and paste into the template. Then fill in the highlighted columns.</li>
+    <li><strong>Red columns</strong> must be filled on every row: Patient Name, Sex and DPDP Notice Accepted (Yes only for patients who have accepted the data notice; the earlier version didn't record this).</li>
+    <li><strong>Amber columns</strong> are needed on some rows: Doctor when the row has a case, and Guardian Name and Mobile for a patient under 18.</li>
+    <li>Each row can hold one case. A patient with several cases has several rows, and they're kept as one patient.</li>
+  </ul>
+  <form method="post" action="{{ url_for('import_data.import_patients') }}" enctype="multipart/form-data" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Spreadsheet (.xlsx)<input type="file" name="file" accept=".xlsx" required></label>
+    <button type="submit">Import</button>
+  </form>
+</section>
 {% endblock %}

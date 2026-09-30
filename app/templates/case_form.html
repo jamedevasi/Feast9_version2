@@ -24,10 +24,27 @@
         {% endfor %}
       </select>
     </label>
-    <div class="checklist">
-      {% for p in procedure_types %}
-      <label class="checkbox"><input type="checkbox" name="procedures" value="{{ p.name }}" {% if p.name in case.procedures %}checked{% endif %}> {{ p.name }}</label>
-      {% endfor %}
+    {# Multi-select dropdown checklist — the full case-type list is too long for a wall of
+       checkboxes. Plain <details> + checkboxes, so it submits the same `procedures` values and
+       works without JS; multiselect.js adds search, the live summary and close-on-outside-click. #}
+    {% set selected = procedure_types|selectattr('name', 'in', case.procedures)|map(attribute='name')|list %}
+    <div class="field">
+      <span class="field-label" id="procedures-label">Procedures</span>
+      <details class="multiselect" data-multiselect>
+        <summary aria-labelledby="procedures-label">
+          <span class="multiselect-summary" data-placeholder="Select procedures…">{{ selected|join(', ') if selected else 'Select procedures…' }}</span>
+          <span class="multiselect-count"{% if not selected %} hidden{% endif %}>{{ selected|length }}</span>
+        </summary>
+        <div class="multiselect-panel">
+          <input type="search" class="multiselect-search" placeholder="Search procedures…" aria-label="Search procedures" hidden>
+          <div class="multiselect-options">
+            {% for p in procedure_types %}
+            <label class="checkbox"><input type="checkbox" name="procedures" value="{{ p.name }}" {% if p.name in case.procedures %}checked{% endif %}> {{ p.name }}</label>
+            {% endfor %}
+          </div>
+          <p class="multiselect-empty hint" hidden>No procedure matches.</p>
+        </div>
+      </details>
     </div>
     <label>Other procedure<input type="text" name="custom_procedure" value="{{ case.custom_procedure or '' }}"></label>
     {% if not editing and session.get('role') != 'receptionist' %}
@@ -37,4 +54,5 @@
 
   <button type="submit">{{ 'Save Changes' if editing else 'Create Case' }}</button>
 </form>
+<script src="{{ url_for('static', filename='multiselect.js') }}"></script>
 {% endblock %}

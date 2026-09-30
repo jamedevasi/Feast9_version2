@@ -97,3 +97,18 @@ def test_case_detail_requires_login(client):
 def test_unknown_case_returns_404(logged_in_client):
     resp = logged_in_client.get("/cases/999")
     assert resp.status_code == 404
+
+
+def test_case_form_procedures_is_multiselect_checklist(logged_in_client, patient_id):
+    body = logged_in_client.get(f"/patients/{patient_id}/cases/new").data.decode()
+    assert "data-multiselect" in body
+    assert "/static/multiselect.js" in body
+    assert 'value="Wisdom Tooth Surgery"' in body  # shipped standard case types are offered
+    assert "Select procedures…" in body
+
+    resp, _ = _create_case(logged_in_client, patient_id, title="Multi Procedures", procedures=["Crown", "Scaling"])
+    case_id = int(resp.headers["Location"].rstrip("/").rsplit("/", 1)[-1])
+    stored = db.get_case(case_id)["procedures_json"]
+    assert "Crown" in stored and "Scaling" in stored
+    edit = logged_in_client.get(f"/cases/{case_id}/edit").data.decode()
+    assert '<span class="multiselect-summary" data-placeholder="Select procedures…">Crown, Scaling</span>' in edit

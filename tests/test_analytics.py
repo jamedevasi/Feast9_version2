@@ -128,11 +128,14 @@ def test_analytics_page_renders_charts_and_kpis(logged_in_client, patient_id):
     assert "No-show Rate" in body
     assert 'id="chart-monthly-revenue"' in body
     assert 'id="chart-appointment-status"' in body
-    for chart in ("patients-total-new", "active-cases", "weekday-appointments", "weekday-revenue",
+    for chart in ("patients-total-new", "cases-active-new", "weekday-appointments", "weekday-revenue",
                   "demographics"):
         assert f'id="chart-{chart}"' in body
     assert "Revenue by Procedure Type" in body  # empty state here — no payments recorded yet
     assert 'id="chart-monthly-patients"' not in body  # folded into Total vs New, not duplicated
+    assert 'id="chart-monthly-cases"' not in body  # folded into Cases - Active vs New
+    for group in ("Revenue", "Patients", "Cases", "Appointments"):
+        assert f'<h2 class="chart-group-title">{group}</h2>' in body
     assert "Total Patients" in body and "Active Cases" in body
     assert "vendor/chart.umd.min.js" in body
     assert "analytics.js" in body
@@ -226,3 +229,48 @@ def test_revenue_by_procedure_folds_tail_into_other(logged_in_client, patient_id
     assert [s["name"] for s in series[:5]] == ["P1", "P2", "P3", "P4", "P5"]
     assert series[-1]["is_other"] and series[-1]["name"] == "Other (2 types)"
     assert series[-1]["values"][MONTH_INDEX] == 500 + 400
+
+
+def test_yoy_unavailable_without_previous_year_data(logged_in_client, patient_id):
+    body = logged_in_client.get(f"/analytics/?year={YEAR}&compare=yoy").data.decode()
+    assert "becomes available once" in body
+    assert 'id="compare-toggle"' in body and "disabled" in body
+    assert '"previous"' not in body  # the request's compare=yoy is ignored — nothing to compare
+    assert "stat-delta" not in body
+
+
+def test_yoy_compare_overlays_previous_year(logged_in_client, patient_id):
+    prev = YEAR - 1
+    conn = db.get_db()
+    conn.execute(
+        "INSERT INTO patients (name, sex, created_at) VALUES ('Last Year Patient', 'Male', ?)",
+        (f"{prev}-03-10 10:00:00",),
+    )
+    conn.commit()
+    conn.close()
+
+    body = logged_in_client.get(f"/analytics/?year={YEAR}").data.decode()
+    assert f"Compare with {prev}" in body and "becomes available once" not in body
+    assert "stat-delta" not in body  # available, but off until ticked
+
+    body = logged_in_client.get(f"/analytics/?year={YEAR}&compare=yoy").data.decode()
+    assert f"Comparing {YEAR} with {prev}" in body
+    assert f'"previous": {{' in body or '"previous":{' in body
+    assert f"vs same period {prev}" in body  # current year: like-for-like with last year so far
+
+
+def test_kpis_and_weekdays_can_stop_at_a_cutoff_date(logged_in_client, patient_id):
+    case_id, case_url, _ = _case_for(logged_in_client, patient_id, title="Cutoff Case", total_cost="5000")
+    conn = db.get_db()
+    for day, amount in [("2025-01-06", 100), ("2025-12-29", 900)]:  # both Mondays
+        conn.execute(
+            "INSERT INTO payments (case_id, patient_id, amount, payment_date, method, created_at) VALUES (?, ?, ?, ?, 'Cash', ?)",
+            (case_id, patient_id, amount, day, day + " 10:00:00"),
+        )
+    conn.commit()
+    conn.close()
+    assert db.get_analytics_kpis(2025)["revenue_collected"] == 1000
+    # Like-for-like: "2025 up to 23 Sep" leaves out the December payment.
+    assert db.get_analytics_kpis(2025, until="2025-09-23")["revenue_collected"] == 100
+    assert db.get_weekday_activity(2025, until="2025-09-23")["revenue"][0] == 100
+    assert db.get_weekday_activity(2025)["revenue"][0] == 1000
