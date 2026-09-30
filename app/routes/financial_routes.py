@@ -9,6 +9,7 @@ from app import db
 from app.auth import current_actor, financial_access_required, login_required
 from app.csrf import validate_csrf
 from app.validators import normalize_date
+from app.xlsx_safe import append_row
 
 bp = Blueprint("financial", __name__, url_prefix="/financial-assessment")
 
@@ -83,7 +84,7 @@ def export_xlsx():
         "Lab Amount", "Consultant Fee", "Consumables", "Misc Expense", "Profit",
     ])
     for c in cases:
-        ws.append([
+        append_row(ws, [  # patient names / case titles are typed text — never let them be formulas
             c["created_at"][:10], c["patient_name"], c["case_title"], c["total_cost"],
             c["collected"], c["pending"], c["lab_amount"], c["consultant_fee"],
             c["consumables"], c["misc_expense"], c["profit"],

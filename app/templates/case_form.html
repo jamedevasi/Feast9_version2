@@ -20,7 +20,7 @@
       <select name="doctor_id" required>
         <option value="">Select…</option>
         {% for d in doctors %}
-        <option value="{{ d.id }}" {% if case.doctor_id == d.id %}selected{% endif %}>{{ d.name }}</option>
+        <option value="{{ d.id }}" {% if case.doctor_id == d.id %}selected{% endif %}>{{ d.name }}{% if not d.is_active %} (inactive){% endif %}</option>
         {% endfor %}
       </select>
     </label>

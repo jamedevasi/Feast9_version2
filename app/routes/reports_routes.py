@@ -8,6 +8,7 @@ from openpyxl.styles import Font
 from app import db, pdf_reports
 from app.auth import current_actor, financial_access_required, login_required
 from app.validators import normalize_date, today_iso
+from app.xlsx_safe import append_row
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -272,13 +273,13 @@ def download_ledger_xlsx():
     def total_row(label, totals):
         values = [totals[key] if key in totals else "" for _, key in columns]
         values[0] = label
-        ws.append(values)
+        append_row(ws, values)  # the label includes a group name (a patient's name, say)
         for cell in ws[ws.max_row]:
             cell.font = Font(bold=True)
 
     for grp in ledger["groups"]:
         for row in grp["rows"]:
-            ws.append([row[key] for _, key in columns])
+            append_row(ws, [row[key] for _, key in columns])  # typed text — never a live formula
         if ledger["group"]:
             total_row(f"Subtotal — {grp['label']} ({len(grp['rows'])})", grp["totals"])
     total_row(f"Total ({ledger['row_count']})", ledger["totals"])

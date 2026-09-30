@@ -21,6 +21,7 @@ from app.excel_import import (
     add_dropdowns, set_active_sheet, style_header_row, write_read_me,
 )
 from app.validators import compute_age, today_iso
+from app.xlsx_safe import append_row
 
 # Same row colours as the earlier version's export.
 _ACTIVE_FILL = PatternFill("solid", fgColor="E2EFDA")
@@ -50,13 +51,8 @@ def _join_list(json_text, other):
 
 
 def _append(ws, values):
-    """Appends a row with every text value kept as literal text: openpyxl would otherwise
-    write a string starting with '=' as a live formula — patient-typed notes must never
-    become executable in Excel."""
-    ws.append([None if v == "" else v for v in values])
-    for cell in ws[ws.max_row]:
-        if isinstance(cell.value, str):
-            cell.data_type = "s"
+    """Blank strings as empty cells; text never becomes a live formula (app/xlsx_safe.py)."""
+    append_row(ws, [None if v == "" else v for v in values])
 
 
 def _fill_row(ws, fill):

@@ -35,6 +35,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from app import db
 from app.constants import MAX_IMPORT_ROWS, SEX_OPTIONS
 from app.validators import compute_age, is_valid_mobile, normalize_date, now_iso, today_iso
+from app.xlsx_safe import append_row
 
 CASES_SHEET = "Patients & Cases"
 NO_CASES_SHEET = "Patients (No Cases)"
@@ -170,7 +171,7 @@ def add_dropdowns(wb, sheets):
     lists = wb.create_sheet("Lists")
     lists.append(["Doctors"])
     for name in doctor_names:
-        lists.append([name])
+        append_row(lists, [name])  # a doctor name is typed text — never a live formula
     lists.sheet_state = "hidden"
 
     for title, headers in sheets:

@@ -59,6 +59,78 @@ def test_deactivated_doctor_hidden_from_new_case_form(logged_in_client, patient_
     assert b"Dr. Hideaway" not in resp2.data
 
 
+def _deactivated_doctor_with_records(client, patient_id):
+    """A doctor with one case and one appointment, then deactivated. Returns (doctor, active, case_id, appt_id)."""
+    doctor_id = db.add_doctor("Dr. Retired", "#aa3355")
+    active_id = db.add_doctor("Dr. Current", "#3355aa")
+    case_id = db.add_case({"patient_id": patient_id, "title": "Old RCT", "doctor_id": doctor_id, "total_cost": 0})
+    appt_id = db.add_appointment(patient_id, None, doctor_id, "2026-09-10", "10:00", "10:30", "Check", "", "Scheduled")
+    db.set_doctor_active(doctor_id, False)
+    return doctor_id, active_id, case_id, appt_id
+
+
+def test_editing_a_deactivated_doctors_case_keeps_them(logged_in_client, patient_id):
+    doctor_id, active_id, case_id, _ = _deactivated_doctor_with_records(logged_in_client, patient_id)
+
+    form = logged_in_client.get(f"/cases/{case_id}/edit").data.decode()
+    assert f'<option value="{doctor_id}" selected>Dr. Retired (inactive)</option>' in form
+    assert f'<option value="{active_id}" >Dr. Current</option>' in form
+
+    # A title fix saves without reassigning the case.
+    token = get_csrf(logged_in_client, f"/cases/{case_id}/edit")
+    resp = logged_in_client.post(f"/cases/{case_id}/edit",
+                                 data={"title": "Old RCT 36", "doctor_id": doctor_id, "csrf_token": token})
+    assert resp.status_code == 302
+    case = db.get_case(case_id)
+    assert (case["title"], case["doctor_id"]) == ("Old RCT 36", doctor_id)
+
+
+def test_deactivated_doctor_cannot_be_given_new_work(logged_in_client, patient_id):
+    doctor_id, active_id, case_id, appt_id = _deactivated_doctor_with_records(logged_in_client, patient_id)
+    other_case = db.add_case({"patient_id": patient_id, "title": "Other", "doctor_id": active_id, "total_cost": 0})
+
+    # New case, and an existing case that isn't theirs: the inactive doctor is refused server-side.
+    token = get_csrf(logged_in_client, f"/patients/{patient_id}/cases/new")
+    body = logged_in_client.post(f"/patients/{patient_id}/cases/new",
+                                 data={"title": "New", "doctor_id": doctor_id, "csrf_token": token}).data.decode()
+    assert "Choose a doctor from the list" in body
+    token = get_csrf(logged_in_client, f"/cases/{other_case}/edit")
+    body = logged_in_client.post(f"/cases/{other_case}/edit",
+                                 data={"title": "Other", "doctor_id": doctor_id, "csrf_token": token}).data.decode()
+    assert "Choose a doctor from the list" in body
+    assert db.get_case(other_case)["doctor_id"] == active_id
+
+    # New appointment: refused too.
+    token = get_csrf(logged_in_client, "/appointments/new")
+    body = logged_in_client.post("/appointments/new", data={
+        "patient_id": patient_id, "doctor_id": doctor_id, "appt_date": "2026-10-01", "start_time": "09:00",
+        "status": "Scheduled", "csrf_token": token,
+    }).data.decode()
+    assert "Choose a doctor from the list" in body
+
+
+def test_editing_a_deactivated_doctors_appointment_keeps_them(logged_in_client, patient_id):
+    doctor_id, _, _, appt_id = _deactivated_doctor_with_records(logged_in_client, patient_id)
+
+    form = logged_in_client.get(f"/appointments/{appt_id}/edit").data.decode()
+    assert f'<option value="{doctor_id}" selected>Dr. Retired (inactive)</option>' in form
+
+    token = get_csrf(logged_in_client, f"/appointments/{appt_id}/edit")
+    resp = logged_in_client.post(f"/appointments/{appt_id}/edit", data={
+        "doctor_id": doctor_id, "appt_date": "2026-09-10", "start_time": "10:00", "end_time": "10:30",
+        "title": "Check", "status": "Completed", "csrf_token": token,
+    })
+    assert resp.status_code == 302
+    appt = db.get_appointment(appt_id)
+    assert (appt["status"], appt["doctor_id"]) == ("Completed", doctor_id)
+
+
+def test_calendar_legend_explains_deactivated_doctors_dots(logged_in_client, patient_id):
+    _deactivated_doctor_with_records(logged_in_client, patient_id)
+    assert "Dr. Retired (inactive)" in logged_in_client.get("/appointments/2026/9").data.decode()
+    assert "Dr. Retired" not in logged_in_client.get("/appointments/2026/10").data.decode()  # no appointments then
+
+
 def test_admin_can_add_and_list_procedure_type(logged_in_client):
     resp = _add_procedure_type(logged_in_client, "Whitening")
     assert resp.status_code == 302

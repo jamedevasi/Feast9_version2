@@ -64,12 +64,15 @@ def _collect_case_form(form):
     }
 
 
-def _validate_case(data):
+def _validate_case(data, current_doctor_id=None):
+    """current_doctor_id: the doctor an edited case already has — still allowed if since
+    deactivated (a new case can only get an active doctor)."""
     errors = []
     if not data["title"]:
         errors.append("Case title is required.")
-    if data["doctor_id"] is None:
-        errors.append("A doctor must be selected.")
+    doctor_error = db.doctor_choice_error(data["doctor_id"], current_doctor_id)
+    if doctor_error:
+        errors.append(doctor_error)
     return errors
 
 
@@ -185,12 +188,13 @@ def summary_pdf(case_id):
 def edit(case_id):
     case = _get_case_or_404(case_id)
     patient = db.get_patient(case["patient_id"])
+    current_doctor_id = case.get("doctor_id")
     errors = []
 
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
         data = _collect_case_form(request.form)
-        errors = _validate_case(data)
+        errors = _validate_case(data, current_doctor_id)
         if not errors:
             db.update_case(case_id, data)
             flash("Case updated.", "success")
@@ -204,7 +208,9 @@ def edit(case_id):
         patient=patient,
         case=case,
         errors=errors,
-        doctors=db.list_doctors(),
+        # Keeps a since-deactivated doctor selectable on their own case, so an unrelated edit
+        # (a title fix) doesn't force the case onto someone else.
+        doctors=db.list_doctors_for_choice([current_doctor_id]),
         procedure_types=db.list_procedure_types(),
         editing=True,
     )

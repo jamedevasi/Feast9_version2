@@ -862,6 +862,33 @@ def list_doctors(active_only=True):
     return [dict(r) for r in rows]
 
 
+def list_doctors_for_choice(include_ids=()):
+    """Active doctors, plus any doctor in `include_ids` even if deactivated — for a record
+    that already belongs to a deactivated doctor (editing an old case or appointment), and
+    for a calendar legend explaining the dots on existing appointments. Deactivated ones
+    carry is_active = 0 so templates can label them."""
+    include_ids = [i for i in include_ids if i]
+    conn = get_db()
+    query = "SELECT * FROM doctors WHERE is_active = 1"
+    if include_ids:
+        query += f" OR id IN ({', '.join('?' for _ in include_ids)})"
+    rows = conn.execute(query + " ORDER BY name", include_ids).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def doctor_choice_error(doctor_id, current_doctor_id=None):
+    """Server-side check for a submitted doctor: it must be an active doctor, or the one the
+    record already has (a deactivated doctor stays on their existing records but can't be
+    given new ones). Returns an error message, or ''."""
+    if not doctor_id:
+        return "A doctor must be selected."
+    doctor = get_doctor(doctor_id)
+    if doctor and (doctor["is_active"] or doctor_id == current_doctor_id):
+        return ""
+    return "Choose a doctor from the list."
+
+
 def get_doctor(doctor_id):
     conn = get_db()
     row = conn.execute("SELECT * FROM doctors WHERE id = ?", (doctor_id,)).fetchone()

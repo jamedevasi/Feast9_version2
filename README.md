@@ -47,23 +47,21 @@ Two environment variables matter for local use:
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATA_DIR` | No (defaults to `./data`) | Where the SQLite database, clinical uploads, backups, and branding images live. Point it anywhere writable. |
-| `SECRET_KEY` | Recommended | Signs session cookies. Any string works for local dev; the app runs with an insecure built-in default and logs a warning if you skip this. |
+| `SECRET_KEY` | No | Signs session cookies. Leave it unset: on first start the app generates a random key and keeps it in `DATA_DIR/secret_key`. Only set it if you manage secrets yourself — then use a long random value. Publicly known values (like the old `local-dev-key` from earlier docs) are ignored with a warning, because anyone who knows the key can forge a login. |
 
 **Windows (PowerShell):**
 ```powershell
 $env:DATA_DIR = "C:\path\to\data"
-$env:SECRET_KEY = "local-dev-key"
 ```
 
 **Linux / Mac:**
 ```bash
 export DATA_DIR="$HOME/feast9-data"
-export SECRET_KEY="local-dev-key"
 ```
 
 A ready-made `start.bat` in the repo root does the Windows activate + env-var + run
-steps in one go — edit the `DATA_DIR`/`SECRET_KEY` lines in it if you want a fixed
-local setup you can just double-click.
+steps in one go — edit its `DATA_DIR` line if you want a fixed local setup you can
+just double-click.
 
 ## 4. Run the app
 
@@ -148,8 +146,11 @@ proxy in front — this app itself doesn't handle HTTPS.
   `DATA_DIR` set the same way as when running the app) for an emergency CLI reset
   that doesn't require logging in first.
 - **Changes not showing up** — see the hot-reload note in step 4; restart the server.
-- **`SECRET_KEY is using the insecure default` warning** — expected for local dev if
-  you skipped step 3's `SECRET_KEY`; harmless locally, just set it before any real use.
+- **`SECRET_KEY is set to a publicly known value` warning** — you set `SECRET_KEY` to a
+  value from these docs (e.g. `local-dev-key`). The app ignores it and uses its generated
+  key; remove the variable to silence the warning.
+- **Everyone was logged out after an update** — expected once, when the app switched from
+  a fixed session key to its generated one.
 
 ## Related documentation
 

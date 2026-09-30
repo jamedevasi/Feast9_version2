@@ -52,7 +52,7 @@
 {% if doctors %}
 <div class="doctor-legend">
   {% for d in doctors %}
-  <span><span class="color-swatch" style="background: {{ d.color or '#adb5bd' }};"></span>{{ d.name }}</span>
+  <span><span class="color-swatch" style="background: {{ d.color or '#adb5bd' }};"></span>{{ d.name }}{% if not d.is_active %} (inactive){% endif %}</span>
   {% endfor %}
 </div>
 {% endif %}

@@ -21,7 +21,7 @@ portal remains the standing trigger for the next full revision.
 | Financial data (payments, cost revisions, balances) | Medium-high — financial + receptionist-excluded | `payments`, `cost_revisions`, `cases.total_cost` |
 | Credentials (password hashes, TOTP secrets, recovery-code hashes) | Critical | `admin` table |
 | Audit log | Medium — itself a record of who touched what | `audit_log` table |
-| Session cookies | High — bearer of an authenticated identity | Client-side, signed by `SECRET_KEY` |
+| Session cookies | High — bearer of an authenticated identity | Client-side, signed by `SECRET_KEY` — anyone who knows it can forge any login, so it's generated randomly per install (`DATA_DIR/secret_key`) and publicly known values are refused (`app_config.secret_key()`) |
 | Backups (once built — see the accompanying `BACKUP.md`) | Critical — a single file containing everything above | `DATA_DIR/backups/` (local), optional off-site destination |
 
 ## 2. Actors and trust levels

@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 
 from app import config as app_config
 from app import db as db_module
@@ -9,16 +9,15 @@ from app.csrf import generate_csrf_token
 
 def create_app():
     app = Flask(__name__)
-    app.config["SECRET_KEY"] = app_config.SECRET_KEY
+    if app_config.SECRET_KEY in app_config.KNOWN_PUBLIC_SECRET_KEYS:
+        app.logger.warning(
+            "SECRET_KEY is set to a publicly known value — ignoring it and using the generated "
+            "key in DATA_DIR/secret_key instead. Unset it, or set a long random value."
+        )
+    app.config["SECRET_KEY"] = app_config.secret_key()
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "0") == "1"
-
-    if app_config.SECRET_KEY == app_config.DEFAULT_SECRET_KEY:
-        app.logger.warning(
-            "SECRET_KEY is using the insecure default — set the SECRET_KEY "
-            "environment variable before deploying."
-        )
 
     db_module.init_db()
 
@@ -105,9 +104,20 @@ def _register_context_processors(app):
         }
 
 
+# Endpoints whose responses carry nothing sensitive and are fine to cache: shared CSS/JS,
+# and the public login-page logo / theme stylesheet.
+_CACHEABLE_ENDPOINTS = {"static", "auth.login_image", "auth.theme_css"}
+
+
 def _register_security_headers(app):
     @app.after_request
     def set_security_headers(response):
+        # Patient records, the backup key, Excel copies, backups: never kept in the browser's
+        # cache, where the next person at a shared front-desk computer could get them back
+        # with the Back button or from the cache after the user has walked away.
+        if request.endpoint not in _CACHEABLE_ENDPOINTS:
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

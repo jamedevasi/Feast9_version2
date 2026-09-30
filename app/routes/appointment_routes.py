@@ -38,12 +38,15 @@ def _collect_appointment_form(form):
     }
 
 
-def _validate_appointment(data):
+def _validate_appointment(data, current_doctor_id=None):
+    """current_doctor_id: the doctor an edited appointment already has — still allowed if
+    since deactivated (a new booking can only get an active doctor)."""
     errors = []
     if not data["patient_id"] or not db.get_patient(data["patient_id"]):
         errors.append("A valid patient must be selected.")
-    if not data["doctor_id"]:
-        errors.append("A doctor must be selected.")
+    doctor_error = db.doctor_choice_error(data["doctor_id"], current_doctor_id)
+    if doctor_error:
+        errors.append(doctor_error)
     if not data["appt_date"]:
         errors.append("A valid appointment date is required.")
     if not data["start_time"]:
@@ -149,7 +152,9 @@ def view_calendar(year, month):
         next_year=next_year,
         next_month=next_month,
         today=today_iso(),
-        doctors=db.list_doctors(),
+        # Legend: active doctors, plus any deactivated doctor with an appointment this month
+        # (their dots are still on the calendar and need explaining).
+        doctors=db.list_doctors_for_choice({a["doctor_id"] for a in appts}),
     )
 
 
@@ -289,7 +294,7 @@ def edit(appt_id):
         scope = request.form.get("scope", "this")
         data = _collect_appointment_form(request.form)
         data["patient_id"] = appt["patient_id"]  # patient is fixed once an appointment exists
-        errors = _validate_appointment(data)
+        errors = _validate_appointment(data, appt.get("doctor_id"))
         if not errors:
             if scope == "series" and appt["series_id"]:
                 # Shared fields only — each occurrence keeps its own date and status.
@@ -322,7 +327,9 @@ def edit(appt_id):
     return render_template(
         "appointment_form.html",
         appt=form_state,
-        doctors=db.list_doctors(),
+        # Keeps a since-deactivated doctor selectable on their own appointment, so marking an
+        # old visit Completed/No-show doesn't force it onto someone else.
+        doctors=db.list_doctors_for_choice([appt.get("doctor_id")]),
         statuses=APPOINTMENT_STATUSES,
         prefill_date=form_state["appt_date"],
         prefill_patient=patient,

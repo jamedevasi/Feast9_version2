@@ -1,10 +1,44 @@
 import os
+import secrets
 
 DEFAULT_SECRET_KEY = "dev-insecure-default-change-me"
+# Values published in this repo's own docs/scripts (start.bat, README, the spec). Anyone who
+# knows the key signing the session cookie can forge an admin login, so these are never used.
+KNOWN_PUBLIC_SECRET_KEYS = {DEFAULT_SECRET_KEY, "local-dev-key"}
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.getcwd(), "data"))
 DB_PATH = os.path.join(DATA_DIR, "feast9.db")
-SECRET_KEY = os.environ.get("SECRET_KEY", DEFAULT_SECRET_KEY)
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
+
+
+def secret_key_file():
+    """A function so it follows DATA_DIR when tests monkeypatch it (same as backups_dir())."""
+    return os.path.join(DATA_DIR, "secret_key")
+
+
+def secret_key():
+    """The key that signs session cookies: SECRET_KEY from the environment if it's set and
+    not a publicly known value; otherwise a random key generated once and kept in
+    DATA_DIR/secret_key (never in the repo, and not part of backups — a restored install
+    just generates a new one and everyone signs in again). Called by create_app()."""
+    if SECRET_KEY and SECRET_KEY not in KNOWN_PUBLIC_SECRET_KEYS:
+        return SECRET_KEY
+    path = secret_key_file()
+    os.makedirs(DATA_DIR, exist_ok=True)
+    try:
+        # O_EXCL: when several worker processes start together, exactly one creates the key
+        # and the rest read it.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        with open(path, encoding="utf-8") as f:
+            key = f.read().strip()
+        if key:
+            return key
+        raise RuntimeError(f"{path} is empty — delete it and restart to generate a new key.")
+    key = secrets.token_hex(32)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(key)
+    return key
 
 # Backups (§14 "Automated off-server backup") — a Fernet key, independent of SECRET_KEY so
 # losing/rotating one doesn't compromise the other. Generate with:
