@@ -8,7 +8,9 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 from app import config as app_config
 from app import db
-from app.auth import check_password, current_actor, hash_password, login_required, reauth_required
+from app.auth import (
+    check_password, current_actor, hash_password, login_required, reauth_required, refresh_session_version,
+)
 from app.csrf import validate_csrf
 
 bp = Blueprint("account", __name__, url_prefix="/account")
@@ -36,7 +38,8 @@ def index():
 def unlink_google():
     validate_csrf(request.form.get("csrf_token"))
     db.unlink_google_account(session["admin_id"], actor=current_actor())
-    flash("Google account unlinked.", "success")
+    refresh_session_version()  # stay signed in here; other sessions of this account end
+    flash("Google account unlinked. You've been signed out on other devices.", "success")
     return redirect(url_for("account.index"))
 
 
@@ -53,7 +56,8 @@ def _change_password(user):
         flash("New passwords do not match.", "warning")
     else:
         db.update_user_password(user["id"], hash_password(new_password), actor=current_actor())
-        flash("Password changed.", "success")
+        refresh_session_version()  # stay signed in here; other sessions of this account end
+        flash("Password changed. You've been signed out on other devices.", "success")
 
 
 def _change_security_question(user):

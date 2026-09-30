@@ -5,7 +5,10 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from app import config as app_config
 from app import db
-from app.auth import current_actor, login_required, role_required
+from app.auth import (
+    ABSOLUTE_SESSION_HOURS, MAX_IDLE_MINUTES, MIN_IDLE_MINUTES,
+    current_actor, idle_timeout_minutes, login_required, role_required,
+)
 from app.constants import (
     DEFAULT_LOGIN_HEADING,
     DEFAULT_LOGIN_TAGLINE,
@@ -45,6 +48,8 @@ def index():
             _save_theme()
         elif form == "theme_reset":
             _reset_theme()
+        elif form == "session_timeout":
+            _save_session_timeout()
         return redirect(url_for("settings.index"))
 
     return render_template(
@@ -59,7 +64,20 @@ def index():
         theme_background_color=db.get_setting("theme_background_color", DEFAULT_THEME_BACKGROUND_COLOR),
         default_theme_primary_color=DEFAULT_THEME_PRIMARY_COLOR,
         default_theme_background_color=DEFAULT_THEME_BACKGROUND_COLOR,
+        session_idle_minutes=idle_timeout_minutes(),
+        min_idle_minutes=MIN_IDLE_MINUTES,
+        max_idle_minutes=MAX_IDLE_MINUTES,
+        absolute_session_hours=ABSOLUTE_SESSION_HOURS,
     )
+
+
+def _save_session_timeout():
+    raw = request.form.get("session_idle_minutes", "").strip()
+    if not raw.isdigit() or not MIN_IDLE_MINUTES <= int(raw) <= MAX_IDLE_MINUTES:
+        flash(f"Automatic logout must be between {MIN_IDLE_MINUTES} and {MAX_IDLE_MINUTES} minutes.", "warning")
+        return
+    db.set_setting("session_idle_minutes", str(int(raw)), actor=current_actor())
+    flash(f"Automatic logout set to {int(raw)} minutes without activity.", "success")
 
 
 def _save_clinic_details():

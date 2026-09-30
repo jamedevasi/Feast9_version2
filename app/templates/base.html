@@ -39,7 +39,8 @@
       </details>
       {% endif %}
     </nav>
-    <form method="post" action="{{ url_for('auth.logout') }}" class="logout-form">
+    <form method="post" action="{{ url_for('auth.logout') }}" class="logout-form" id="logout-form"
+          data-idle-timeout="{{ idle_timeout_seconds }}" data-ping-url="{{ url_for('auth.session_ping') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="link-button">Logout</button>
     </form>

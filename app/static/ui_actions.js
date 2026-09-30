@@ -30,6 +30,63 @@
     if (e.key === "Escape") closeNavDropdowns(null);
   });
 
+  // Automatic logout (Settings > Automatic Logout). The server already refuses a session
+  // idle past the limit, but only when the next request arrives — this timer logs the
+  // screen out on its own, so patient details aren't left open on an unattended computer.
+  // Activity in any Feast9 tab keeps every tab alive (shared via localStorage), and while
+  // someone is active without clicking through (typing a long note) the server is pinged
+  // at most once a minute so its idle check sees the same activity.
+  var logoutForm = document.getElementById("logout-form");
+  var idleSeconds = logoutForm ? parseInt(logoutForm.getAttribute("data-idle-timeout"), 10) : 0;
+  if (idleSeconds > 0) {
+    var SHARED_KEY = "feast9-last-activity";
+    var PING_EVERY_MS = 60 * 1000;
+    var WRITE_EVERY_MS = 5 * 1000;
+    var lastActivity = Date.now();
+    var lastPing = Date.now();  // loading this page was itself a request
+    var lastWrite = 0;
+
+    var sharedActivity = function () {
+      try { return parseInt(window.localStorage.getItem(SHARED_KEY), 10) || 0; } catch (e) { return 0; }
+    };
+    var noteActivity = function () {
+      var now = Date.now();
+      lastActivity = now;
+      if (now - lastWrite > WRITE_EVERY_MS) {
+        lastWrite = now;
+        try { window.localStorage.setItem(SHARED_KEY, String(now)); } catch (e) { /* private mode etc. */ }
+      }
+      if (now - lastPing > PING_EVERY_MS) {
+        lastPing = now;
+        fetch(logoutForm.getAttribute("data-ping-url"), { credentials: "same-origin", cache: "no-store" })
+          .then(function (resp) {
+            // Redirected to the login page: this session already ended on the server
+            // (another device, a password change, the account deactivated) — show why.
+            if (resp.redirected) { window.location.href = resp.url; }
+          })
+          .catch(function () { /* offline for a moment — the next ping will try again */ });
+      }
+    };
+    ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "wheel"].forEach(function (name) {
+      document.addEventListener(name, noteActivity, { passive: true, capture: true });
+    });
+    noteActivity();
+
+    var loggingOut = false;
+    window.setInterval(function () {
+      var latest = Math.max(lastActivity, sharedActivity());
+      if (!loggingOut && Date.now() - latest >= idleSeconds * 1000) {
+        loggingOut = true;
+        var reason = document.createElement("input");
+        reason.type = "hidden";
+        reason.name = "reason";
+        reason.value = "idle";
+        logoutForm.appendChild(reason);
+        logoutForm.submit();
+      }
+    }, 15 * 1000);
+  }
+
   // Click-to-copy (appointment reminder text). The element right after it, if it has
   // data-copy-feedback, is shown for 2s as a "Copied" confirmation.
   document.addEventListener("click", function (e) {

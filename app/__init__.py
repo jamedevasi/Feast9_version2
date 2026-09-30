@@ -96,11 +96,14 @@ def _register_context_processors(app):
         from flask import session
 
         from app.auth import can_view_financial_data
+        from app.auth import idle_timeout_minutes
         if not session.get("admin_id"):
             return {}
         return {
             "pending_data_requests_count": db_module.count_pending_data_requests(),
             "can_view_financial_nav": can_view_financial_data(),
+            # Read by ui_actions.js's idle timer (base.html's logout form).
+            "idle_timeout_seconds": idle_timeout_minutes() * 60,
         }
 
 

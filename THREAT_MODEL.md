@@ -34,9 +34,8 @@ portal remains the standing trigger for the next full revision.
 - **Unauthenticated attacker** — no valid session; the only reachable surface is `/`,
   `/setup` (only before the first account exists), `/login`, `/login/totp`.
 - **A former/deactivated user** — `is_active = 0` rows are excluded from
-  `db.get_user_by_username`, so a deactivated account cannot start a new session, but any
-  session it already held before deactivation is not proactively revoked (see §3, "stolen
-  sessions").
+  `db.get_user_by_username`, so a deactivated account cannot start a new session, and any
+  session it already held ends on its next request (`session_version`, see §3.4).
 
 There is currently exactly one tenant (one clinic, one `DATA_DIR`) — there is no cross-tenant
 boundary to reason about.
@@ -92,15 +91,17 @@ person at the desk act as the previous session's user.
   accounts on someone else's forgotten-but-still-open session without knowing that user's
   password.
 
-**Residual risk — no idle/absolute session timeout.** Flask's session cookie here is a
-non-permanent cookie (`session.permanent` is never set, `PERMANENT_SESSION_LIFETIME` is never
-configured in `app/__init__.py`); it is deleted by the *browser* on close, but the signed
-cookie value itself carries no server-enforced expiry. A session left open on a shared device
-(browser not closed, or closed-and-reopened by a browser that restores tabs) remains valid
-indefinitely for anything short of the `reauth_required`-gated actions. **Recommendation:** add
-an idle timeout (e.g. `PERMANENT_SESSION_LIFETIME` + `session.permanent = True` +
-`SESSION_REFRESH_EACH_REQUEST`) — a small, well-scoped follow-up, not done as part of this
-document.
+- **Idle and absolute timeouts (implemented 2026-09-30).** Every session records `login_at`
+  and `last_seen` (UTC); `auth.login_required` ends it server-side when idle past the admin
+  setting (Settings > Automatic Logout, default 30 min, 5–240) or older than
+  `ABSOLUTE_SESSION_HOURS` (12), with a message saying why. Because a server check only runs on
+  the next request, `ui_actions.js` also logs an unattended screen out by itself when the idle
+  limit passes (activity shared across tabs via localStorage; a `/session/ping` at most once a
+  minute keeps the server's idle clock in step while someone types without navigating).
+
+**Residual risk:** the signed cookie is still bearer-style — until the idle limit, a session
+left open on an unlocked shared PC is usable by whoever sits down. Windows screen lock remains
+the first line of defence; the idle limit bounds the exposure.
 
 ### 3.4 Stolen sessions
 
@@ -122,13 +123,17 @@ unlocked device) and reused by an attacker.
   the cookie, an attacker cannot create/deactivate users or reset TOTP without the account's
   actual password (+ TOTP code, if the victim enabled it) within the last `REAUTH_WINDOW_MINUTES`.
 
-**Residual risk:** as in §3.3, there's no session revocation mechanism — deactivating a user
-(`set_user_active`) or resetting their TOTP doesn't invalidate a session that account already
-holds; it only blocks *new* logins. A stolen session for a currently-active account remains
-usable for non-`reauth_required` actions until it's abandoned or the browser session ends.
-**Recommendation:** track a per-session or per-user "session version"/token in the DB and check
-it on every `login_required` request, bumped on deactivation/password change/TOTP reset, so
-those actions actually kill existing sessions. Not implemented — flagged for a future pass.
+- **Revocation (implemented 2026-09-30).** `admin.session_version` is stored in the session at
+  login and checked by `login_required` on every request. Deactivation, any password change
+  (self-service or the forgot-password reset), enabling or resetting TOTP, and unlinking Google
+  bump it (`db._BUMP_SESSIONS`, same transaction as the change) — every existing session of that
+  account ends on its next request. A user changing their *own* credentials keeps the session
+  they're using (`auth.refresh_session_version`); only their other sessions end.
+- The session key itself is generated per install (`DATA_DIR/secret_key`) — a known key would
+  let anyone forge any session outright, bypassing all of the above.
+
+**Residual risk:** a stolen cookie for an active, unchanged account is usable until the idle or
+absolute limit — the victim changing their password is the way to kill it immediately.
 
 ### 3.5 Backup file exposure
 
@@ -212,10 +217,9 @@ Optional/secondary alternate login path. What changes and what doesn't:
 - **Scope stays identity-only.** `openid email profile` — no Gmail/Drive/Calendar/contacts
   scope is ever requested, so a compromised or over-permissioned Google session grants no
   reach into the user's other Google data.
-- **Admin can unlink, but cannot revoke an already-active session.** `/users/<id>/unlink-google`
-  removes the identity link (preventing *future* Google sign-ins) but does not invalidate a
-  session that was already established — this is the same gap as §3.4/§6 below, not a new one
-  Google sign-in introduces, just another path that lands in it.
+- **Unlinking also ends existing sessions.** `/users/<id>/unlink-google` (and the self-service
+  unlink) removes the identity link and bumps `session_version`, so a session established
+  through Google ends too (§3.4).
 - **Feature-flagged off by default.** With `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` unset (the
   default), every route 404s and no button renders — a clinic that never configures it has
   zero additional attack surface from this feature.
@@ -228,8 +232,8 @@ Optional/secondary alternate login path. What changes and what doesn't:
 
 ## 6. Summary of open recommendations
 
-1. Idle/absolute session timeout (§3.3).
-2. Session revocation on deactivation/password-change/TOTP-reset/Google-account-unlink (§3.4, §4).
+1. ~~Idle/absolute session timeout (§3.3)~~ — done 2026-09-30.
+2. ~~Session revocation on deactivation/password-change/TOTP-reset/Google-account-unlink (§3.4, §4)~~ — done 2026-09-30.
 3. Re-run financial role checks on any future export/PDF route (§3.2) — process note for
    whoever builds it, not code to write now.
 4. Per-attachment ownership check, if/when an external (patient-facing) role is introduced (§3.6).

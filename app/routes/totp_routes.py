@@ -13,6 +13,7 @@ from app.auth import (
     hash_recovery_code,
     login_required,
     reauth_required,
+    refresh_session_version,
     totp_provisioning_uri,
     verify_totp_code,
 )
@@ -47,6 +48,7 @@ def setup():
         if verify_totp_code(secret, code):
             codes = generate_recovery_codes()
             db.enable_totp(user["id"], [hash_recovery_code(c) for c in codes], actor=current_actor())
+            refresh_session_version()  # stay signed in here; sessions opened without 2FA end
             session["recovery_codes_to_show"] = codes
             return redirect(url_for("totp.recovery_codes"))
         errors.append("That code didn't match. Check your app's time sync and try again.")
@@ -70,5 +72,6 @@ def recovery_codes():
 def disable():
     validate_csrf(request.form.get("csrf_token"))
     db.reset_totp(session["admin_id"], actor=current_actor())
+    refresh_session_version()  # stay signed in here; other sessions of this account end
     flash("Two-factor authentication disabled on your account.", "success")
     return redirect(url_for("account.index"))

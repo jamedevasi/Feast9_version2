@@ -64,6 +64,19 @@
   </form>
 </section>
 
+<section class="card" id="automatic-logout">
+  <h2>Automatic Logout</h2>
+  <p class="muted-note">Signs a user out when their screen has been left alone, so patient details aren't left open on a shared computer. Typing or moving the mouse on any Feast9 page counts as activity. However busy, everyone signs in again after {{ absolute_session_hours }} hours.</p>
+  <form method="post" action="{{ url_for('settings.index') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form" value="session_timeout">
+    <label>Log out after this many minutes without activity
+      <input type="number" name="session_idle_minutes" value="{{ session_idle_minutes }}" min="{{ min_idle_minutes }}" max="{{ max_idle_minutes }}" required>
+    </label>
+    <button type="submit">Save</button>
+  </form>
+</section>
+
 <section class="card">
   <h2>Theme</h2>
   <p class="muted-note">Sets the color scheme used across every screen in the app (login page included). Default is a light apple green and white combination ({{ default_theme_primary_color }} / {{ default_theme_background_color }}).</p>

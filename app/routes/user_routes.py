@@ -1,7 +1,9 @@
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 from app import db
-from app.auth import current_actor, hash_password, login_required, reauth_required, role_required
+from app.auth import (
+    current_actor, hash_password, login_required, reauth_required, refresh_session_version, role_required,
+)
 from app.constants import ROLES
 from app.csrf import validate_csrf
 
@@ -76,7 +78,7 @@ def deactivate(user_id):
         flash("Cannot deactivate the only active admin account.", "warning")
         return redirect(url_for("users.list_view"))
     db.set_user_active(user_id, False, actor=current_actor())
-    flash(f"User '{target['username']}' deactivated.", "success")
+    flash(f"User '{target['username']}' deactivated and signed out everywhere.", "success")
     return redirect(url_for("users.list_view"))
 
 
@@ -104,7 +106,8 @@ def reset_totp(user_id):
     if not target:
         abort(404)
     db.reset_totp(user_id, actor=current_actor())
-    flash(f"Two-factor authentication reset for '{target['username']}'.", "success")
+    _keep_own_session(user_id)
+    flash(f"Two-factor authentication reset for '{target['username']}' — they've been signed out everywhere.", "success")
     return redirect(url_for("users.list_view"))
 
 
@@ -118,5 +121,13 @@ def unlink_google(user_id):
     if not target:
         abort(404)
     db.unlink_google_account(user_id, actor=current_actor())
-    flash(f"Google account unlinked for '{target['username']}'.", "success")
+    _keep_own_session(user_id)
+    flash(f"Google account unlinked for '{target['username']}' — they've been signed out everywhere.", "success")
     return redirect(url_for("users.list_view"))
+
+
+def _keep_own_session(user_id):
+    """These changes sign the account out everywhere (session_version bump). When an admin
+    does it to their own account, keep the session they're using right now."""
+    if user_id == session.get("admin_id"):
+        refresh_session_version()

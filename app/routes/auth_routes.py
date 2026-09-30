@@ -9,8 +9,10 @@ from app.auth import (
     check_recovery_code,
     hash_password,
     is_rate_limited,
+    idle_timeout_minutes,
     login_required,
     mark_reauthenticated,
+    start_session,
     verify_totp_code,
 )
 from app.constants import DEFAULT_LOGIN_HEADING, DEFAULT_LOGIN_TAGLINE
@@ -121,11 +123,7 @@ def login():
                     session["totp_pending_user_id"] = user["id"]
                     session["totp_pending_next"] = next_url
                     return redirect(url_for("auth.login_totp"))
-                session.clear()
-                session["admin_id"] = user["id"]
-                session["username"] = user["username"]
-                session["role"] = user["role"]
-                mark_reauthenticated()
+                start_session(user)
                 return redirect(next_url)
             db.record_failed_login(ip)
             errors.append("Invalid username or password.")
@@ -171,11 +169,7 @@ def login_totp():
             if verified:
                 db.clear_failed_logins(ip)
                 next_url = session.get("totp_pending_next") or url_for("dashboard.index")
-                session.clear()
-                session["admin_id"] = user["id"]
-                session["username"] = user["username"]
-                session["role"] = user["role"]
-                mark_reauthenticated()
+                start_session(user)
                 return redirect(next_url)
             db.record_failed_login(ip)
             errors.append("Invalid authentication code or recovery code.")
@@ -279,5 +273,16 @@ def reauth():
 @bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
+    validate_csrf(request.form.get("csrf_token"))
     session.clear()
+    if request.form.get("reason") == "idle":  # submitted by ui_actions.js's idle timer
+        flash(f"You were logged out after {idle_timeout_minutes()} minutes without activity.", "warning")
     return redirect(url_for("auth.login"))
+
+
+@bp.route("/session/ping")
+@login_required
+def session_ping():
+    """Called by ui_actions.js while someone is active on a page without clicking through
+    (typing a long note), so login_required's idle check counts that as activity."""
+    return "", 204

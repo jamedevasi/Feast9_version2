@@ -119,6 +119,21 @@ def _migrate_admin_google(conn):
     conn.commit()
 
 
+def _migrate_admin_sessions(conn):
+    """Additive migration: a per-user session version. Every login stores it in the session
+    cookie; deactivating the account or changing its password / 2FA / Google link bumps it
+    (_BUMP_SESSIONS), and auth.login_required ends any session holding an older number —
+    so those changes sign the user out everywhere instead of leaving old sessions alive."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(admin)")}
+    if "session_version" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1")
+    conn.commit()
+
+
+# Appended to an admin-table UPDATE's SET list: ends every existing session of that user.
+_BUMP_SESSIONS = "session_version = session_version + 1"
+
+
 def _migrate_case_financial_assessments_consumables(conn):
     """Additive migration: Consumables (gloves/materials/disposables consumed for the
     case) split out as its own per-case expense category, alongside Lab Amount/
@@ -435,6 +450,7 @@ def init_db():
     _migrate_cases_consent_signature(conn)
     _migrate_cases_followup_source(conn)
     _migrate_admin_google(conn)
+    _migrate_admin_sessions(conn)
     _migrate_case_financial_assessments_consumables(conn)
     _migrate_dental_chart_planned_date(conn)
     _seed_standard_procedure_types(conn)
@@ -669,7 +685,7 @@ def count_active_admins():
 def set_user_active(user_id, is_active, actor=None):
     conn = get_db()
     conn.execute(
-        "UPDATE admin SET is_active = ?, updated_at = ? WHERE id = ?",
+        f"UPDATE admin SET is_active = ?, updated_at = ?, {_BUMP_SESSIONS} WHERE id = ?",
         (1 if is_active else 0, now_iso(), user_id),
     )
     _write_audit(
@@ -684,7 +700,10 @@ def update_user_password(user_id, password_hash, actor=None):
     (§5.1 'self-service password reset — no email needed') both call this — the only
     difference is where the caller got its authorization from."""
     conn = get_db()
-    conn.execute("UPDATE admin SET password_hash = ?, updated_at = ? WHERE id = ?", (password_hash, now_iso(), user_id))
+    conn.execute(
+        f"UPDATE admin SET password_hash = ?, updated_at = ?, {_BUMP_SESSIONS} WHERE id = ?",
+        (password_hash, now_iso(), user_id),
+    )
     _write_audit(conn, actor, "password_changed", "user", user_id)
     conn.commit()
     conn.close()
@@ -721,7 +740,7 @@ def set_pending_totp_secret(user_id, secret):
 def enable_totp(user_id, recovery_code_hashes, actor=None):
     conn = get_db()
     conn.execute(
-        "UPDATE admin SET totp_enabled = 1, totp_recovery_codes_json = ?, updated_at = ? WHERE id = ?",
+        f"UPDATE admin SET totp_enabled = 1, totp_recovery_codes_json = ?, updated_at = ?, {_BUMP_SESSIONS} WHERE id = ?",
         (json.dumps(recovery_code_hashes), now_iso(), user_id),
     )
     _write_audit(conn, actor, "totp_enabled", "user", user_id)
@@ -733,7 +752,8 @@ def reset_totp(user_id, actor=None):
     """Admin-controlled reset, or self-service disable — clears secret/codes, turns 2FA off."""
     conn = get_db()
     conn.execute(
-        "UPDATE admin SET totp_secret = '', totp_enabled = 0, totp_recovery_codes_json = '[]', updated_at = ? WHERE id = ?",
+        f"UPDATE admin SET totp_secret = '', totp_enabled = 0, totp_recovery_codes_json = '[]', updated_at = ?, "
+        f"{_BUMP_SESSIONS} WHERE id = ?",
         (now_iso(), user_id),
     )
     _write_audit(conn, actor, "totp_reset", "user", user_id)
@@ -775,7 +795,8 @@ def unlink_google_account(user_id, actor=None):
     reset_totp above."""
     conn = get_db()
     conn.execute(
-        "UPDATE admin SET google_sub = '', google_email = '', google_linked_at = '', updated_at = ? WHERE id = ?",
+        f"UPDATE admin SET google_sub = '', google_email = '', google_linked_at = '', updated_at = ?, "
+        f"{_BUMP_SESSIONS} WHERE id = ?",
         (now_iso(), user_id),
     )
     _write_audit(conn, actor, "google_account_unlinked", "user", user_id)
