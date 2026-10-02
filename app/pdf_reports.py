@@ -13,7 +13,7 @@ from reportlab.platypus import HRFlowable, Image, Paragraph, SimpleDocTemplate, 
 
 from app import db
 from app.constants import DEFAULT_CLINIC_NAME
-from app.validators import compute_age
+from app.validators import patient_age
 
 _styles = getSampleStyleSheet()
 TITLE = ParagraphStyle("Feast9Title", parent=_styles["Title"], fontSize=16, spaceAfter=2, alignment=0)
@@ -100,7 +100,7 @@ def _table(headers, rows, col_widths=None):
 
 
 def _patient_line(patient):
-    age = compute_age(patient.get("date_of_birth", ""))
+    age = patient_age(patient)
     bits = [patient["name"]]
     if age is not None:
         bits.append(f"{age}y")
@@ -148,9 +148,7 @@ def _prescription_parties(prescription, patient, doctor):
         P(f"Reg. No.: {reg}", _RX_CELL),
     ]
 
-    age = compute_age(patient.get("date_of_birth", ""))
-    if age is None:
-        age = patient.get("age")
+    age = patient_age(patient)
     age_bits = []
     if age is not None:
         age_bits.append(f"Age: {age} years")

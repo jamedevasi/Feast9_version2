@@ -379,7 +379,10 @@ def _parse_patient(get):
     dob = _to_date(get("Date of Birth"))
     age_computed = compute_age(dob) if dob else None
     manual_age_raw = get("Age")
-    manual_age = int(manual_age_raw) if manual_age_raw.isdigit() else None
+    # The older version's export has ages typed as "34", "34 Y", "34 yrs" or "34.5" — take the
+    # leading whole number rather than dropping the age when it isn't bare digits.
+    age_match = re.match(r"\s*(\d{1,3})(?!\d)", manual_age_raw)
+    manual_age = int(age_match.group(1)) if age_match else None
     age = age_computed if age_computed is not None else manual_age
 
     sex = get("Sex").capitalize()

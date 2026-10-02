@@ -86,6 +86,25 @@ def compute_age(date_of_birth):
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
+def patient_age(patient):
+    """A patient's age today. From the date of birth when there is one; otherwise from the age
+    recorded at registration / import plus the whole years since that record was created — the
+    stored `age` alone would stay frozen at the day it was typed. None if neither is known."""
+    age = compute_age(patient.get("date_of_birth"))
+    if age is not None:
+        return age
+    recorded = patient.get("age")
+    if recorded is None:
+        return None
+    try:
+        registered = date.fromisoformat((patient.get("created_at") or "")[:10])
+    except ValueError:
+        return recorded
+    today = date.today()
+    elapsed = today.year - registered.year - ((today.month, today.day) < (registered.month, registered.day))
+    return recorded + max(elapsed, 0)
+
+
 def chart_entry_severity(finding, status, planned_date=""):
     """Derives a dental chart entry's severity from its finding + status (+ an optional
     "Planned By" target date), for colour-coding the chart history — see

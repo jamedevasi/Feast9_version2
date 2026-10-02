@@ -2,6 +2,7 @@
 money, an outstanding balance); ?view=all shows everyone."""
 from datetime import date
 
+from app import db
 from tests.conftest import get_csrf, register_patient
 from tests.test_cases import _create_case
 from tests.test_roles import _create_user, _login, _logout
@@ -144,3 +145,77 @@ def test_dashboard_quick_links_are_styled_buttons(logged_in_client):
     assert 'class="quick-links"' in body
     assert body.count("button button-outline") == 2
     assert "Go to Patients" in body and "Go to Appointments" in body
+
+
+# ── Imported patients: age without a date of birth, "Last Visited" without visit notes ──
+
+def _imported_patient(name="Imported Person", age=34, last_visited="2026-09-25", created_at=None):
+    from datetime import date
+    conn = db.get_db()
+    now = created_at or f"{date.today().isoformat()} 09:00:00"
+    cur = conn.execute(
+        """INSERT INTO patients (name, date_of_birth, age, sex, mobile, last_visited_date,
+                                 created_at, updated_at, is_historic_import)
+           VALUES (?, '', ?, 'Male', '9000000055', ?, ?, ?, 1)""",
+        (name, age, last_visited, now, now),
+    )
+    conn.commit()
+    conn.close()
+    return cur.lastrowid
+
+
+def test_patient_without_dob_shows_the_recorded_age_and_imported_last_visit(logged_in_client):
+    pid = _imported_patient()
+    row = next(r for r in db.list_patients_directory() if r["id"] == pid)
+    assert row["computed_age"] == 34 and row["last_visit_date"] == "2026-09-25"
+    body = logged_in_client.get("/patients/?view=all").data.decode()
+    assert "2026-09-25 (0)" in body and "Never (0)" not in body
+    assert "(Age 34)" in logged_in_client.get(f"/patients/{pid}").data.decode()
+
+
+def test_recorded_age_moves_forward_with_the_years_since_registration():
+    from datetime import date
+    from app.validators import patient_age
+    three_years_ago = date.today().replace(year=date.today().year - 3, day=1).isoformat()
+    assert patient_age({"date_of_birth": "", "age": 34, "created_at": f"{three_years_ago} 09:00:00"}) == 37
+    assert patient_age({"date_of_birth": "", "age": None, "created_at": "2026-01-01 00:00:00"}) is None
+    assert patient_age({"date_of_birth": "2000-01-01", "age": 99, "created_at": "2026-01-01 00:00:00"}) < 99  # DOB wins
+
+
+def test_a_newer_visit_note_overrides_the_imported_last_visit(logged_in_client, app):
+    pid = _imported_patient(last_visited="2026-01-10")
+    conn = db.get_db()
+    cur = conn.execute(
+        "INSERT INTO cases (patient_id, title, status, created_at, updated_at) VALUES (?, 'C', 'Active', '2026-02-01 00:00:00', '2026-02-01 00:00:00')",
+        (pid,),
+    )
+    conn.execute(
+        "INSERT INTO case_visit_notes (case_id, patient_id, note, visit_date, created_at) VALUES (?, ?, 'x', '2026-03-05', '2026-03-05 00:00:00')",
+        (cur.lastrowid, pid),
+    )
+    conn.commit()
+    conn.close()
+    row = next(r for r in db.list_patients_directory() if r["id"] == pid)
+    assert row["last_visit_date"] == "2026-03-05"
+
+
+def test_retention_counts_the_imported_last_visit(logged_in_client):
+    from datetime import date, timedelta
+    recent = (date.today() - timedelta(days=20)).isoformat()
+    old_registration = "2020-01-01 00:00:00"
+    seen_recently = _imported_patient("Seen Recently", last_visited=recent, created_at=old_registration)
+    long_gone = _imported_patient("Long Gone", last_visited="2021-05-01", created_at=old_registration)
+    lapsed = {r["id"]: r for r in db.get_patient_retention()["lapsed"]}
+    assert seen_recently not in lapsed
+    assert lapsed[long_gone]["last_activity"] == "2021-05-01"
+
+
+def test_import_reads_an_age_written_with_a_unit():
+    from app.excel_import import _parse_patient
+    def row(age):
+        cells = {"Patient Name": "A", "Age": age, "Sex": "Male", "DPDP Notice Accepted": "Yes"}
+        return _parse_patient(lambda key: cells.get(key, ""))
+    for text, expected in [("34", 34), ("34 Y", 34), ("34yrs", 34), ("34.5", 34), ("", None), ("adult", None)]:
+        parsed = row(text)
+        data = parsed[0] if isinstance(parsed, tuple) else parsed
+        assert data["age"] == expected, text

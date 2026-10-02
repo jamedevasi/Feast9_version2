@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 
 from app import config as app_config
 from app.constants import MAX_RECURRING_OCCURRENCES, STANDARD_PROCEDURE_TYPES
-from app.validators import compute_age, now_iso
+from app.validators import compute_age, now_iso, patient_age
 
 _PATIENT_COLUMNS = [
     "name", "date_of_birth", "age", "sex", "mobile", "email", "address",
@@ -1303,7 +1303,7 @@ def get_patient(patient_id):
     if not row:
         return None
     patient = dict(row)
-    patient["computed_age"] = compute_age(patient.get("date_of_birth"))
+    patient["computed_age"] = patient_age(patient)
     return patient
 
 
@@ -1973,11 +1973,19 @@ def list_patients(search="", limit=200):
     return [dict(r) for r in rows]
 
 
+# A patient's last visit: the most recent visit note, or the "Last Visited" date carried over
+# from the earlier Feast9 version by the Excel import (patients.last_visited_date) if that is
+# later — an imported patient has no visit notes yet. NULL when neither exists.
+_LAST_VISIT_SQL = """NULLIF(MAX(
+    COALESCE((SELECT MAX(visit_date) FROM case_visit_notes WHERE patient_id = p.id), ''),
+    COALESCE(p.last_visited_date, '')), '')"""
+
+
 def list_patients_directory(search="", only_active=False, include_balance=False, limit=200):
-    """The Patients page's list. Adds `active_case_count`, `computed_age` (from date_of_birth,
-    same helper as the patient-detail page — never the raw stored `age` column, which is only
-    ever set once at registration and goes stale), `last_visit_date` (most recent
-    case_visit_notes.visit_date, same source as Reports' Patient Retention section) and
+    """The Patients page's list. Adds `active_case_count`, `computed_age` (validators.patient_age,
+    same helper as the patient-detail page — from date_of_birth, else the age recorded at
+    registration/import aged forward, never the raw stored `age`, which goes stale),
+    `last_visit_date` (_LAST_VISIT_SQL, same source as Reports' Patient Retention section) and
     `no_show_count` to every row, and — only when include_balance — `balance_due`: the sum,
     over that patient's cases, of what is still unpaid (per case, so one over-paid case never
     cancels another's debt).
@@ -2004,8 +2012,7 @@ def list_patients_directory(search="", only_active=False, include_balance=False,
                 SELECT p.*,
                        (SELECT COUNT(*) FROM cases c WHERE c.patient_id = p.id AND c.status = 'Active')
                            AS active_case_count,
-                       (SELECT MAX(visit_date) FROM case_visit_notes WHERE patient_id = p.id)
-                           AS last_visit_date,
+                       {_LAST_VISIT_SQL} AS last_visit_date,
                        (SELECT COUNT(*) FROM appointments WHERE patient_id = p.id AND status = 'No-show')
                            AS no_show_count{balance_sql}
                 FROM patients p
@@ -2015,7 +2022,7 @@ def list_patients_directory(search="", only_active=False, include_balance=False,
     conn.close()
     result = [dict(r) for r in rows]
     for row in result:
-        row["computed_age"] = compute_age(row.get("date_of_birth"))
+        row["computed_age"] = patient_age(row)
     return result
 
 
@@ -2663,16 +2670,15 @@ def get_doctor_revenue_by_period(start, end):
 
 
 def get_patient_retention(months=6):
-    """Lapsed = no logged visit within the threshold window. 'Visit' is
-    case_visit_notes.visit_date — the actual clinical-visit record — falling back to the
-    patient's registration date for a patient who has never had one logged yet. Anonymised
+    """Lapsed = no logged visit within the threshold window. 'Visit' is the latest visit note
+    or the imported "Last Visited" date (_LAST_VISIT_SQL), falling back to the patient's
+    registration date for a patient who has neither. Anonymised
     (erased) patients are excluded — they're no longer a retention target."""
     conn = get_db()
     cutoff = _add_months(date.today(), -months).isoformat()
     rows = conn.execute(
         """SELECT p.id, p.name, p.mobile,
-                  COALESCE((SELECT MAX(visit_date) FROM case_visit_notes WHERE patient_id = p.id),
-                           DATE(p.created_at)) AS last_activity
+                  COALESCE(""" + _LAST_VISIT_SQL + """, DATE(p.created_at)) AS last_activity
            FROM patients p
            WHERE p.is_anonymized = 0"""
     ).fetchall()
