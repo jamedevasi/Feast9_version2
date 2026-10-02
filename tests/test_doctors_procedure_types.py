@@ -210,3 +210,41 @@ def test_non_admin_blocked_from_doctor_and_settings_management(logged_in_client,
 
     dash = logged_in_client.get("/dashboard")
     assert b'href="/settings/"' not in dash.data
+
+
+def test_doctor_credentials_can_be_added_and_edited(logged_in_client):
+    token = get_csrf(logged_in_client, "/doctors/")
+    logged_in_client.post("/doctors/new", data={
+        "name": "Dr. Creds", "color": "#123456", "qualifications": "BDS",
+        "registration_number": "K-100", "registration_council": "Kerala Dental Council", "csrf_token": token,
+    })
+    doctor = next(d for d in db.list_doctors() if d["name"] == "Dr. Creds")
+    assert (doctor["qualifications"], doctor["registration_number"]) == ("BDS", "K-100")
+
+    edit_url = f"/doctors/{doctor['id']}/edit"
+    assert b"K-100" in logged_in_client.get(edit_url).data
+    token = get_csrf(logged_in_client, edit_url)
+    resp = logged_in_client.post(edit_url, data={
+        "name": "Dr. Creds", "color": "#123456", "qualifications": "BDS, MDS",
+        "registration_number": "K-100", "registration_council": "Kerala Dental Council", "csrf_token": token,
+    })
+    assert resp.status_code == 302
+    assert db.get_doctor(doctor["id"])["qualifications"] == "BDS, MDS"
+
+    conn = db.get_db()
+    row = conn.execute("SELECT after_summary FROM audit_log WHERE action = 'doctor_updated'").fetchone()
+    conn.close()
+    assert row["after_summary"] == "changed: qualifications"
+
+
+def test_doctors_list_flags_missing_credentials(logged_in_client):
+    _add_doctor(logged_in_client, "Dr. Bare")
+    assert b"Missing" in logged_in_client.get("/doctors/").data
+
+
+def test_doctor_edit_is_admin_only(logged_in_client):
+    doctor_id = db.add_doctor("Dr. Locked")
+    _create_user(logged_in_client, "recep_doc_edit", "receptionist")
+    _logout(logged_in_client)
+    _login(logged_in_client, "recep_doc_edit")
+    assert logged_in_client.get(f"/doctors/{doctor_id}/edit").status_code == 403

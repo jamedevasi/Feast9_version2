@@ -124,8 +124,13 @@ body {
 .container {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 1.5rem 1.5rem 3rem;
+  padding: 0.75rem 1.5rem 3rem;
 }
+
+/* Page titles: the browser default (2em with ~1.3rem above and below) plus the container's
+   padding left a wide empty band under the nav bar on every page. */
+h1 { margin: 0 0 0.6rem; font-size: 1.5rem; line-height: 1.25; }
+.page-header h1 { margin: 0; }
 
 /* Standalone forms would stretch edge-to-edge on a wide screen — keep the fields readable. */
 .container > form,
@@ -391,7 +396,7 @@ button[type="submit"], .button {
   padding: 0.75rem 1.25rem;
 }
 
-.flashes { list-style: none; padding: 0; }
+.flashes { list-style: none; padding: 0; margin: 0 0 0.6rem; }
 .flash { padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 0.75rem; }
 .flash-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
 .flash-warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
@@ -400,7 +405,7 @@ button[type="submit"], .button {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.6rem;
 }
 .card > .page-header { margin-bottom: 0.6rem; }
 
@@ -519,6 +524,12 @@ dd { margin: 0; }
 .case-list a { color: var(--brand); text-decoration: none; font-weight: 600; }
 .case-row-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .case-row-meta { color: var(--muted); font-size: 0.85rem; margin-top: 0.15rem; }
+/* Same red/amber treatment as the dashboard's follow-up rows, so the case a dashboard row
+   pointed at is the one that stands out here. */
+.case-list li.case-row-followup-overdue,
+.case-list li.case-row-followup-upcoming { padding-left: 0.75rem; }
+.case-list li.case-row-followup-overdue { background: #fef2f2; box-shadow: inset 4px 0 0 #dc2626; }
+.case-list li.case-row-followup-upcoming { background: #fffbeb; box-shadow: inset 4px 0 0 #f59e0b; }
 
 .case-filter-toggle {
   display: inline-flex;
@@ -558,6 +569,36 @@ dd { margin: 0; }
 .case-page .inline-form > button,
 .case-page .inline-form > .button,
 .case-page .inline-form > canvas { flex: 0 0 auto; margin-bottom: 0.6rem; }
+
+/* New Prescription: date / doctor / diagnosis on one row, then one compact grid per medicine
+   (generic name, brand and instructions take two columns; everything stacks on a phone). */
+.rx-form { border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.5rem; max-width: none; }
+.rx-form h3 { margin: 0 0 0.6rem; font-size: 0.95rem; }
+.rx-form label { margin-bottom: 0.5rem; }
+.rx-top { display: flex; flex-wrap: wrap; gap: 0 1rem; align-items: flex-end; }
+.rx-top label { flex: 0 0 12rem; }
+.rx-top label.rx-grow { flex: 1 1 18rem; }
+.rx-note { color: var(--muted); font-size: 0.85rem; margin: 0.25rem 0 0.5rem; }
+.rx-med {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem 0.2rem;
+  margin: 0 0 0.6rem;
+}
+.rx-med[hidden] { display: none; }
+.rx-med legend { font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 0 0.3rem; }
+.rx-med label { min-width: 0; }
+.rx-med label.rx-wide { grid-column: span 2; }
+.rx-form textarea { min-height: 3.5rem; }
+.rx-med-list { margin: 0.25rem 0 0.4rem; padding-left: 1.4rem; }
+.entry-list .rx-med-list li { padding: 0.1rem 0; border-bottom: none; }
+@media (max-width: 800px) {
+  .rx-med { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rx-top label { flex: 1 1 100%; }
+}
 
 .balance-line { font-size: 1.1rem; }
 

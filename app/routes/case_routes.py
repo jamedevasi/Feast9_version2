@@ -4,13 +4,16 @@ import json
 import pathlib
 import uuid
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
 from PIL import Image, UnidentifiedImageError
 
 from app import config as app_config
 from app import db, pdf_reports
 from app.auth import can_view_financial_data, current_actor, financial_access_required, login_required
-from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
+from app.constants import (
+    ATTACHMENT_TYPES, LAB_REQ_STATUSES, MAX_PRESCRIPTION_MEDICINES, PRESCRIPTION_FREQUENCIES,
+    PRESCRIPTION_ROUTES,
+)
 from app.csrf import validate_csrf
 from app.validators import detect_image_upload_type, normalize_date, today_iso
 
@@ -131,6 +134,14 @@ def detail(case_id):
     doctor = db.get_doctor(case["doctor_id"]) if case.get("doctor_id") else None
     visit_notes = db.list_visit_notes_for_case(case_id)
     prescriptions = db.list_prescriptions_for_case(case_id)
+    rx_doctors = db.list_doctors()
+    # A prescription that failed validation comes back once, so nothing typed is lost.
+    draft = session.pop("rx_draft", None)
+    if draft and draft.get("case_id") == case_id:
+        rx_form = draft
+    else:
+        rx_form = {"prescribed_date": today_iso(), "doctor_id": case.get("doctor_id"),
+                   "diagnosis": "", "medications": [], "advice": ""}
     attachments = db.list_attachments_for_case(case_id)
     lab_reqs = db.list_lab_reqs_for_case(case_id)
     upcoming_appt_date = db.get_next_scheduled_appointment_within(case["patient_id"])
@@ -153,6 +164,12 @@ def detail(case_id):
         doctor=doctor,
         visit_notes=visit_notes,
         prescriptions=prescriptions,
+        rx_form=rx_form,
+        rx_doctors=rx_doctors,
+        rx_print_gaps=_prescription_print_gaps(rx_doctors),
+        rx_routes=PRESCRIPTION_ROUTES,
+        rx_frequencies=PRESCRIPTION_FREQUENCIES,
+        rx_max_medicines=MAX_PRESCRIPTION_MEDICINES,
         attachments=attachments,
         attachment_types=ATTACHMENT_TYPES,
         lab_reqs=lab_reqs,
@@ -224,9 +241,83 @@ def add_visit_note(case_id):
     note = request.form.get("note", "").strip()
     visit_date = normalize_date(request.form.get("visit_date", "")) or today_iso()
     if note:
-        db.add_visit_note(case_id, case["patient_id"], note, visit_date, actor=current_actor())
+        completed = db.add_visit_note(case_id, case["patient_id"], note, visit_date, actor=current_actor())
         flash("Visit note added.", "success")
+        if completed:
+            flash(
+                f"The {completed['start_time']} appointment on {completed['appt_date']} was marked Completed.",
+                "success",
+            )
+            # Same rule as marking it Completed by hand: attending a later appointment settles
+            # an earlier no-show's "please reschedule" follow-up.
+            db.resolve_noshow_followups_for_patient(case["patient_id"], completed["appt_date"])
     return redirect(url_for("cases.detail", case_id=case_id))
+
+
+_MEDICINE_FIELDS = ["generic", "brand", "strength", "dose", "frequency", "route", "duration", "instructions"]
+# What every medicine line must state; brand, duration and instructions are optional.
+_MEDICINE_REQUIRED = {
+    "generic": "generic name", "strength": "strength", "dose": "dosage",
+    "frequency": "frequency", "route": "route",
+}
+
+
+def _collect_prescription_form(form):
+    """Medicine rows arrive as parallel med_<field> lists; a row left entirely blank is
+    dropped (`row_numbers` keeps each kept row's on-screen number for error messages)."""
+    columns = [form.getlist(f"med_{f}") for f in _MEDICINE_FIELDS]
+    medications, row_numbers = [], []
+    for i in range(min(max((len(c) for c in columns), default=0), MAX_PRESCRIPTION_MEDICINES)):
+        med = {f: (col[i].strip() if i < len(col) else "") for f, col in zip(_MEDICINE_FIELDS, columns)}
+        # The route drop-down always submits a value, so it alone doesn't make a row "filled".
+        if any(v for f, v in med.items() if f != "route"):
+            medications.append(med)
+            row_numbers.append(i + 1)
+    doctor_id = form.get("prescriber_id", "").strip()
+    return {
+        "prescribed_date": normalize_date(form.get("prescribed_date", "")) or today_iso(),
+        "doctor_id": int(doctor_id) if doctor_id.isdigit() else None,
+        "diagnosis": form.get("diagnosis", "").strip(),
+        "medications": medications,
+        "row_numbers": row_numbers,
+        "advice": form.get("advice", "").strip(),
+    }
+
+
+def _validate_prescription(data):
+    errors = []
+    doctor = db.get_doctor(data["doctor_id"]) if data["doctor_id"] else None
+    if not doctor or not doctor["is_active"]:
+        errors.append("Choose the prescribing doctor.")
+    if not data["diagnosis"]:
+        errors.append("Enter the diagnosis the medicines are prescribed for.")
+    if not data["medications"]:
+        errors.append("Enter at least one medicine.")
+    for number, med in zip(data["row_numbers"], data["medications"]):
+        missing = [label for field, label in _MEDICINE_REQUIRED.items() if not med[field]]
+        if med["route"] and med["route"] not in PRESCRIPTION_ROUTES:
+            missing.append("route")
+        if missing:
+            errors.append(f"Medicine {number}: enter the {', '.join(missing)}.")
+    return errors
+
+
+def prescription_text(diagnosis, medications, advice):
+    """The whole prescription as plain text — stored in rx_details, so every place that only
+    shows text (patient summary / data-access PDFs, the Excel copy) carries the same content."""
+    lines = [f"Diagnosis: {diagnosis}"]
+    for n, med in enumerate(medications, start=1):
+        name = med["generic"].upper() + (f" ({med['brand']})" if med["brand"] else "")
+        parts = [f"{name} {med['strength']}", med["dose"], med["frequency"], med["route"]]
+        if med["duration"]:
+            parts.append(f"for {med['duration']}")
+        line = f"{n}. " + ", ".join(parts)
+        if med["instructions"]:
+            line += f" - {med['instructions']}"
+        lines.append(line)
+    if advice:
+        lines.append(f"Advice: {advice}")
+    return "\n".join(lines)
 
 
 @bp.route("/cases/<int:case_id>/prescriptions", methods=["POST"])
@@ -234,12 +325,38 @@ def add_visit_note(case_id):
 def add_prescription(case_id):
     validate_csrf(request.form.get("csrf_token"))
     case = _get_case_or_404(case_id)
-    rx_details = request.form.get("rx_details", "").strip()
-    prescribed_date = normalize_date(request.form.get("prescribed_date", "")) or today_iso()
-    if rx_details:
-        db.add_prescription(case_id, case["patient_id"], rx_details, prescribed_date, actor=current_actor())
-        flash("Prescription added.", "success")
-    return redirect(url_for("cases.detail", case_id=case_id))
+    data = _collect_prescription_form(request.form)
+    errors = _validate_prescription(data)
+    if errors:
+        for message in errors:
+            flash(message, "warning")
+        # Nothing typed is lost: the case page refills the form from this once.
+        session["rx_draft"] = {"case_id": case_id, **{k: v for k, v in data.items() if k != "row_numbers"}}
+        return redirect(url_for("cases.detail", case_id=case_id) + "#prescriptions")
+    session.pop("rx_draft", None)
+    db.add_prescription(
+        case_id, case["patient_id"],
+        prescription_text(data["diagnosis"], data["medications"], data["advice"]),
+        data["prescribed_date"], actor=current_actor(),
+        diagnosis=data["diagnosis"], medications=data["medications"], advice=data["advice"],
+        doctor_id=data["doctor_id"],
+    )
+    flash("Prescription added.", "success")
+    return redirect(url_for("cases.detail", case_id=case_id) + "#prescriptions")
+
+
+def _prescription_print_gaps(doctors):
+    """Plain-language list of what a printed prescription would be missing right now — the
+    clinic's contact details, or a doctor's qualifications / registration number."""
+    gaps = []
+    if not (db.get_setting("clinic_address", "") and db.get_setting("clinic_phone", "")):
+        gaps.append("the clinic's address and phone number (Settings, Clinic Details)")
+    for d in doctors:
+        missing = [label for field, label in (("qualifications", "qualifications"),
+                                              ("registration_number", "registration number")) if not d.get(field)]
+        if missing:
+            gaps.append(f"{d['name']}'s {' and '.join(missing)} (Settings, Doctors)")
+    return gaps
 
 
 @bp.route("/cases/<int:case_id>/prescriptions/<int:rx_id>.pdf")
@@ -250,7 +367,11 @@ def prescription_pdf(case_id, rx_id):
     if not prescription or prescription["case_id"] != case_id:
         abort(404)
     patient = db.get_patient(case["patient_id"])
-    pdf_bytes = pdf_reports.generate_prescription_pdf(prescription, case, patient)
+    # The prescriber recorded on the prescription; one written before that was recorded
+    # falls back to the case's doctor.
+    doctor_id = prescription.get("doctor_id") or case.get("doctor_id")
+    doctor = db.get_doctor(doctor_id) if doctor_id else None
+    pdf_bytes = pdf_reports.generate_prescription_pdf(prescription, case, patient, doctor)
     return _send_pdf(pdf_bytes, f"prescription-{rx_id}.pdf")
 
 

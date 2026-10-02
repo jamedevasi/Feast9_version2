@@ -156,6 +156,35 @@ def _migrate_dental_chart_planned_date(conn):
     conn.commit()
 
 
+def _migrate_doctors_credentials(conn):
+    """Additive migration: what a prescription must legally state about the prescriber —
+    qualifications and the registration number (plus the council that issued it). Blank on
+    existing doctors until an admin fills them in on the Doctors page (user request, 2026-10-02)."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(doctors)")}
+    for name in ("qualifications", "registration_number", "registration_council"):
+        if name not in columns:
+            conn.execute(f"ALTER TABLE doctors ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+
+
+def _migrate_prescriptions_structured(conn):
+    """Additive migration: a prescription as structured fields (diagnosis, a JSON list of
+    medicines, advice, the prescribing doctor) instead of one free-text box. `rx_details` is
+    kept and still filled — with a plain-text rendering of the same content — so everything
+    that already reads it (patient/data-access PDFs, the Excel copy) stays complete. Rows from
+    before this change have medications_json = '[]' and only their original rx_details."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(prescriptions)")}
+    if "diagnosis" not in columns:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN diagnosis TEXT NOT NULL DEFAULT ''")
+    if "medications_json" not in columns:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN medications_json TEXT NOT NULL DEFAULT '[]'")
+    if "advice" not in columns:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN advice TEXT NOT NULL DEFAULT ''")
+    if "doctor_id" not in columns:
+        conn.execute("ALTER TABLE prescriptions ADD COLUMN doctor_id INTEGER REFERENCES doctors(id)")
+    conn.commit()
+
+
 def _seed_standard_procedure_types(conn):
     """Adds each STANDARD_PROCEDURE_TYPES name not already present (case-insensitive, active or
     not) — so it's safe on every startup, never duplicates, and never re-activates a type an
@@ -453,6 +482,8 @@ def init_db():
     _migrate_admin_sessions(conn)
     _migrate_case_financial_assessments_consumables(conn)
     _migrate_dental_chart_planned_date(conn)
+    _migrate_doctors_credentials(conn)
+    _migrate_prescriptions_structured(conn)
     _seed_standard_procedure_types(conn)
     conn.close()
 
@@ -859,11 +890,14 @@ def clear_failed_logins(ip):
 # unaffected either way; list_doctors()/list_procedure_types() default to active_only,
 # so a deactivated one simply stops being offered on new cases.
 
-def add_doctor(name, color="", actor=None):
+def add_doctor(name, color="", actor=None, qualifications="", registration_number="",
+               registration_council=""):
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO doctors (name, color, is_active, created_at) VALUES (?, ?, 1, ?)",
-        (name, color, now_iso()),
+        """INSERT INTO doctors (name, color, is_active, created_at,
+                                qualifications, registration_number, registration_council)
+           VALUES (?, ?, 1, ?, ?, ?, ?)""",
+        (name, color, now_iso(), qualifications, registration_number, registration_council),
     )
     _write_audit(conn, actor, "doctor_created", "doctor", cur.lastrowid, after_summary=f"name={name}")
     conn.commit()
@@ -915,6 +949,26 @@ def get_doctor(doctor_id):
     row = conn.execute("SELECT * FROM doctors WHERE id = ?", (doctor_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+_DOCTOR_EDIT_COLUMNS = ["name", "color", "qualifications", "registration_number", "registration_council"]
+
+
+def update_doctor(doctor_id, data, actor=None):
+    """Edits a doctor's own details. The audit row names the fields that changed."""
+    conn = get_db()
+    before = conn.execute("SELECT * FROM doctors WHERE id = ?", (doctor_id,)).fetchone()
+    row = {col: data.get(col, "") for col in _DOCTOR_EDIT_COLUMNS}
+    changed = [col for col in _DOCTOR_EDIT_COLUMNS if (before[col] or "") != row[col]]
+    if changed:
+        set_clause = ", ".join(f"{col} = :{col}" for col in _DOCTOR_EDIT_COLUMNS)
+        conn.execute(f"UPDATE doctors SET {set_clause} WHERE id = :id", {**row, "id": doctor_id})
+        _write_audit(
+            conn, actor, "doctor_updated", "doctor", doctor_id,
+            after_summary="changed: " + ", ".join(changed),
+        )
+        conn.commit()
+    conn.close()
 
 
 def set_doctor_active(doctor_id, is_active, actor=None):
@@ -1230,12 +1284,22 @@ def get_case(case_id):
 
 def list_cases_for_patient(patient_id):
     """Adds `doctor_name` and `latest_visit_note` (the most recent case_visit_notes entry, for
-    the patient-detail page's brief per-case description) to every row."""
+    the patient-detail page's brief per-case description) to every row, plus `last_activity_at`
+    — the latest of the case's own `updated_at` and anything clinical recorded on it (visit
+    note, prescription, attachment, lab requisition, referral), since those don't touch
+    `updated_at`. Payments are left out on purpose: the date is shown to every role."""
     conn = get_db()
     rows = conn.execute(
         """SELECT c.*, d.name AS doctor_name,
                   (SELECT note FROM case_visit_notes WHERE case_id = c.id
-                       ORDER BY visit_date DESC, id DESC LIMIT 1) AS latest_visit_note
+                       ORDER BY visit_date DESC, id DESC LIMIT 1) AS latest_visit_note,
+                  MAX(COALESCE(c.updated_at, ''), COALESCE(c.created_at, ''),
+                      COALESCE((SELECT MAX(created_at) FROM case_visit_notes WHERE case_id = c.id), ''),
+                      COALESCE((SELECT MAX(created_at) FROM prescriptions WHERE case_id = c.id), ''),
+                      COALESCE((SELECT MAX(created_at) FROM case_attachments WHERE case_id = c.id), ''),
+                      COALESCE((SELECT MAX(created_at) FROM lab_requisitions WHERE case_id = c.id), ''),
+                      COALESCE((SELECT MAX(created_at) FROM referral_notes WHERE case_id = c.id), '')
+                  ) AS last_activity_at
            FROM cases c
            LEFT JOIN doctors d ON d.id = c.doctor_id
            WHERE c.patient_id = ?
@@ -1254,6 +1318,13 @@ _CASE_DEFAULTS = {"procedures_json": "[]", "custom_procedure": "", "doctor_id": 
 # ── Visit Notes (append-only clinical record — no edit/delete) ─────────────
 
 def add_visit_note(case_id, patient_id, note, visit_date, actor=None):
+    """A visit note is the record that the patient was seen, so in the same transaction it
+    marks the patient's still-`Scheduled` appointment on that visit date `Completed` (the
+    dashboard's Today's Appointments otherwise stays "Scheduled" until someone edits the
+    appointment by hand). Only one appointment, only a `Scheduled` one — a Cancelled/No-show
+    entry is a deliberate choice and is left alone — and never a future-dated one. With several
+    that day, the one booked for this case wins, then this case's doctor, then the earliest.
+    Returns the completed appointment as a dict, or None."""
     conn = get_db()
     conn.execute(
         """INSERT INTO case_visit_notes (case_id, patient_id, note, visit_date, created_at)
@@ -1264,8 +1335,31 @@ def add_visit_note(case_id, patient_id, note, visit_date, actor=None):
         conn, actor, "visit_note_added", "case", case_id,
         after_summary=f"visit note added ({len(note)} chars), visit_date={visit_date}",
     )
+    appt = None
+    if visit_date <= date.today().isoformat():
+        appt = conn.execute(
+            """SELECT a.* FROM appointments a
+               WHERE a.patient_id = ? AND a.appt_date = ? AND a.status = 'Scheduled'
+                 AND (a.case_id IS NULL OR a.case_id = ?)
+               ORDER BY (a.case_id IS NOT NULL) DESC,
+                        (a.doctor_id IS (SELECT doctor_id FROM cases WHERE id = ?)) DESC,
+                        a.start_time, a.id
+               LIMIT 1""",
+            (patient_id, visit_date, case_id, case_id),
+        ).fetchone()
+    if appt:
+        conn.execute(
+            "UPDATE appointments SET status = 'Completed', updated_at = ? WHERE id = ?",
+            (now_iso(), appt["id"]),
+        )
+        _write_audit(
+            conn, actor, "appointment_completed_by_visit_note", "appointment", appt["id"],
+            before_summary="status=Scheduled",
+            after_summary=f"status=Completed, case_id={case_id}, visit_date={visit_date}",
+        )
     conn.commit()
     conn.close()
+    return dict(appt) if appt else None
 
 
 def list_visit_notes_for_case(case_id):
@@ -1295,36 +1389,57 @@ def list_visit_notes_for_patient(patient_id):
 
 # ── Prescriptions (append-only clinical record — no edit/delete) ───────────
 
-def add_prescription(case_id, patient_id, rx_details, prescribed_date, actor=None):
+def add_prescription(case_id, patient_id, rx_details, prescribed_date, actor=None,
+                     diagnosis="", medications=None, advice="", doctor_id=None):
+    """`medications` is a list of dicts (see case_routes._collect_prescription_form);
+    `rx_details` is the plain-text rendering of the whole prescription. The audit row records
+    counts only — never the diagnosis or the medicines."""
+    medications = medications or []
     conn = get_db()
     conn.execute(
-        """INSERT INTO prescriptions (case_id, patient_id, rx_details, prescribed_date, created_at)
-           VALUES (?, ?, ?, ?, ?)""",
-        (case_id, patient_id, rx_details, prescribed_date, now_iso()),
+        """INSERT INTO prescriptions (case_id, patient_id, rx_details, prescribed_date, created_at,
+                                      diagnosis, medications_json, advice, doctor_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (case_id, patient_id, rx_details, prescribed_date, now_iso(),
+         diagnosis, json.dumps(medications), advice, doctor_id),
     )
     _write_audit(
         conn, actor, "prescription_added", "case", case_id,
-        after_summary=f"prescription added ({len(rx_details)} chars), prescribed_date={prescribed_date}",
+        after_summary=(
+            f"prescription added ({len(medications)} medicines, {len(rx_details)} chars), "
+            f"prescribed_date={prescribed_date}, doctor_id={doctor_id}"
+        ),
     )
     conn.commit()
     conn.close()
 
 
+def _with_medications(row):
+    row = dict(row)
+    try:
+        row["medications"] = json.loads(row.get("medications_json") or "[]")
+    except ValueError:
+        row["medications"] = []
+    return row
+
+
 def list_prescriptions_for_case(case_id):
     conn = get_db()
     rows = conn.execute(
-        "SELECT * FROM prescriptions WHERE case_id = ? ORDER BY prescribed_date DESC, id DESC",
+        """SELECT rx.*, d.name AS doctor_name FROM prescriptions rx
+           LEFT JOIN doctors d ON d.id = rx.doctor_id
+           WHERE rx.case_id = ? ORDER BY rx.prescribed_date DESC, rx.id DESC""",
         (case_id,),
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [_with_medications(r) for r in rows]
 
 
 def get_prescription(rx_id):
     conn = get_db()
     row = conn.execute("SELECT * FROM prescriptions WHERE id = ?", (rx_id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    return _with_medications(row) if row else None
 
 
 def list_prescriptions_for_patient(patient_id):
@@ -2107,8 +2222,10 @@ def cancel_appointment_series(series_id):
 
 # ── Dashboard widgets ────────────────────────────────────────────────────────
 
-def get_followup_alerts():
+def get_followup_alerts(patient_id=None):
     """Merged follow-up table for the dashboard — (overdue_list, upcoming_list).
+    With `patient_id`, only that patient's cases (patient detail flags the same cases the
+    dashboard lists, by the same rules).
     overdue:  follow_up_date < today
     upcoming: today <= follow_up_date <= today + 3 days
     A hand-set follow-up is surfaced only for cases still Active — a closed case's stale
@@ -2128,9 +2245,9 @@ def get_followup_alerts():
               OR (c.follow_up_date <= ? AND EXISTS (
                      SELECT 1 FROM appointments a
                      WHERE a.id = c.follow_up_appointment_id AND a.status = 'No-show'))
-           )
+           ) AND (? IS NULL OR c.patient_id = ?)
            ORDER BY c.follow_up_date""",
-        (today_str,),
+        (today_str, patient_id, patient_id),
     ).fetchall()
     conn.close()
     upcoming_cutoff = (date.today() + timedelta(days=3)).isoformat()

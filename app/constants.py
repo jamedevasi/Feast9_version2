@@ -152,3 +152,15 @@ DEFAULT_CLINIC_NAME = "Feast9"
 DEFAULT_THEME_PRIMARY_COLOR = "#4f7d32"
 DEFAULT_THEME_BACKGROUND_COLOR = "#f3f9ec"
 
+# Prescriptions: each medicine row states the generic name, strength, dosage, frequency and
+# route of administration (the particulars a prescription must legally carry).
+MAX_PRESCRIPTION_MEDICINES = 8
+PRESCRIPTION_ROUTES = [
+    "Oral", "Topical / local application", "Mouth rinse", "Sublingual",
+    "Intramuscular (IM)", "Intravenous (IV)", "Subcutaneous", "Inhalation", "Other",
+]
+# Suggestions only (a datalist) — the frequency field accepts any text.
+PRESCRIPTION_FREQUENCIES = [
+    "Once a day", "Twice a day", "Three times a day", "Four times a day",
+    "Every 6 hours", "Every 8 hours", "At bedtime", "When needed (SOS)", "Single dose",
+]

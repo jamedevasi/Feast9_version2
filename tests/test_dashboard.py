@@ -314,3 +314,128 @@ def test_noshow_for_a_patient_with_no_case_says_nothing_was_created(logged_in_cl
     resp = _set_appt_status(logged_in_client, _appt_id_for(patient_id), "No-show")
     page = logged_in_client.get(resp.headers["Location"]).data.decode()
     assert "no case yet" in page
+
+
+# ── Patient detail flags the same cases the dashboard lists ─────────────────
+
+def test_patient_detail_flags_the_case_with_an_overdue_followup(logged_in_client, patient_id):
+    _case_for(logged_in_client, patient_id, title="Quiet Case")
+    late_id, late_url, _ = _case_for(logged_in_client, patient_id, title="Late Case")
+    _set_followup(logged_in_client, late_id, late_url, (date.today() - timedelta(days=2)).isoformat(), note="Call back")
+    soon_id, soon_url, _ = _case_for(logged_in_client, patient_id, title="Soon Case")
+    _set_followup(logged_in_client, soon_id, soon_url, (date.today() + timedelta(days=1)).isoformat())
+    far_id, far_url, _ = _case_for(logged_in_client, patient_id, title="Far Case")
+    _set_followup(logged_in_client, far_id, far_url, (date.today() + timedelta(days=30)).isoformat())
+
+    body = logged_in_client.get(f"/patients/{patient_id}").data.decode()
+    assert body.count("case-row-followup-overdue") == 1 and body.count("case-row-followup-upcoming") == 1
+    assert "Follow-up overdue · 2 days" in body and "Follow-up due tomorrow" in body
+    # cases are listed newest-opened first, flagged or not
+    assert body.index("Far Case") < body.index("Soon Case") < body.index("Late Case") < body.index("Quiet Case")
+
+
+def test_patient_detail_case_row_shows_the_latest_update_not_the_opening_date(logged_in_client, patient_id):
+    case_id, _url, _ = _case_for(logged_in_client, patient_id)
+    conn = db.get_db()
+    conn.execute("UPDATE cases SET created_at = '2026-01-05 10:00:00', updated_at = '2026-02-01 10:00:00' WHERE id = ?", (case_id,))
+    conn.commit()
+    conn.close()
+    body = logged_in_client.get(f"/patients/{patient_id}").data.decode()
+    assert "Updated 2026-02-01" in body and "Opened 2026-01-05" not in body
+
+    # a visit note doesn't touch cases.updated_at, but it is the latest thing done on the case
+    conn = db.get_db()
+    conn.execute(
+        "INSERT INTO case_visit_notes (case_id, patient_id, note, visit_date, created_at)"
+        " VALUES (?, ?, 'x', '2026-03-10', '2026-03-10 09:00:00')",
+        (case_id, patient_id),
+    )
+    conn.commit()
+    conn.close()
+    assert "Updated 2026-03-10" in logged_in_client.get(f"/patients/{patient_id}").data.decode()
+
+
+def test_patient_detail_has_no_followup_flag_once_marked_done(logged_in_client, patient_id):
+    case_id, case_url, _ = _case_for(logged_in_client, patient_id)
+    _set_followup(logged_in_client, case_id, case_url, (date.today() - timedelta(days=1)).isoformat())
+    assert b"Follow-up overdue" in logged_in_client.get(f"/patients/{patient_id}").data
+    token = get_csrf(logged_in_client, case_url)
+    logged_in_client.post(f"/cases/{case_id}/followup/done", data={"csrf_token": token})
+    assert b"Follow-up overdue" not in logged_in_client.get(f"/patients/{patient_id}").data
+
+
+def test_patient_detail_shows_a_closed_case_whose_noshow_followup_is_due(logged_in_client, patient_id, next_day):
+    case_id, _url, _ = _case_for(logged_in_client, patient_id, title="Closed Case")
+    db.close_case(case_id)
+    _book_appointment(logged_in_client, patient_id)
+    _set_appt_status(logged_in_client, _appt_id_for(patient_id), "No-show")
+    body = logged_in_client.get(f"/patients/{patient_id}").data.decode()
+    assert "Follow-up due today" in body
+    assert "case-row-closed" not in body  # not hidden behind "Show all cases"
+
+
+# ── A visit note on the appointment's day marks that appointment Completed ───
+
+def _add_note(client, case_id, visit_date, note="Seen, scaling done"):
+    token = get_csrf(client, f"/cases/{case_id}")
+    return client.post(
+        f"/cases/{case_id}/visit-notes",
+        data={"note": note, "visit_date": visit_date, "csrf_token": token}, follow_redirects=True,
+    )
+
+
+def test_visit_note_today_completes_todays_scheduled_appointment(logged_in_client, patient_id):
+    case_id, _url, _ = _case_for(logged_in_client, patient_id)
+    today = date.today().isoformat()
+    _book_appointment(logged_in_client, patient_id, appt_date=today)
+    appt_id = _appt_id_for(patient_id)
+
+    resp = _add_note(logged_in_client, case_id, today)
+    assert b"was marked Completed" in resp.data
+    assert db.get_appointment(appt_id)["status"] == "Completed"
+    body = logged_in_client.get("/dashboard").data.decode()
+    assert "appt-row-completed" in body and "badge-status-completed" in body
+
+    conn = db.get_db()
+    row = conn.execute(
+        "SELECT entity_id FROM audit_log WHERE action = 'appointment_completed_by_visit_note'"
+    ).fetchone()
+    conn.close()
+    assert row and row["entity_id"] == appt_id
+
+
+def test_visit_note_for_another_day_leaves_the_appointment_scheduled(logged_in_client, patient_id):
+    case_id, _url, _ = _case_for(logged_in_client, patient_id)
+    today = date.today().isoformat()
+    _book_appointment(logged_in_client, patient_id, appt_date=today)
+    resp = _add_note(logged_in_client, case_id, (date.today() - timedelta(days=1)).isoformat())
+    assert b"was marked Completed" not in resp.data
+    assert db.get_appointment(_appt_id_for(patient_id))["status"] == "Scheduled"
+
+
+@pytest.mark.parametrize("status", ["Cancelled", "No-show"])
+def test_visit_note_never_changes_a_cancelled_or_noshow_appointment(logged_in_client, patient_id, status):
+    case_id, _url, _ = _case_for(logged_in_client, patient_id)
+    today = date.today().isoformat()
+    _book_appointment(logged_in_client, patient_id, appt_date=today, status=status)
+    _add_note(logged_in_client, case_id, today)
+    assert db.get_appointment(_appt_id_for(patient_id))["status"] == status
+
+
+def test_visit_note_completes_only_one_of_two_appointments_that_day(logged_in_client, patient_id):
+    case_id, _url, doctor_id = _case_for(logged_in_client, patient_id)
+    today = date.today().isoformat()
+    _book_appointment(logged_in_client, patient_id, doctor_id=doctor_id, appt_date=today, start_time="09:00", end_time="09:30")
+    _book_appointment(logged_in_client, patient_id, doctor_id=doctor_id, appt_date=today, start_time="15:00", end_time="15:30")
+    _add_note(logged_in_client, case_id, today)
+    by_time = {a["start_time"]: a["status"] for a in db.list_appointments_for_patient(patient_id)}
+    assert by_time == {"09:00": "Completed", "15:00": "Scheduled"}
+
+
+def test_visit_note_does_not_complete_another_patients_appointment(logged_in_client, patient_id):
+    case_id, _url, _ = _case_for(logged_in_client, patient_id)
+    other = db.add_patient({**db.get_patient(patient_id), "name": "Other Person", "mobile": "9000000009"})
+    today = date.today().isoformat()
+    _book_appointment(logged_in_client, other, appt_date=today)
+    _add_note(logged_in_client, case_id, today)
+    assert db.get_appointment(_appt_id_for(other))["status"] == "Scheduled"

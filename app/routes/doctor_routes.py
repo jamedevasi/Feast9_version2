@@ -7,6 +7,13 @@ from app.csrf import validate_csrf
 bp = Blueprint("doctors", __name__, url_prefix="/doctors")
 
 
+def _collect_doctor_form(form):
+    return {
+        field: form.get(field, "").strip()
+        for field in ("name", "color", "qualifications", "registration_number", "registration_council")
+    }
+
+
 @bp.route("/")
 @login_required
 @role_required("admin")
@@ -19,14 +26,36 @@ def list_view():
 @role_required("admin")
 def new():
     validate_csrf(request.form.get("csrf_token"))
-    name = request.form.get("name", "").strip()
-    color = request.form.get("color", "").strip()
-    if not name:
+    data = _collect_doctor_form(request.form)
+    if not data["name"]:
         flash("Doctor name is required.", "warning")
         return redirect(url_for("doctors.list_view"))
-    db.add_doctor(name, color, actor=current_actor())
-    flash(f"Doctor '{name}' added.", "success")
+    db.add_doctor(
+        data["name"], data["color"], actor=current_actor(),
+        qualifications=data["qualifications"], registration_number=data["registration_number"],
+        registration_council=data["registration_council"],
+    )
+    flash(f"Doctor '{data['name']}' added.", "success")
     return redirect(url_for("doctors.list_view"))
+
+
+@bp.route("/<int:doctor_id>/edit", methods=["GET", "POST"])
+@login_required
+@role_required("admin")
+def edit(doctor_id):
+    doctor = db.get_doctor(doctor_id)
+    if not doctor:
+        abort(404)
+    if request.method == "POST":
+        validate_csrf(request.form.get("csrf_token"))
+        data = _collect_doctor_form(request.form)
+        if data["name"]:
+            db.update_doctor(doctor_id, data, actor=current_actor())
+            flash(f"Doctor '{data['name']}' updated.", "success")
+            return redirect(url_for("doctors.list_view"))
+        flash("Doctor name is required.", "warning")
+        doctor = {**doctor, **data}
+    return render_template("doctor_form.html", doctor=doctor)
 
 
 @bp.route("/<int:doctor_id>/deactivate", methods=["POST"])

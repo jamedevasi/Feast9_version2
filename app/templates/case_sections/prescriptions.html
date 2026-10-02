@@ -1,4 +1,4 @@
-<section class="card">
+<section class="card" id="prescriptions">
   <h2>Prescriptions</h2>
   {% if patient.allergies or patient.allergies_other %}
   <div class="allergy-alert">
@@ -12,8 +12,23 @@
     {% for rx in prescriptions %}
     <li>
       <span class="entry-date">{{ rx.prescribed_date }}</span>
+      {% if rx.doctor_name %}<span class="hint">{{ rx.doctor_name }}</span>{% endif %}
+      {% if rx.medications %}
+      <p><strong>Diagnosis:</strong> {{ rx.diagnosis }}</p>
+      <ol class="rx-med-list">
+        {% for m in rx.medications %}
+        <li>
+          <strong>{{ m.generic|upper }}</strong>{% if m.brand %} ({{ m.brand }}){% endif %} {{ m.strength }}
+          — {{ m.dose }}, {{ m.frequency }}, {{ m.route }}{% if m.duration %}, for {{ m.duration }}{% endif %}
+          {% if m.instructions %}<span class="hint">{{ m.instructions }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+      {% if rx.advice %}<p><strong>Advice:</strong> {{ rx.advice }}</p>{% endif %}
+      {% else %}
       <p>{{ rx.rx_details }}</p>
-      <a href="{{ url_for('cases.prescription_pdf', case_id=case.id, rx_id=rx.id) }}" target="_blank" rel="noopener">📄 Print</a>
+      {% endif %}
+      <a class="button button-small button-outline" href="{{ url_for('cases.prescription_pdf', case_id=case.id, rx_id=rx.id) }}" target="_blank" rel="noopener">📄 Print</a>
     </li>
     {% endfor %}
   </ul>
@@ -21,10 +36,56 @@
   <p class="empty-state">No prescriptions recorded yet.</p>
   {% endif %}
 
-  <form method="post" action="{{ url_for('cases.add_prescription', case_id=case.id) }}" class="inline-form">
+  <form method="post" action="{{ url_for('cases.add_prescription', case_id=case.id) }}" class="rx-form" data-rx-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Date<input type="date" name="prescribed_date" value="{{ today }}" max="{{ today }}"></label>
-    <label>Prescription<textarea name="rx_details" required placeholder="Drug, dose, frequency, duration"></textarea></label>
+    <h3>New Prescription</h3>
+    {% if rx_print_gaps %}
+    <p class="flash flash-warning">
+      A printed prescription must show these, and they are not filled in yet:
+      {{ rx_print_gaps | join('; ') }}.
+    </p>
+    {% endif %}
+    <div class="rx-top">
+      <label>Date<input type="date" name="prescribed_date" value="{{ rx_form.prescribed_date }}" max="{{ today }}"></label>
+      <label>Prescribing doctor
+        <select name="prescriber_id" required>
+          <option value="">Select…</option>
+          {% for d in rx_doctors %}
+          <option value="{{ d.id }}"{% if d.id == rx_form.doctor_id %} selected{% endif %}>{{ d.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="rx-grow">Diagnosis<input type="text" name="diagnosis" value="{{ rx_form.diagnosis }}" required placeholder="Condition the medicines are prescribed for"></label>
+    </div>
+
+    <p class="rx-note">Prescribe by generic name — the brand is optional. Each medicine needs its strength, dosage, frequency and route.</p>
+    <datalist id="rx-frequencies">
+      {% for f in rx_frequencies %}<option value="{{ f }}">{% endfor %}
+    </datalist>
+    {% for i in range(rx_max_medicines) %}
+    {% set m = rx_form.medications[i] if i < rx_form.medications|length else {} %}
+    <fieldset class="rx-med" data-rx-row>
+      <legend>Medicine {{ i + 1 }}</legend>
+      <label class="rx-wide">Generic name<input type="text" name="med_generic" value="{{ m.generic or '' }}"{% if i == 0 %} required{% endif %} placeholder="e.g. Amoxicillin"></label>
+      <label class="rx-wide">Brand (optional)<input type="text" name="med_brand" value="{{ m.brand or '' }}"></label>
+      <label>Strength<input type="text" name="med_strength" value="{{ m.strength or '' }}"{% if i == 0 %} required{% endif %} placeholder="e.g. 500 mg"></label>
+      <label>Dosage<input type="text" name="med_dose" value="{{ m.dose or '' }}"{% if i == 0 %} required{% endif %} placeholder="e.g. 1 capsule"></label>
+      <label>Frequency<input type="text" name="med_frequency" value="{{ m.frequency or '' }}" list="rx-frequencies"{% if i == 0 %} required{% endif %} placeholder="e.g. Three times a day"></label>
+      <label>Route
+        <select name="med_route">
+          {% for r in rx_routes %}
+          <option value="{{ r }}"{% if r == m.route %} selected{% endif %}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Duration<input type="text" name="med_duration" value="{{ m.duration or '' }}" placeholder="e.g. 5 days"></label>
+      <label class="rx-wide">Instructions<input type="text" name="med_instructions" value="{{ m.instructions or '' }}" placeholder="e.g. After food"></label>
+    </fieldset>
+    {% endfor %}
+    <p><button type="button" class="button button-small button-outline" data-rx-add hidden>+ Add another medicine</button></p>
+
+    <label>Advice (optional)<textarea name="advice" placeholder="Other instructions for the patient">{{ rx_form.advice }}</textarea></label>
     <button type="submit">Add Prescription</button>
   </form>
+  <script src="{{ url_for('static', filename='prescription_form.js') }}"></script>
 </section>

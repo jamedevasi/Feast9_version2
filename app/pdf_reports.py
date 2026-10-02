@@ -127,23 +127,114 @@ def _procedures_for(case):
 
 # ── generate_prescription_pdf ───────────────────────────────────────────────
 
-def generate_prescription_pdf(prescription, case, patient):
-    """With allergy alert banner if allergies recorded (feast9_v2_agents.md §10)."""
-    story = _header("Prescription", _patient_line(patient))
+_RX_LABEL = ParagraphStyle("Feast9RxLabel", parent=MUTED, fontSize=8, spaceAfter=1)
+_RX_NAME = ParagraphStyle("Feast9RxName", parent=BODY, fontName="Helvetica-Bold", fontSize=11)
+_RX_CELL = ParagraphStyle("Feast9RxCell", parent=BODY, fontSize=9, leading=11)
+_RX_HEAD = ParagraphStyle("Feast9RxHead", parent=_RX_CELL, fontName="Helvetica-Bold")
+_NOT_RECORDED = "Not recorded"
+
+
+def _prescription_parties(prescription, patient, doctor):
+    """Two side-by-side blocks: the prescriber (name, qualifications, registration number) and
+    the patient (name, age / date of birth, sex, address), with the date of issue."""
+    doctor = doctor or {}
+    reg = doctor.get("registration_number") or _NOT_RECORDED
+    if doctor.get("registration_number") and doctor.get("registration_council"):
+        reg = f"{reg} ({doctor['registration_council']})"
+    left = [
+        P("PRESCRIBED BY", _RX_LABEL),
+        P(doctor.get("name") or _NOT_RECORDED, _RX_NAME),
+        P(doctor.get("qualifications") or "Qualifications: " + _NOT_RECORDED, _RX_CELL),
+        P(f"Reg. No.: {reg}", _RX_CELL),
+    ]
+
+    age = compute_age(patient.get("date_of_birth", ""))
+    if age is None:
+        age = patient.get("age")
+    age_bits = []
+    if age is not None:
+        age_bits.append(f"Age: {age} years")
+    if patient.get("date_of_birth"):
+        age_bits.append(f"DOB: {patient['date_of_birth']}")
+    age_bits.append(f"Sex: {patient.get('sex') or _NOT_RECORDED}")
+    right = [
+        P("PATIENT", _RX_LABEL),
+        P(patient["name"], _RX_NAME),
+        P(" · ".join(age_bits), _RX_CELL),
+    ]
+    if patient.get("address"):
+        right.append(P(f"Address: {patient['address']}", _RX_CELL))
+    right.append(P(f"Date of issue: {prescription['prescribed_date']}", _RX_CELL))
+
+    t = Table([[left, right]], colWidths=[3.4 * inch, 3.4 * inch])
+    t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    return t
+
+
+def _medicines_table(medications):
+    """Cells are Paragraphs so long names/instructions wrap inside their column."""
+    rows = [[P(h, _RX_HEAD) for h in ("#", "Medicine (generic name)", "Dosage", "Frequency", "Route", "Duration", "Instructions")]]
+    for n, m in enumerate(medications, start=1):
+        name = f"<b>{_esc(str(m.get('generic', '')).upper())}</b>"
+        if m.get("brand"):
+            name += f" ({_esc(str(m['brand']))})"
+        name += f" {_esc(str(m.get('strength', '')))}"
+        rows.append([
+            P(n, _RX_CELL), Paragraph(name, _RX_CELL), P(m.get("dose", ""), _RX_CELL),
+            P(m.get("frequency", ""), _RX_CELL), P(m.get("route", ""), _RX_CELL),
+            P(m.get("duration") or "—", _RX_CELL), P(m.get("instructions") or "—", _RX_CELL),
+        ])
+    t = Table(rows, colWidths=[w * inch for w in (0.3, 2.2, 0.85, 1.05, 0.8, 0.7, 0.9)], repeatRows=1)
+    t.setStyle(_TABLE_STYLE)
+    return t
+
+
+def generate_prescription_pdf(prescription, case, patient, doctor=None):
+    """The particulars a prescription must carry: the clinic's contact details (letterhead),
+    the prescriber's name / qualifications / registration number, the patient's name, age or
+    date of birth, sex and address, the date of issue, the diagnosis, and each medicine by
+    generic name with strength, dosage, frequency and route. An allergy alert banner is shown
+    if allergies are recorded (feast9_v2_agents.md §10). A prescription saved before the
+    structured form existed prints its original free text under the same heading blocks."""
+    story = _header("Prescription")
+    story.append(_prescription_parties(prescription, patient, doctor))
 
     allergies = json.loads(patient.get("allergies_json") or "[]")
     if patient.get("allergies_other"):
         allergies = allergies + [patient["allergies_other"]]
     if allergies:
         story.append(P(f"ALLERGY ALERT: {', '.join(allergies)}", ALERT))
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 6))
 
-    story.append(P(f"Case: {case['title']}", BODY))
-    story.append(Paragraph(f"Date: {prescription['prescribed_date']}", BODY))
-    story.append(Spacer(1, 10))
-    story.append(Paragraph("Rx", HEADING))
-    for line in prescription["rx_details"].splitlines() or [prescription["rx_details"]]:
-        story.append(P(line, BODY) if line else Spacer(1, 4))
+    medications = prescription.get("medications") or []
+    if medications:
+        story.append(Paragraph("Diagnosis", HEADING))
+        story.append(P(prescription.get("diagnosis") or _NOT_RECORDED, BODY))
+        story.append(Paragraph("Rx", HEADING))
+        story.append(_medicines_table(medications))
+        if prescription.get("advice"):
+            story.append(Paragraph("Advice", HEADING))
+            for line in prescription["advice"].splitlines():
+                story.append(P(line, BODY) if line else Spacer(1, 4))
+    else:
+        story.append(P(f"Case: {case['title']}", BODY))
+        story.append(Paragraph("Rx", HEADING))
+        for line in prescription["rx_details"].splitlines() or [prescription["rx_details"]]:
+            story.append(P(line, BODY) if line else Spacer(1, 4))
+
+    doctor = doctor or {}
+    story.append(Spacer(1, 48))
+    signature = [P("_" * 32, _RX_CELL), P("Signature", _RX_LABEL), P(doctor.get("name") or "", _RX_CELL)]
+    if doctor.get("registration_number"):
+        signature.append(P(f"Reg. No.: {doctor['registration_number']}", _RX_CELL))
+    sig = Table([["", signature]], colWidths=[4.2 * inch, 2.6 * inch])
+    sig.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story.append(sig)
 
     return _build(story)
 

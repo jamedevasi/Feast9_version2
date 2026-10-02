@@ -1,6 +1,7 @@
 from app import db
 from tests.conftest import get_csrf
 from tests.test_cases import _create_case
+from tests.test_prescriptions import rx_form_data
 from tests.test_roles import _create_user, _login, _logout
 
 
@@ -11,12 +12,11 @@ def _case_for(client, patient_id, **overrides):
     return case_id, case_url, doctor_id
 
 
-def _add_prescription(client, case_id, case_url, rx_details="Amoxicillin 500mg, 3x daily for 5 days"):
-    token = get_csrf(client, case_url)
-    client.post(
-        f"/cases/{case_id}/prescriptions",
-        data={"prescribed_date": "2026-01-05", "rx_details": rx_details, "csrf_token": token},
-    )
+def _add_prescription(client, case_id, case_url):
+    doctor_id = db.get_case(case_id)["doctor_id"]
+    data = rx_form_data(doctor_id, prescribed_date="2026-01-05")
+    data["csrf_token"] = get_csrf(client, case_url)
+    client.post(f"/cases/{case_id}/prescriptions", data=data)
     return db.list_prescriptions_for_case(case_id)[0]["id"]
 
 

@@ -124,6 +124,13 @@ def detail(patient_id):
     patient["medical_conditions"] = json.loads(patient.get("medical_conditions_json") or "[]")
     patient["allergies"] = json.loads(patient.get("allergies_json") or "[]")
     cases = db.list_cases_for_patient(patient_id)
+    # Flag exactly the cases the dashboard's follow-up table lists for this patient, so arriving
+    # here from a dashboard row shows which case the follow-up belongs to.
+    overdue, upcoming = db.get_followup_alerts(patient_id)
+    followups = {f["case_id"]: f for f in overdue + upcoming}
+    for c in cases:
+        c["followup_alert"] = followups.get(c["id"])
+    cases.sort(key=lambda c: (c["created_at"] or "", c["id"]), reverse=True)  # newest opened first
     appointments = db.list_appointments_for_patient(patient_id)
     data_requests = db.list_data_requests_for_patient(patient_id)
     return render_template(

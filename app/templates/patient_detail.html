@@ -32,7 +32,7 @@
     <a class="button" href="{{ url_for('cases.new', patient_id=patient.id) }}">+ New Case</a>
   </div>
   {% if cases %}
-  {% set closed_case_count = cases|rejectattr('status', 'equalto', 'Active')|list|length %}
+  {% set closed_case_count = cases|rejectattr('status', 'equalto', 'Active')|rejectattr('followup_alert')|list|length %}
   {% if closed_case_count %}
   <label class="case-filter-toggle">
     <input type="checkbox" id="show-all-cases"> Show all cases (including {{ closed_case_count }} closed)
@@ -40,14 +40,20 @@
   {% endif %}
   <ul class="case-list" id="case-list">
     {% for c in cases %}
-    <li{% if c.status != 'Active' %} class="case-row-closed" hidden{% endif %}>
+    {% set f = c.followup_alert %}
+    <li{% if f %} class="case-row-followup-{{ 'overdue' if f.days_overdue is defined else 'upcoming' }}"{% elif c.status != 'Active' %} class="case-row-closed" hidden{% endif %}>
       <div class="case-row-main">
         <a href="{{ url_for('cases.detail', case_id=c.id) }}">{{ c.title }}</a>
         <span class="badge badge-{{ 'active' if c.status == 'Active' else 'closed' }}">{{ c.status }}</span>
+        {% if f and f.days_overdue is defined %}
+        <span class="badge badge-overdue">🔴 Follow-up overdue · {{ f.days_overdue }} day{{ '' if f.days_overdue == 1 else 's' }}</span>
+        {% elif f %}
+        <span class="badge badge-due-soon">🟡 Follow-up {% if f.days_until == 0 %}due today{% elif f.days_until == 1 %}due tomorrow{% else %}due in {{ f.days_until }} days{% endif %}</span>
+        {% endif %}
         {% if c.doctor_name %}<span class="hint">{{ c.doctor_name }}</span>{% endif %}
       </div>
       <div class="case-row-meta">
-        Opened {{ c.created_at[:10] }}{% if c.latest_visit_note %} · {{ c.latest_visit_note|truncate(70) }}{% endif %}
+        Updated {{ c.last_activity_at[:10] }}{% if c.latest_visit_note %} · {{ c.latest_visit_note|truncate(70) }}{% endif %}
       </div>
     </li>
     {% endfor %}

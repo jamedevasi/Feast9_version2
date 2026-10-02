@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Edit Doctor — Feast9{% endblock %}
+{% block content %}
+<h1>Edit Doctor</h1>
+
+<section class="card">
+  <form method="post" action="{{ url_for('doctors.edit', doctor_id=doctor.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% include "doctor_fields.html" %}
+    <button type="submit">Save</button>
+    <a class="button button-outline" href="{{ url_for('doctors.list_view') }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

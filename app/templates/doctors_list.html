@@ -2,20 +2,26 @@
 {% block title %}Doctors — Feast9{% endblock %}
 {% block content %}
 <h1>Doctors</h1>
+<p class="rx-note">A doctor's qualifications and registration number are printed on every prescription they write — a prescription must show them.</p>
 
 {% if doctors %}
-<table class="data-table">
+<table class="data-table stack-mobile">
   <thead>
-    <tr><th>Name</th><th>Colour</th><th>Status</th><th>Added</th><th></th></tr>
+    <tr><th>Name</th><th>Qualifications</th><th>Registration No.</th><th>Colour</th><th>Status</th><th></th></tr>
   </thead>
   <tbody>
     {% for d in doctors %}
     <tr>
       <td>{{ d.name }}</td>
+      <td>{% if d.qualifications %}{{ d.qualifications }}{% else %}<span class="badge badge-due-soon">Missing</span>{% endif %}</td>
+      <td>
+        {% if d.registration_number %}{{ d.registration_number }}{% if d.registration_council %}<br><span class="rx-note">{{ d.registration_council }}</span>{% endif %}
+        {% else %}<span class="badge badge-due-soon">Missing</span>{% endif %}
+      </td>
       <td>{% if d.color %}<span class="color-swatch" style="background: {{ d.color }};"></span> {{ d.color }}{% else %}—{% endif %}</td>
       <td>{{ 'Active' if d.is_active else 'Deactivated' }}</td>
-      <td>{{ d.created_at }}</td>
       <td>
+        <a class="button button-small button-outline" href="{{ url_for('doctors.edit', doctor_id=d.id) }}">Edit</a>
         {% if d.is_active %}
         <form method="post" action="{{ url_for('doctors.deactivate', doctor_id=d.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -40,8 +46,8 @@
   <h2>Add Doctor</h2>
   <form method="post" action="{{ url_for('doctors.new') }}" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Name<input type="text" name="name" required></label>
-    <label>Calendar Colour<input type="color" name="color" value="#2b6cb0"></label>
+    {% set doctor = {} %}
+    {% include "doctor_fields.html" %}
     <button type="submit">Add Doctor</button>
   </form>
 </section>
