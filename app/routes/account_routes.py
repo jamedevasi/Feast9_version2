@@ -9,7 +9,8 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from app import config as app_config
 from app import db
 from app.auth import (
-    check_password, current_actor, hash_password, login_required, reauth_required, refresh_session_version,
+    check_password, current_actor, hash_password, login_required, password_errors, reauth_required,
+    refresh_session_version,
 )
 from app.csrf import validate_csrf
 
@@ -50,8 +51,9 @@ def _change_password(user):
 
     if not check_password(user["password_hash"], current_password):
         flash("Current password is incorrect.", "warning")
-    elif len(new_password) < 8:
-        flash("New password must be at least 8 characters.", "warning")
+    elif password_errors(new_password, user["username"]):
+        for message in password_errors(new_password, user["username"]):
+            flash(message, "warning")
     elif new_password != confirm:
         flash("New passwords do not match.", "warning")
     else:

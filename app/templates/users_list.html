@@ -16,7 +16,7 @@
     <tr>
       <td>{{ u.username }}</td>
       <td>{{ u.role|capitalize }}</td>
-      <td>{{ 'Active' if u.is_active else 'Deactivated' }}</td>
+      <td>{{ 'Active' if u.is_active else 'Deactivated' }}{% if u.is_locked %} <span class="badge badge-due-soon" title="Too many wrong passwords — unlocks by itself at {{ u.locked_until[11:16] }}">Locked</span>{% endif %}</td>
       <td>{{ 'Enabled' if u.totp_enabled else 'Off' }}</td>
       <td>{{ u.google_email if u.google_email else 'Not linked' }}</td>
       <td>{{ u.created_at }}</td>
@@ -31,6 +31,12 @@
         <form method="post" action="{{ url_for('users.activate', user_id=u.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="button button-small button-outline">Reactivate</button>
+        </form>
+        {% endif %}
+        {% if u.is_locked %}
+        <form method="post" action="{{ url_for('users.unlock', user_id=u.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="button button-small button-outline">Unlock</button>
         </form>
         {% endif %}
         {% if u.totp_enabled %}

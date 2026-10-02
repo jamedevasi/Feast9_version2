@@ -5,16 +5,23 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from app import config as app_config
 from app import db
 from app.auth import (
+    account_locked,
     check_password,
     check_recovery_code,
+    complete_login,
+    current_actor,
     hash_password,
     is_rate_limited,
     idle_timeout_minutes,
     login_required,
     mark_reauthenticated,
-    start_session,
+    note_failed_sign_in,
+    note_unknown_sign_in,
+    password_errors,
     verify_totp_code,
 )
+
+_ACCOUNT_LOCKED = "This account is locked for a few minutes after too many wrong attempts. Try again later, or ask an administrator to unlock it."
 from app.constants import DEFAULT_LOGIN_HEADING, DEFAULT_LOGIN_TAGLINE
 from app.csrf import validate_csrf
 from app.theme import render_theme_css, resolve_theme
@@ -77,8 +84,7 @@ def setup():
 
         if not username:
             errors.append("Username is required.")
-        if len(password) < 8:
-            errors.append("Password must be at least 8 characters.")
+        errors.extend(password_errors(password, username))
         if password != confirm:
             errors.append("Passwords do not match.")
         if not security_question:
@@ -115,7 +121,12 @@ def login():
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             user = db.get_user_by_username(username)
-            if user and check_password(user["password_hash"], password):
+            if user and account_locked(user):
+                # Refused even with the right password — that is what stops guessing. It still
+                # counts against the address it came from.
+                db.record_failed_login(ip)
+                errors.append(_ACCOUNT_LOCKED)
+            elif user and check_password(user["password_hash"], password):
                 db.clear_failed_logins(ip)
                 next_url = request.args.get("next") or url_for("dashboard.index")
                 if user["totp_enabled"]:
@@ -123,10 +134,15 @@ def login():
                     session["totp_pending_user_id"] = user["id"]
                     session["totp_pending_next"] = next_url
                     return redirect(url_for("auth.login_totp"))
-                start_session(user)
+                complete_login(user, "password")
                 return redirect(next_url)
-            db.record_failed_login(ip)
-            errors.append("Invalid username or password.")
+            else:
+                db.record_failed_login(ip)
+                if user:
+                    note_failed_sign_in(user, "wrong password")
+                else:
+                    note_unknown_sign_in()
+                errors.append("Invalid username or password.")
 
     # No custom heading set -> fall back to the clinic's own name (Settings > Clinic
     # Details) before the generic app-name default, so a configured clinic shows its
@@ -149,6 +165,10 @@ def login_totp():
     if not user or not user["totp_enabled"]:
         session.clear()
         return redirect(url_for("auth.login"))
+    if account_locked(user):
+        session.clear()
+        flash(_ACCOUNT_LOCKED, "warning")
+        return redirect(url_for("auth.login"))
 
     errors = []
     if request.method == "POST":
@@ -169,9 +189,13 @@ def login_totp():
             if verified:
                 db.clear_failed_logins(ip)
                 next_url = session.get("totp_pending_next") or url_for("dashboard.index")
-                start_session(user)
+                complete_login(user, "password + two-step code")
                 return redirect(next_url)
             db.record_failed_login(ip)
+            if note_failed_sign_in(user, "wrong two-step code"):
+                session.clear()
+                flash(_ACCOUNT_LOCKED, "warning")
+                return redirect(url_for("auth.login"))
             errors.append("Invalid authentication code or recovery code.")
 
     return render_template("login_totp.html", errors=errors)
@@ -222,15 +246,19 @@ def forgot_password_verify():
             new_password = request.form.get("new_password", "")
             confirm = request.form.get("confirm_password", "")
 
-            if not check_password(user["security_answer_hash"], answer):
+            if account_locked(user):
+                errors.append(_ACCOUNT_LOCKED)
+            elif not check_password(user["security_answer_hash"], answer):
                 db.record_failed_login(ip)
+                note_failed_sign_in(user, "wrong security answer")
                 errors.append("Incorrect answer to the security question.")
-            elif len(new_password) < 8:
-                errors.append("Password must be at least 8 characters.")
+            elif password_errors(new_password, user["username"]):
+                errors.extend(password_errors(new_password, user["username"]))
             elif new_password != confirm:
                 errors.append("Passwords do not match.")
             else:
                 db.clear_failed_logins(ip)
+                db.clear_failed_sign_ins(user["id"])
                 actor = {"user_id": user["id"], "role": user["role"], "ip": ip, "user_agent": ""}
                 db.update_user_password(user["id"], hash_password(new_password), actor=actor)
                 session.pop("reset_pending_user_id", None)
@@ -274,8 +302,13 @@ def reauth():
 @login_required
 def logout():
     validate_csrf(request.form.get("csrf_token"))
+    idle = request.form.get("reason") == "idle"
+    db.write_audit_now(
+        current_actor(), "logout", "user", session.get("admin_id"),
+        after_summary="automatic, after inactivity" if idle else "",
+    )
     session.clear()
-    if request.form.get("reason") == "idle":  # submitted by ui_actions.js's idle timer
+    if idle:  # submitted by ui_actions.js's idle timer
         flash(f"You were logged out after {idle_timeout_minutes()} minutes without activity.", "warning")
     return redirect(url_for("auth.login"))
 

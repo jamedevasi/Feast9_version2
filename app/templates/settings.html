@@ -77,9 +77,25 @@
   </form>
 </section>
 
+<section class="card" id="signin-security">
+  <h2>Sign-in Security</h2>
+  <p class="muted-note">Two-step sign-in asks for a code from an authenticator app on the user's phone as well as their password. Each user sets it up for themselves under My Account.</p>
+  <form method="post" action="{{ url_for('settings.index') }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form" value="signin_security">
+    <label class="checkbox"><input type="checkbox" name="require_two_factor" {% if require_two_factor %}checked{% endif %}> Require two-step sign-in for admins and doctors</label>
+    <button type="submit">Save</button>
+  </form>
+  <ul class="muted-note">
+    <li>When required, an admin or doctor who hasn't set it up is taken to the setup page and can't open anything else until it's done. Receptionists can still choose to use it.</li>
+    <li>Passwords must be at least {{ min_password_length }} characters and can't be a common password, repeated characters or contain the username. This applies when a password is set or changed.</li>
+    <li>After {{ account_max_failed }} wrong passwords or codes in a row an account is locked for {{ account_lock_minutes }} minutes. An admin can unlock it sooner from Users.</li>
+  </ul>
+</section>
+
 <section class="card">
   <h2>Theme</h2>
-  <p class="muted-note">Sets the color scheme used across every screen in the app (login page included). Default is a light apple green and white combination ({{ default_theme_primary_color }} / {{ default_theme_background_color }}).</p>
+  <p class="muted-note">Sets the color scheme used across every screen in the app (login page included). Default is teal on light grey ({{ default_theme_primary_color }} / {{ default_theme_background_color }}).</p>
   <form method="post" action="{{ url_for('settings.index') }}" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="theme">

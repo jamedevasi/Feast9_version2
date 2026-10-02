@@ -15,8 +15,8 @@
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Username<input type="text" name="username" required></label>
-    <label>Password<input type="password" name="password" required minlength="8"></label>
-    <label>Confirm Password<input type="password" name="confirm" required minlength="8"></label>
+    <label>Password<input type="password" name="password" required minlength="10"></label>
+    <label>Confirm Password<input type="password" name="confirm" required minlength="10"></label>
     <label>Security Question<input type="text" name="security_question" placeholder="e.g. What street did you grow up on?" required></label>
     <label>Security Answer<input type="text" name="security_answer" required></label>
     <button type="submit">Create Admin Account</button>

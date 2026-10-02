@@ -4,7 +4,7 @@ import json
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 
 from app import db, pdf_reports
-from app.auth import can_view_financial_data, current_actor, login_required
+from app.auth import can_view_financial_data, current_actor, login_required, logs_view
 from app.constants import ALLERGY_DRUGS, MEDICAL_CONDITIONS, SEX_OPTIONS
 from app.csrf import validate_csrf
 from app.validators import compute_age, is_valid_mobile, normalize_date, now_iso, today_iso
@@ -117,6 +117,7 @@ def new():
 
 @bp.route("/<int:patient_id>")
 @login_required
+@logs_view("patient_viewed", "patient", "patient_id")
 def detail(patient_id):
     patient = db.get_patient(patient_id)
     if not patient:
@@ -141,6 +142,7 @@ def detail(patient_id):
 
 @bp.route("/<int:patient_id>/summary.pdf")
 @login_required
+@logs_view("patient_summary_pdf_viewed", "patient", "patient_id")
 def summary_pdf(patient_id):
     patient = db.get_patient(patient_id)
     if not patient:

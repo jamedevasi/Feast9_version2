@@ -130,6 +130,19 @@ def _migrate_admin_sessions(conn):
     conn.commit()
 
 
+def _migrate_admin_lockout(conn):
+    """Additive migration: per-account lockout. Wrong passwords / two-step codes / security
+    answers for one account are counted here (the older login_attempts table only counts per
+    IP address, so guesses from many addresses against one account were never stopped);
+    `locked_until` is a local-time timestamp, '' when not locked."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(admin)")}
+    if "failed_login_count" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0")
+    if "locked_until" not in columns:
+        conn.execute("ALTER TABLE admin ADD COLUMN locked_until TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+
+
 # Appended to an admin-table UPDATE's SET list: ends every existing session of that user.
 _BUMP_SESSIONS = "session_version = session_version + 1"
 
@@ -493,6 +506,7 @@ def init_db():
     _migrate_cases_followup_source(conn)
     _migrate_admin_google(conn)
     _migrate_admin_sessions(conn)
+    _migrate_admin_lockout(conn)
     _migrate_case_financial_assessments_consumables(conn)
     _migrate_dental_chart_planned_date(conn)
     _migrate_doctors_credentials(conn)
@@ -527,11 +541,50 @@ def _write_audit(conn, actor, action, entity, entity_id,
     )
 
 
-def list_audit_log(limit=200):
+# Audit actions grouped for the viewer's filter. Anything else is a change to data or settings.
+AUDIT_SIGN_IN_ACTIONS = (
+    "login_success", "login_failed", "logout", "account_locked", "account_unlocked", "google_sign_in",
+)
+_AUDIT_CATEGORY_SQL = {
+    "views": ("a.action LIKE '%\\_viewed' ESCAPE '\\'", ()),
+    "signins": (f"a.action IN ({', '.join('?' for _ in AUDIT_SIGN_IN_ACTIONS)})", AUDIT_SIGN_IN_ACTIONS),
+    "changes": (
+        f"a.action NOT LIKE '%\\_viewed' ESCAPE '\\' AND a.action NOT IN ({', '.join('?' for _ in AUDIT_SIGN_IN_ACTIONS)})",
+        AUDIT_SIGN_IN_ACTIONS,
+    ),
+}
+
+
+def list_audit_log(limit=300, category=None):
+    """Newest first, with the acting user's username. `category`: 'changes', 'views' (who
+    opened which record), 'signins', or None for everything."""
+    where, params = _AUDIT_CATEGORY_SQL.get(category, ("1 = 1", ()))
     conn = get_db()
-    rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    rows = conn.execute(
+        f"""SELECT a.*, u.username AS actor_username FROM audit_log a
+            LEFT JOIN admin u ON u.id = a.actor_user_id
+            WHERE {where} ORDER BY a.id DESC LIMIT ?""",
+        (*params, limit),
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def record_view(actor, action, entity, entity_id, window_minutes=10):
+    """Audit row for *opening* a record (who looked at which patient / case / document).
+    The same user re-opening the same record within `window_minutes` isn't logged again —
+    a case page reloads after every note or payment, and one visit shouldn't be ten rows."""
+    cutoff = (datetime.now() - timedelta(minutes=window_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    seen = conn.execute(
+        """SELECT 1 FROM audit_log WHERE actor_user_id IS ? AND action = ? AND entity_id IS ?
+           AND ts_utc >= ? LIMIT 1""",
+        ((actor or NO_ACTOR).get("user_id"), action, entity_id, cutoff),
+    ).fetchone()
+    if not seen:
+        _write_audit(conn, actor, action, entity, entity_id)
+        conn.commit()
+    conn.close()
 
 
 def get_last_audit_event(action):
@@ -678,6 +731,43 @@ def get_user_by_username(username):
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def register_failed_sign_in(user_id, max_failures, lock_minutes, actor=None, reason=""):
+    """Counts a wrong password / code / security answer against the account and writes the
+    `login_failed` audit row. On the `max_failures`-th in a row the account is locked for
+    `lock_minutes` (audited `account_locked`) and the count starts again. Returns True if
+    this failure locked the account."""
+    conn = get_db()
+    conn.execute("UPDATE admin SET failed_login_count = failed_login_count + 1 WHERE id = ?", (user_id,))
+    count = conn.execute("SELECT failed_login_count FROM admin WHERE id = ?", (user_id,)).fetchone()[0]
+    _write_audit(conn, actor, "login_failed", "user", user_id, after_summary=reason, outcome="failure")
+    locked = count >= max_failures
+    if locked:
+        until = (datetime.now() + timedelta(minutes=lock_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("UPDATE admin SET failed_login_count = 0, locked_until = ? WHERE id = ?", (until, user_id))
+        _write_audit(
+            conn, actor, "account_locked", "user", user_id,
+            after_summary=f"{max_failures} failed attempts, locked until {until}",
+        )
+    conn.commit()
+    conn.close()
+    return locked
+
+
+def clear_failed_sign_ins(user_id):
+    conn = get_db()
+    conn.execute("UPDATE admin SET failed_login_count = 0, locked_until = '' WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def unlock_user(user_id, actor=None):
+    conn = get_db()
+    conn.execute("UPDATE admin SET failed_login_count = 0, locked_until = '' WHERE id = ?", (user_id,))
+    _write_audit(conn, actor, "account_unlocked", "user", user_id)
+    conn.commit()
+    conn.close()
 
 
 def get_user_by_id(user_id):

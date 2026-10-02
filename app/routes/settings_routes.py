@@ -6,6 +6,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from app import config as app_config
 from app import db
 from app.auth import (
+    ACCOUNT_LOCK_MINUTES, ACCOUNT_MAX_FAILED, MIN_PASSWORD_LENGTH,
     ABSOLUTE_SESSION_HOURS, MAX_IDLE_MINUTES, MIN_IDLE_MINUTES,
     current_actor, idle_timeout_minutes, login_required, role_required,
 )
@@ -50,6 +51,8 @@ def index():
             _reset_theme()
         elif form == "session_timeout":
             _save_session_timeout()
+        elif form == "signin_security":
+            _save_signin_security()
         return redirect(url_for("settings.index"))
 
     return render_template(
@@ -68,7 +71,21 @@ def index():
         min_idle_minutes=MIN_IDLE_MINUTES,
         max_idle_minutes=MAX_IDLE_MINUTES,
         absolute_session_hours=ABSOLUTE_SESSION_HOURS,
+        require_two_factor=db.get_setting("require_two_factor", "0") == "1",
+        min_password_length=MIN_PASSWORD_LENGTH,
+        account_max_failed=ACCOUNT_MAX_FAILED,
+        account_lock_minutes=ACCOUNT_LOCK_MINUTES,
     )
+
+
+def _save_signin_security():
+    required = request.form.get("require_two_factor") == "on"
+    db.set_setting("require_two_factor", "1" if required else "0", actor=current_actor())
+    if required:
+        flash("Two-step sign-in is now required for admins and doctors. Anyone who hasn't set it up "
+              "is asked to do so the next time they open a page.", "success")
+    else:
+        flash("Two-step sign-in is now optional.", "success")
 
 
 def _save_session_timeout():

@@ -2,19 +2,26 @@
 {% block title %}Audit Log — Feast9{% endblock %}
 {% block content %}
 <h1>Audit Log</h1>
+<p class="rx-note">Who changed what, who opened which patient record, and every sign-in. The most recent 300 entries of the chosen kind are shown.</p>
+
+<p class="view-toggle">
+  {% for value, label in categories %}
+  <a href="{{ url_for('audit.list_view', show=value) if value else url_for('audit.list_view') }}" class="button {{ 'button-active' if current_category == value }}">{{ label }}</a>
+  {% endfor %}
+</p>
 
 {% if entries %}
 <table class="data-table">
   <thead>
-    <tr><th>Time (UTC)</th><th>User</th><th>Role</th><th>Action</th><th>Entity</th><th>Detail</th></tr>
+    <tr><th>Time</th><th>User</th><th>Role</th><th>Action</th><th>Entity</th><th>Detail</th></tr>
   </thead>
   <tbody>
     {% for e in entries %}
     <tr>
       <td>{{ e.ts_utc }}</td>
-      <td>{{ e.actor_user_id or '—' }}</td>
+      <td>{{ e.actor_username or '—' }}</td>
       <td>{{ e.role or '—' }}</td>
-      <td>{{ e.action }}</td>
+      <td>{{ e.action|replace('_', ' ') }}{% if e.outcome == 'failure' %} <span class="badge badge-overdue">failed</span>{% endif %}</td>
       <td>{{ e.entity }}{% if e.entity_id %} #{{ e.entity_id }}{% endif %}</td>
       <td>
         {% if e.before_summary %}{{ e.before_summary }} → {% endif %}{{ e.after_summary }}

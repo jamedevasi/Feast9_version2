@@ -1,4 +1,5 @@
 import functools
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -10,8 +11,103 @@ from app import db
 from app.constants import NON_FINANCIAL_ROLES
 
 PBKDF2_METHOD = "pbkdf2:sha256"
-MAX_FAILED_ATTEMPTS = 8
+MAX_FAILED_ATTEMPTS = 8          # per IP address, within LOCKOUT_WINDOW_MINUTES
 LOCKOUT_WINDOW_MINUTES = 15
+ACCOUNT_MAX_FAILED = 5           # per account, in a row — then the account itself is locked
+ACCOUNT_LOCK_MINUTES = 15
+
+# Password rules, applied wherever a password is set (first-time setup, new user, change,
+# reset) — never to an existing password at sign-in. Length over composition rules: a long
+# password that isn't a known-common one beats a short one with a forced symbol.
+MIN_PASSWORD_LENGTH = 10
+_COMMON_PASSWORDS = frozenset("""
+password password1 password12 password123 password1234 passw0rd passw0rd123 p@ssw0rd p@ssword123
+1234567890 12345678910 0123456789 0987654321 1111111111 0000000000 1q2w3e4r5t 1qaz2wsx3edc
+qwertyuiop qwerty12345 qwerty123456 asdfghjkl1 asdfghjkl123 zxcvbnm123 abcdefghij abcd123456
+iloveyou123 welcome123 welcome1234 admin12345 admin123456 administrator letmein123 letmein1234
+changeme123 dentist123 dentist1234 dental1234 dentalclinic clinic1234 clinic12345 doctor1234
+doctor12345 feast91234 feast9admin feast9feast9 india12345 kerala1234 kerala12345 football123
+sunshine123 princess123 monkey12345 dragon12345 master12345 superman123 trustno1234
+""".split())
+
+# Roles that must have two-step sign-in when Settings > Sign-in Security requires it — the
+# accounts that can read and write clinical and financial records.
+TWO_FACTOR_ROLES = ("admin", "doctor")
+# Reachable without two-step sign-in while it's required but not yet set up: the setup
+# itself, logging out, and the idle-timer ping (which must never be answered by a redirect).
+_TWO_FACTOR_SETUP_ENDPOINTS = ("totp.setup", "totp.recovery_codes", "auth.logout", "auth.session_ping")
+
+
+def password_errors(password, username=""):
+    """Why `password` can't be used, as plain sentences (empty list = fine)."""
+    errors = []
+    if len(password) < MIN_PASSWORD_LENGTH:
+        errors.append(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
+    lowered = password.lower()
+    too_simple = (
+        lowered in _COMMON_PASSWORDS
+        or len(set(lowered)) <= 3
+        or (len(username) >= 3 and username.lower() in lowered)
+        or re.fullmatch(r"(.{1,3})\1+", lowered) is not None
+    )
+    if password and too_simple:
+        errors.append("That password is too easy to guess. Avoid common passwords, repeated "
+                      "characters and your username.")
+    return errors
+
+
+def two_factor_required_for(role):
+    return role in TWO_FACTOR_ROLES and db.get_setting("require_two_factor", "0") == "1"
+
+
+def account_locked(user):
+    """True while the account's lockout (too many failed sign-ins) is still running."""
+    return bool(user.get("locked_until")) and user["locked_until"] > datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _request_actor(user_id=None, role=""):
+    return {
+        "user_id": user_id, "role": role, "ip": request.remote_addr or "",
+        "user_agent": (request.headers.get("User-Agent") or "")[:255],
+    }
+
+
+def note_failed_sign_in(user, reason):
+    """A wrong password, two-step code or security answer for a known account: audited, and
+    counted towards locking that account. Returns True if the account is now locked."""
+    return db.register_failed_sign_in(
+        user["id"], ACCOUNT_MAX_FAILED, ACCOUNT_LOCK_MINUTES, actor=_request_actor(), reason=reason,
+    )
+
+
+def note_unknown_sign_in():
+    """A sign-in attempt for a username that doesn't exist. The typed text is deliberately
+    not logged — people type passwords into the username box."""
+    db.write_audit_now(_request_actor(), "login_failed", "user", None, after_summary="unknown username", outcome="failure")
+
+
+def complete_login(user, method):
+    """The end of every successful sign-in: clears the account's failed-attempt count, starts
+    the session and writes the `login_success` audit row."""
+    db.clear_failed_sign_ins(user["id"])
+    start_session(user)
+    db.write_audit_now(current_actor(), "login_success", "user", user["id"], after_summary=f"method={method}")
+
+
+def logs_view(action, entity, id_arg):
+    """Decorator (below @login_required): once the view has returned normally — so not for a
+    404/403 — records that the signed-in user opened that record (db.record_view)."""
+    def decorator(view):
+        @functools.wraps(view)
+        def wrapped(*args, **kwargs):
+            response = view(*args, **kwargs)
+            if request.method == "GET":
+                db.record_view(current_actor(), action, entity, kwargs.get(id_arg))
+            return response
+
+        return wrapped
+
+    return decorator
 
 # "Require re-authentication (not just an active session) before high-risk actions"
 # (feast9_v2_agents.md §14). A fresh login already counts — reauth_at is set at
@@ -81,9 +177,8 @@ def refresh_session_version():
         session["session_version"] = user["session_version"]
 
 
-def _session_end_reason():
+def _session_end_reason(user):
     """Why the current session must end, or None if it's still valid."""
-    user = db.get_user_by_id(session.get("admin_id"))
     if not user or not user["is_active"]:
         return "Your account is no longer active. Contact the clinic's administrator."
     if session.get("session_version") != user["session_version"]:
@@ -110,12 +205,19 @@ def login_required(view):
     def wrapped(*args, **kwargs):
         if not session.get("admin_id"):
             return redirect(url_for("auth.login", next=request.path))
-        reason = _session_end_reason()
+        user = db.get_user_by_id(session.get("admin_id"))
+        reason = _session_end_reason(user)
         if reason:
             session.clear()
             flash(reason, "warning")
             return redirect(url_for("auth.login", next=request.path))
         session["last_seen"] = _utcnow().isoformat()
+        # Two-step sign-in is required for this role but not set up yet: nothing else is
+        # reachable until it is.
+        if (not user["totp_enabled"] and two_factor_required_for(user["role"])
+                and request.endpoint not in _TWO_FACTOR_SETUP_ENDPOINTS):
+            flash("Your clinic requires two-step sign-in for your account. Set it up to continue.", "warning")
+            return redirect(url_for("totp.setup"))
         return view(*args, **kwargs)
 
     return wrapped

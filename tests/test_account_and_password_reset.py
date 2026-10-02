@@ -68,7 +68,7 @@ def test_change_password_rejects_short_password(logged_in_client):
         },
     )
     follow = logged_in_client.get("/account/")
-    assert b"at least 8 characters" in follow.data
+    assert b"at least 10 characters" in follow.data
 
 
 def test_change_password_is_audited(logged_in_client):

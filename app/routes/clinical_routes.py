@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 
 from app import config as app_config
 from app import db, pdf_reports
-from app.auth import current_actor, login_required, reauth_required, role_required
+from app.auth import current_actor, login_required, reauth_required, role_required, logs_view
 from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
 from app.csrf import validate_csrf
 from app.validators import detect_upload_type, normalize_date, today_iso
@@ -204,6 +204,7 @@ def add_referral(case_id):
 
 @bp.route("/cases/<int:case_id>/referral/<int:ref_id>/print")
 @login_required
+@logs_view("referral_pdf_viewed", "referral", "ref_id")
 def referral_pdf(case_id, ref_id):
     case = _get_case_or_404(case_id)
     referral = db.get_referral(ref_id)

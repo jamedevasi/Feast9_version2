@@ -9,7 +9,7 @@ from PIL import Image, UnidentifiedImageError
 
 from app import config as app_config
 from app import db, pdf_reports
-from app.auth import can_view_financial_data, current_actor, financial_access_required, login_required
+from app.auth import can_view_financial_data, current_actor, financial_access_required, login_required, logs_view
 from app.constants import (
     ATTACHMENT_TYPES, LAB_REQ_STATUSES, MAX_PRESCRIPTION_MEDICINES, PRESCRIPTION_FREQUENCIES,
     PRESCRIPTION_ROUTES,
@@ -143,6 +143,7 @@ def new(patient_id):
 
 @bp.route("/cases/<int:case_id>")
 @login_required
+@logs_view("case_viewed", "case", "case_id")
 def detail(case_id):
     case = _get_case_or_404(case_id)
     patient = db.get_patient(case["patient_id"])
@@ -205,6 +206,7 @@ def detail(case_id):
 
 @bp.route("/cases/<int:case_id>/summary.pdf")
 @login_required
+@logs_view("case_summary_pdf_viewed", "case", "case_id")
 def summary_pdf(case_id):
     case = _get_case_or_404(case_id)
     patient = db.get_patient(case["patient_id"])
@@ -392,6 +394,7 @@ def _prescription_print_gaps(doctors):
 
 @bp.route("/cases/<int:case_id>/prescriptions/<int:rx_id>.pdf")
 @login_required
+@logs_view("prescription_pdf_viewed", "prescription", "rx_id")
 def prescription_pdf(case_id, rx_id):
     case = _get_case_or_404(case_id)
     prescription = db.get_prescription(rx_id)
@@ -519,6 +522,7 @@ def consent_signature(case_id):
 
 @bp.route("/cases/<int:case_id>/consent.pdf")
 @login_required
+@logs_view("consent_pdf_viewed", "case", "case_id")
 def consent_pdf(case_id):
     case = _get_case_or_404(case_id)
     patient = db.get_patient(case["patient_id"])

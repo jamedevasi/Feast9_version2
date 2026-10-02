@@ -3,6 +3,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from app import db
 from app.auth import (
     current_actor, hash_password, login_required, reauth_required, refresh_session_version, role_required,
+    account_locked, password_errors,
 )
 from app.constants import ROLES
 from app.csrf import validate_csrf
@@ -14,7 +15,10 @@ bp = Blueprint("users", __name__, url_prefix="/users")
 @login_required
 @role_required("admin")
 def list_view():
-    return render_template("users_list.html", users=db.list_users())
+    users = db.list_users()
+    for u in users:
+        u["is_locked"] = account_locked(u)
+    return render_template("users_list.html", users=users)
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -41,8 +45,7 @@ def new():
             errors.append("That username is already taken.")
         if role not in ROLES:
             errors.append("Select a valid role.")
-        if len(password) < 8:
-            errors.append("Password must be at least 8 characters.")
+        errors.extend(password_errors(password, username))
         if password != confirm:
             errors.append("Passwords do not match.")
         if not security_question:
@@ -79,6 +82,21 @@ def deactivate(user_id):
         return redirect(url_for("users.list_view"))
     db.set_user_active(user_id, False, actor=current_actor())
     flash(f"User '{target['username']}' deactivated and signed out everywhere.", "success")
+    return redirect(url_for("users.list_view"))
+
+
+@bp.route("/<int:user_id>/unlock", methods=["POST"])
+@login_required
+@role_required("admin")
+@reauth_required
+def unlock(user_id):
+    """Ends a lockout early (too many wrong passwords) — it otherwise lifts by itself."""
+    validate_csrf(request.form.get("csrf_token"))
+    target = db.get_user_by_id(user_id)
+    if not target:
+        abort(404)
+    db.unlock_user(user_id, actor=current_actor())
+    flash(f"User '{target['username']}' unlocked.", "success")
     return redirect(url_for("users.list_view"))
 
 

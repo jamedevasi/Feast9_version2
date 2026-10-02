@@ -16,6 +16,7 @@ from app.auth import (
     refresh_session_version,
     totp_provisioning_uri,
     verify_totp_code,
+    two_factor_required_for,
 )
 from app.csrf import validate_csrf
 
@@ -71,6 +72,9 @@ def recovery_codes():
 @reauth_required
 def disable():
     validate_csrf(request.form.get("csrf_token"))
+    if two_factor_required_for(session.get("role")):
+        flash("Your clinic requires two-step sign-in for your account, so it can't be turned off.", "warning")
+        return redirect(url_for("account.index"))
     db.reset_totp(session["admin_id"], actor=current_actor())
     refresh_session_version()  # stay signed in here; other sessions of this account end
     flash("Two-factor authentication disabled on your account.", "success")
