@@ -3,7 +3,7 @@ password rules."""
 import pytest
 
 from app import auth, db
-from tests.conftest import get_csrf
+from tests.conftest import enable_two_step, get_csrf
 from tests.test_cases import _create_case
 from tests.test_roles import _create_user, _login, _logout
 
@@ -147,6 +147,7 @@ def test_admin_can_unlock_an_account(logged_in_client):
 
 def test_wrong_security_answers_also_lock_the_account(logged_in_client):
     _create_user(logged_in_client, "locktarget", "doctor")
+    enable_two_step("locktarget")  # without it there is no self-service reset to guess at
     _logout(logged_in_client)
     token = get_csrf(logged_in_client, "/forgot-password")
     logged_in_client.post("/forgot-password", data={"username": "locktarget", "csrf_token": token})
@@ -235,3 +236,70 @@ def test_two_step_requirement_can_be_switched_off_again(logged_in_client):
     assert logged_in_client.get("/settings/").status_code == 302
     db.set_setting("require_two_factor", "0")
     assert logged_in_client.get("/dashboard").status_code == 200
+
+
+def test_two_step_can_be_required_for_receptionists_too(logged_in_client):
+    _create_user(logged_in_client, "recepall", "receptionist")
+    enable_two_step("admin")  # so the admin isn't sent to setup while changing the setting
+    token = get_csrf(logged_in_client, "/settings/")
+    logged_in_client.post("/settings/", data={
+        "form": "signin_security", "require_two_factor": "on", "require_two_factor_all": "on", "csrf_token": token,
+    })
+    assert db.get_setting("require_two_factor") == "all"
+    assert auth.two_factor_required_for("receptionist") and auth.two_factor_required_for("doctor")
+
+    # the second box means nothing without the first
+    token = get_csrf(logged_in_client, "/settings/")
+    logged_in_client.post("/settings/", data={
+        "form": "signin_security", "require_two_factor_all": "on", "csrf_token": token,
+    })
+    assert db.get_setting("require_two_factor") == "0"
+
+
+# ── deletes leave a trace; more record views are logged ─────────────────────
+
+def test_deleting_a_lab_requisition_a_referral_and_an_appointment_is_audited(logged_in_client, patient_id):
+    from tests.test_appointments import _book_appointment
+    resp, _ = _create_case(logged_in_client, patient_id)
+    case_url = resp.headers["Location"]
+    case_id = int(case_url.rsplit("/", 1)[-1])
+    token = get_csrf(logged_in_client, case_url)
+    logged_in_client.post(f"/cases/{case_id}/lab-reqs", data={
+        "work_description": "Secret bridge work", "sent_date": "2026-01-10", "csrf_token": token,
+    })
+    logged_in_client.post(f"/cases/{case_id}/referrals", data={
+        "referral_date": "2026-02-01", "referred_to": "Dr. Endo Specialist", "reason": "Complex root canal",
+        "csrf_token": token,
+    })
+    _book_appointment(logged_in_client, patient_id)
+    req_id = db.list_lab_reqs_for_case(case_id)[0]["id"]
+    ref_id = db.list_referrals_for_case(case_id)[0]["id"]
+    appt_id = db.list_appointments_for_patient(patient_id)[0]["id"]
+
+    logged_in_client.post(f"/lab-reqs/{req_id}/delete", data={"csrf_token": token})
+    logged_in_client.post(f"/referrals/{ref_id}/delete", data={"csrf_token": token})
+    logged_in_client.post(f"/appointments/{appt_id}/delete", data={"csrf_token": token})
+
+    admin_id = db.get_user_by_username("admin")["id"]
+    for action, entity_id in (("lab_requisition_deleted", req_id), ("referral_deleted", ref_id),
+                              ("appointment_deleted", appt_id)):
+        rows = _audit(action)
+        assert [(r["actor_user_id"], r["entity_id"]) for r in rows] == [(admin_id, entity_id)], action
+    logged = " ".join(r["before_summary"] for a in ("lab_requisition_deleted", "referral_deleted") for r in _audit(a))
+    assert f"case_id={case_id}" in logged
+    assert "Secret" not in logged and "Endo" not in logged and "root canal" not in logged  # no free text
+    assert f"patient_id={patient_id}" in _audit("appointment_deleted")[0]["before_summary"]
+
+
+def test_opening_an_appointment_an_edit_form_and_a_data_request_is_logged(logged_in_client, patient_id):
+    from tests.test_appointments import _book_appointment
+    _book_appointment(logged_in_client, patient_id)
+    appt_id = db.list_appointments_for_patient(patient_id)[0]["id"]
+    assert logged_in_client.get(f"/appointments/{appt_id}/edit").status_code == 200
+    assert logged_in_client.get(f"/patients/{patient_id}/edit").status_code == 200
+    request_id = db.create_data_request(patient_id, "Access", "wants a copy")
+    assert logged_in_client.get(f"/data-requests/{request_id}").status_code == 200
+
+    assert [r["entity_id"] for r in _audit("appointment_viewed")] == [appt_id]
+    assert [r["entity_id"] for r in _audit("patient_edit_form_viewed")] == [patient_id]
+    assert [r["entity_id"] for r in _audit("data_request_viewed")] == [request_id]

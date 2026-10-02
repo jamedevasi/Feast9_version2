@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}DPDP Requests — Feast9{% endblock %}
+{% block title %}Privacy Requests — Feast9{% endblock %}
 {% block content %}
-<h1>Data-Rights Requests</h1>
+<h1>Privacy Requests</h1>
 
 <p class="view-toggle">
   <a href="{{ url_for('dpdp.list_view') }}" class="button {{ 'button-active' if not current_status }}">All</a>
@@ -29,6 +29,6 @@
   </tbody>
 </table>
 {% else %}
-<p class="empty-state">No data-rights requests{% if current_status %} with status "{{ current_status }}"{% endif %}.</p>
+<p class="empty-state">No privacy requests{% if current_status %} with status "{{ current_status }}"{% endif %}.</p>
 {% endif %}
 {% endblock %}

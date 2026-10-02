@@ -31,7 +31,8 @@ sunshine123 princess123 monkey12345 dragon12345 master12345 superman123 trustno1
 """.split())
 
 # Roles that must have two-step sign-in when Settings > Sign-in Security requires it — the
-# accounts that can read and write clinical and financial records.
+# accounts that can read and write clinical and financial records. The setting
+# (`require_two_factor`) is "0" (optional), "1" (these roles) or "all" (receptionists too).
 TWO_FACTOR_ROLES = ("admin", "doctor")
 # Reachable without two-step sign-in while it's required but not yet set up: the setup
 # itself, logging out, and the idle-timer ping (which must never be answered by a redirect).
@@ -57,7 +58,8 @@ def password_errors(password, username=""):
 
 
 def two_factor_required_for(role):
-    return role in TWO_FACTOR_ROLES and db.get_setting("require_two_factor", "0") == "1"
+    setting = db.get_setting("require_two_factor", "0")
+    return setting == "all" or (setting == "1" and role in TWO_FACTOR_ROLES)
 
 
 def account_locked(user):

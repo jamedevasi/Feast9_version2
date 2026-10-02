@@ -87,8 +87,8 @@ def test_dpdp_not_accepted_row_is_imported_as_not_accepted(logged_in_client):
     patient = db.list_patients()[0]
     assert patient["dpdp_notice_accepted"] == 0 and not patient["dpdp_notice_accepted_at"]
     assert patient["comms_consent"] == 0
-    assert b"DPDP notice not accepted" in logged_in_client.get(f"/patients/{patient['id']}").data
-    assert b"DPDP pending" in logged_in_client.get("/patients/?view=all").data
+    assert b"Privacy notice not accepted" in logged_in_client.get(f"/patients/{patient['id']}").data
+    assert b"Privacy notice pending" in logged_in_client.get("/patients/?view=all").data
 
 
 def test_invalid_sex_row_skipped(logged_in_client):

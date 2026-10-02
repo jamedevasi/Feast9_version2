@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}New Data-Rights Request — Feast9{% endblock %}
+{% block title %}New Privacy Request — Feast9{% endblock %}
 {% block content %}
 <p class="back-row"><a class="button button-small button-outline" href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
-<h1>New Data-Rights Request for {{ patient.name }}</h1>
+<h1>New Privacy Request for {{ patient.name }}</h1>
 
 {% if errors %}
 <ul class="errors">

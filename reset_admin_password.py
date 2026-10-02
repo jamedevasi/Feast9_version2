@@ -1,9 +1,14 @@
-"""Emergency CLI: reset the admin password without needing to log in."""
+"""Emergency CLI: reset the admin password without needing to log in.
+
+Run on the computer Feast9 runs on (with the same DATA_DIR). The same password rules as
+everywhere else apply, the change is written to the audit log (with no user — nobody was
+signed in), every existing session of that account ends and any lockout is lifted.
+"""
 import getpass
 import sys
 
 from app import db
-from app.auth import hash_password
+from app.auth import hash_password, password_errors
 
 
 def main():
@@ -17,11 +22,12 @@ def main():
     if password != confirm:
         print("Passwords do not match.")
         sys.exit(1)
-    if len(password) < 8:
-        print("Password must be at least 8 characters.")
+    errors = password_errors(password, admin["username"])
+    if errors:
+        print("\n".join(errors))
         sys.exit(1)
 
-    db.update_admin_password(hash_password(password))
+    db.update_user_password(admin["id"], hash_password(password), how="reset on the Feast9 computer")
     print(f"Password reset for admin '{admin['username']}'.")
 
 

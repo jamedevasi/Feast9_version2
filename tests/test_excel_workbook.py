@@ -23,7 +23,7 @@ OLD_EXPORT_HEADERS = [
 
 def _row(name="Anita Rao", mobile="9876543210", sex="Female", dpdp="Yes", headers=CASES_SHEET_HEADERS, **fields):
     row = dict.fromkeys(headers, "")
-    row.update({"Patient Name": name, "Mobile": mobile, "Sex": sex, "DPDP Notice Accepted": dpdp})
+    row.update({"Patient Name": name, "Mobile": mobile, "Sex": sex, "Privacy Notice Accepted": dpdp})
     row.update({k.replace("_", " "): v for k, v in fields.items()})
     return [row[h] for h in headers]
 
@@ -80,13 +80,13 @@ def test_template_starts_with_the_old_export_columns_in_order(logged_in_client):
     assert ws.title == "Patients & Cases"
     headers = [c.value for c in ws[1]]
     assert headers[:22] == OLD_EXPORT_HEADERS == OLD_PATIENT_HEADERS + OLD_CASE_HEADERS
-    assert headers[22] == "DPDP Notice Accepted"  # the one worth filling for everyone, right after the pasted block
+    assert headers[22] == "Privacy Notice Accepted"  # the one worth filling for everyone, right after the pasted block
     assert headers[-2:] == ["Patient Ref", "Case Ref"]
     assert ws.max_row == 1  # no example rows that could be imported by accident
 
     fills = {c.value: c.fill.fgColor.rgb[-6:] for c in ws[1]}
     assert {fills["Patient Name"], fills["Sex"]} == {"F8D7DA"}  # red = required
-    assert fills["DPDP Notice Accepted"] == "E2EFDA"  # recorded as entered; blank means not accepted
+    assert fills["Privacy Notice Accepted"] == "E2EFDA"  # recorded as entered; blank means not accepted
     assert {fills["Doctor"], fills["Guardian Name"], fills["Guardian Mobile"]} == {"FFF3CD"}  # amber = sometimes
     assert fills["Balance (Rs.)"] == "D9D9D9"  # grey = ignored
     assert fills["Email"] == "E2EFDA"
@@ -250,7 +250,7 @@ def test_export_layout_and_audit(logged_in_client):
     row = dict(zip(cases[0], cases[1]))
     assert (row["Patient Name"], row["Allergies"], row["Mobile"]) == ("Export Person", "Penicillin, Dust", "9876543210")
     assert (row["Paid (Rs.)"], row["Balance (Rs.)"], row["Doctor"]) == (1500, 3500, "Dr Test")
-    assert (row["Patient Ref"], row["Case Ref"], row["DPDP Notice Accepted"]) == (pid, case_id, "Yes")
+    assert (row["Patient Ref"], row["Case Ref"], row["Privacy Notice Accepted"]) == (pid, case_id, "Yes")
 
     no_cases = list(wb["Patients (No Cases)"].iter_rows(values_only=True))
     assert [dict(zip(no_cases[0], r))["Patient Ref"] for r in no_cases[1:]] == [lonely]

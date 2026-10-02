@@ -2,7 +2,7 @@
 {% block title %}{{ patient.name }} — Feast9{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>{{ patient.name }}{% if not patient.dpdp_notice_accepted and not patient.is_anonymized %} <span class="badge badge-due-soon" title="The data notice has not been accepted yet">DPDP notice not accepted</span>{% endif %}{% if patient.is_historic_import %} <span class="badge badge-closed" title="Bulk-imported historic record">Historic Import</span>{% endif %}</h1>
+  <h1>{{ patient.name }}{% if not patient.dpdp_notice_accepted and not patient.is_anonymized %} <span class="badge badge-due-soon" title="The data notice has not been accepted yet">Privacy notice not accepted</span>{% endif %}{% if patient.is_historic_import %} <span class="badge badge-closed" title="Bulk-imported historic record">Historic Import</span>{% endif %}</h1>
   <div class="case-actions">
     <a class="button" href="{{ url_for('dental.chart', patient_id=patient.id) }}">{{ icon('tooth') }} Dental Chart</a>
     <a class="button" href="{{ url_for('patients.summary_pdf', patient_id=patient.id) }}" target="_blank" rel="noopener">{{ icon('file-text') }} Patient Summary (PDF)</a>
@@ -85,9 +85,9 @@
 </section>
 
 <section class="card">
-  <h2>Contact Details &amp; DPDP Status</h2>
+  <h2>Contact Details &amp; Privacy Status</h2>
   {% if patient.is_anonymized %}
-  <p class="allergy-alert">{{ icon('triangle-alert') }} This patient's contact details were erased on {{ patient.anonymized_at }} per a DPDP Erasure request. Clinical and financial records are preserved.</p>
+  <p class="allergy-alert">{{ icon('triangle-alert') }} This patient's contact details were erased on {{ patient.anonymized_at }} per an Erasure privacy request. Clinical and financial records are preserved.</p>
   {% endif %}
   {% if not patient.dpdp_notice_accepted and not patient.is_anonymized %}
   <p class="flash flash-warning">
@@ -108,13 +108,13 @@
     <dt>Guardian</dt>
     <dd>{{ patient.guardian_name }} ({{ patient.guardian_relation or '—' }}) {{ patient.guardian_mobile or '' }}</dd>
     {% endif %}
-    <dt>DPDP Notice</dt>
+    <dt>Privacy Notice</dt>
     <dd>{{ 'Accepted at ' + patient.dpdp_notice_accepted_at if patient.dpdp_notice_accepted else 'Not accepted' }}</dd>
     <dt>Communications Consent</dt>
     <dd>{{ 'Opted in at ' + patient.comms_consent_at if patient.comms_consent else 'Opted out' }}</dd>
   </dl>
 
-  <h3>Data-Rights Requests</h3>
+  <h3>Privacy Requests</h3>
   {% if data_requests %}
   <ul class="entry-list">
     {% for r in data_requests %}
@@ -126,9 +126,9 @@
     {% endfor %}
   </ul>
   {% else %}
-  <p class="empty-state">No data-rights requests for this patient.</p>
+  <p class="empty-state">No privacy requests for this patient.</p>
   {% endif %}
-  <a class="button" href="{{ url_for('dpdp.new_data_request', patient_id=patient.id) }}">+ New Data-Rights Request</a>
+  <a class="button" href="{{ url_for('dpdp.new_data_request', patient_id=patient.id) }}">+ New Privacy Request</a>
 </section>
 
 <script src="{{ url_for('static', filename='patient_case_filter.js') }}"></script>

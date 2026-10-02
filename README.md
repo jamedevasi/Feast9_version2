@@ -142,9 +142,12 @@ proxy in front — this app itself doesn't handle HTTPS.
   (check with `netstat -ano | grep :5000` on Windows or `lsof -i :5000` on Linux/Mac)
   and stop it, or run on a different port: edit `run.py`'s `port=5000`, or use
   `waitress-serve --port=5050 ...` / `gunicorn -b 127.0.0.1:5050 wsgi:app`.
-- **Forgot the admin password** — run `python reset_admin_password.py` (with
-  `DATA_DIR` set the same way as when running the app) for an emergency CLI reset
-  that doesn't require logging in first.
+- **Forgot a password** — an account with two-step sign-in can reset its own from the
+  login page (security answer + a code). Any other account gets a new password from an
+  admin (Users > Set Password). For the only admin, run `python reset_admin_password.py`
+  (with `DATA_DIR` set the same way as when running the app): an emergency CLI reset that
+  doesn't require logging in first, is written to the audit log and signs that account out
+  everywhere.
 - **Changes not showing up** — see the hot-reload note in step 4; restart the server.
 - **`SECRET_KEY is set to a publicly known value` warning** — you set `SECRET_KEY` to a
   value from these docs (e.g. `local-dev-key`). The app ignores it and uses its generated

@@ -506,6 +506,7 @@ def record_consent(case_id):
 
 @bp.route("/cases/<int:case_id>/consent-signature")
 @login_required
+@logs_view("consent_signature_viewed", "case", "case_id")
 def consent_signature(case_id):
     case = _get_case_or_404(case_id)
     filename = case.get("consent_signature_filename") or ""

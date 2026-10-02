@@ -53,13 +53,13 @@ def test_request_appears_on_patient_detail_page(logged_in_client, patient_id):
 def test_pending_count_shown_in_nav(logged_in_client, patient_id):
     _create_request(logged_in_client, patient_id, "Access")
     resp = logged_in_client.get("/dashboard")
-    assert b"DPDP Requests (1)" in resp.data
+    assert b"Privacy Requests (1)" in resp.data
 
 
 def test_list_filters_by_status(logged_in_client, patient_id):
     _create_request(logged_in_client, patient_id, "Access")
     resp = logged_in_client.get("/data-requests?status=Rejected")
-    assert b"No data-rights requests" in resp.data
+    assert b"No privacy requests" in resp.data
     resp = logged_in_client.get("/data-requests?status=Pending")
     assert b"Access" in resp.data
 

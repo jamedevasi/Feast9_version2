@@ -213,7 +213,7 @@ def test_retention_counts_the_imported_last_visit(logged_in_client):
 def test_import_reads_an_age_written_with_a_unit():
     from app.excel_import import _parse_patient
     def row(age):
-        cells = {"Patient Name": "A", "Age": age, "Sex": "Male", "DPDP Notice Accepted": "Yes"}
+        cells = {"Patient Name": "A", "Age": age, "Sex": "Male", "Privacy Notice Accepted": "Yes"}
         return _parse_patient(lambda key: cells.get(key, ""))
     for text, expected in [("34", 34), ("34 Y", 34), ("34yrs", 34), ("34.5", 34), ("", None), ("adult", None)]:
         parsed = row(text)

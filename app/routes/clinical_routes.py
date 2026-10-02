@@ -176,7 +176,7 @@ def delete_lab_req(req_id):
     lab_req = db.get_lab_req(req_id)
     if not lab_req:
         abort(404)
-    db.delete_lab_req(req_id)
+    db.delete_lab_req(req_id, actor=current_actor())
     flash("Lab requisition deleted.", "success")
     return redirect(url_for("cases.detail", case_id=lab_req["case_id"]))
 
@@ -224,6 +224,6 @@ def delete_referral(ref_id):
     referral = db.get_referral(ref_id)
     if not referral:
         abort(404)
-    db.delete_referral(ref_id)
+    db.delete_referral(ref_id, actor=current_actor())
     flash("Referral deleted.", "success")
     return redirect(url_for("cases.detail", case_id=referral["case_id"]))

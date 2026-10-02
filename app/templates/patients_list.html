@@ -35,7 +35,7 @@
   <tbody>
     {% for p in patients %}
     <tr>
-      <td><a href="{{ url_for('patients.detail', patient_id=p.id) }}">{{ p.name }}</a>{% if not p.dpdp_notice_accepted and not p.is_anonymized %} <span class="badge badge-due-soon" title="The data notice has not been accepted yet">DPDP pending</span>{% endif %}</td>
+      <td><a href="{{ url_for('patients.detail', patient_id=p.id) }}">{{ p.name }}</a>{% if not p.dpdp_notice_accepted and not p.is_anonymized %} <span class="badge badge-due-soon" title="The data notice has not been accepted yet">Privacy notice pending</span>{% endif %}</td>
       <td>{{ p.computed_age if p.computed_age is not none else '—' }}</td>
       <td>{{ p.sex or '—' }}</td>
       <td>{{ p.mobile or '—' }}</td>

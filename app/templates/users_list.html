@@ -33,6 +33,9 @@
           <button type="submit" class="button button-small button-outline">Reactivate</button>
         </form>
         {% endif %}
+        {% if u.id != session.get('admin_id') %}
+        <a class="button button-small button-outline" href="{{ url_for('users.set_password', user_id=u.id) }}">Set Password</a>
+        {% endif %}
         {% if u.is_locked %}
         <form method="post" action="{{ url_for('users.unlock', user_id=u.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1,3 +1,4 @@
+import json
 import re
 
 import pytest
@@ -58,6 +59,21 @@ def logged_in_client(setup_admin):
         data={"username": "admin", "password": "testpass123", "csrf_token": token},
     )
     return setup_admin
+
+
+def enable_two_step(username, recovery_code_hashes=()):
+    """Turn two-step sign-in on for an account directly in the database (skipping the QR
+    setup page) and return its secret — `pyotp.TOTP(secret).now()` is then a valid code."""
+    from app import db
+    secret = "JBSWY3DPEHPK3PXP"
+    conn = db.get_db()
+    conn.execute(
+        "UPDATE admin SET totp_enabled = 1, totp_secret = ?, totp_recovery_codes_json = ? WHERE username = ?",
+        (secret, json.dumps(list(recovery_code_hashes)), username),
+    )
+    conn.commit()
+    conn.close()
+    return secret
 
 
 def register_patient(client, **overrides):

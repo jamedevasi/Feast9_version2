@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app import db
-from app.auth import login_required
+from app.auth import current_actor, login_required, logs_view
 from app.constants import APPOINTMENT_STATUSES, RECURRENCE_INTERVALS
 from app.csrf import validate_csrf
 from app.validators import normalize_date, today_iso
@@ -277,6 +277,7 @@ def new():
 
 @bp.route("/<int:appt_id>/edit", methods=["GET", "POST"])
 @login_required
+@logs_view("appointment_viewed", "appointment", "appt_id")
 def edit(appt_id):
     appt = _get_appointment_or_404(appt_id)
     patient = db.get_patient(appt["patient_id"])
@@ -365,7 +366,7 @@ def delete(appt_id):
     validate_csrf(request.form.get("csrf_token"))
     appt = _get_appointment_or_404(appt_id)
     response = _redirect_to_calendar_for(appt["appt_date"])
-    db.delete_appointment(appt_id)
+    db.delete_appointment(appt_id, actor=current_actor())
     flash("Appointment deleted.", "success")
     return response
 

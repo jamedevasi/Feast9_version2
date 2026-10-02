@@ -230,7 +230,7 @@ def build_user_manual(path):
         "7. The Dashboard",
         "8. Reports & Analytics",
         "9. Financial Assessment",
-        "10. DPDP Data-Rights Requests",
+        "10. Privacy Requests",
         "11. Settings & Administration",
         "12. Security Do's and Don'ts",
         "13. Troubleshooting & FAQ",
@@ -250,14 +250,14 @@ def build_user_manual(path):
             [[Paragraph("Role", ParagraphStyle("RH", parent=BODY, textColor=WHITE, fontName="Helvetica-Bold")),
               Paragraph("Can do", ParagraphStyle("RH2", parent=BODY, textColor=WHITE, fontName="Helvetica-Bold"))],
              [Paragraph("Receptionist", BODY), Paragraph(
-              "Register/search patients, book appointments, add clinical notes, log DPDP "
+              "Register/search patients, book appointments, add clinical notes, log privacy "
               "requests, use the calendar. No access to payments, costs, balances, reports, "
               "analytics, financial exports, or backups — this is enforced by the system, "
               "not just hidden from view.", BODY)],
              [Paragraph("Doctor", BODY), Paragraph(
               "Everything a Receptionist can do, plus full financial access (payments, cost "
               "revisions, Reports, Analytics, Financial Assessment), dental charting, consent "
-              "recording, clinical-attachment deletion, and resolving DPDP requests.", BODY)],
+              "recording, clinical-attachment deletion, and resolving privacy requests.", BODY)],
              [Paragraph("Administrator", BODY), Paragraph(
               "Everything a Doctor can do, plus user management, Doctors/Case Types setup, "
               "Clinic Details, Login Screen branding, backups, and the audit log.", BODY)]],
@@ -285,8 +285,10 @@ def build_user_manual(path):
             "If your account has Two-Factor Authentication (2FA) turned on, you'll be asked for "
             "a 6-digit code from your authenticator app (or a one-time recovery code) on a "
             "second screen before you're let in.",
-            "Forgotten your password? Use <b>Forgot Password</b> on the login page and answer "
-            "your security question to set a new one — no email required.",
+            "Forgotten your password? If you use Two-Factor Authentication, use <b>Forgot "
+            "Password</b> on the login page: answer your security question and enter a code "
+            "from your authenticator app (or a recovery code) to set a new one. If you don't, "
+            "ask an Administrator to set a new password for you from <b>Users</b>.",
         ]),
         [Paragraph("Turning on Two-Factor Authentication (recommended for everyone)", H2)],
         bullets([
@@ -354,7 +356,7 @@ def build_user_manual(path):
         [Paragraph(
             "Always shown in this order: <b>Medical Alerts</b> (allergies/conditions at a "
             "glance), <b>Active Treatment Cases</b>, <b>Appointments</b>, and "
-            "<b>Contact Details &amp; DPDP Status</b> (which also lists any data-rights requests "
+            "<b>Contact Details &amp; Privacy Status</b> (which also lists any privacy requests "
             "for this patient). Prescriptions are recorded and viewed on each treatment case "
             "itself, not on this page.",
             BODY)],
@@ -527,12 +529,12 @@ def build_user_manual(path):
     story.append(PageBreak())
 
     # ── 10. DPDP ──
-    story += section("10", "DPDP Data-Rights Requests", "", [
+    story += section("10", "Privacy Requests", "", [
         bullets([
             "Any staff member can log a request from a patient's page — the four types are "
             "<b>Access</b>, <b>Correction</b>, <b>Erasure</b>, and <b>Withdraw Consent</b>. "
             "Every request gets a 90-day resolution deadline automatically.",
-            "A pending-requests count appears as a badge next to <b>DPDP Requests</b> in the "
+            "A pending-requests count appears as a badge next to <b>Privacy Requests</b> in the "
             "navigation bar for every signed-in user.",
         ]),
         role_pill("Resolving a request — Doctor, Administrator only."),
@@ -564,7 +566,7 @@ def build_user_manual(path):
             "<b>Clinic Logo &amp; Login Screen</b> — upload a logo/login image and customise "
             "the heading and tagline shown on the sign-in page.",
             "<b>Import Data</b> — bulk-load historic patients from an Excel spreadsheet using "
-            "the provided template. Every row still has to pass the same DPDP-notice and "
+            "the provided template. Every row still has to pass the same privacy-notice and "
             "validation checks as manual registration, or it's skipped and reported — nothing "
             "invalid is ever partially imported. This always creates new patients; it never "
             "matches or updates existing ones.",
@@ -755,7 +757,7 @@ def build_qrc(path):
     x0 = 0.4 * inch
 
     section_card(c, x0, top - row_h, col_w, row_h, BRAND, "PATIENTS", "P", [
-        "New Patient: DPDP notice tick is mandatory",
+        "New Patient: privacy notice tick is mandatory",
         "DOB auto-fills age",
         "Guardian required if under 18",
         "Search matches name/mobile/notes",
@@ -791,7 +793,7 @@ def build_qrc(path):
         "Monthly Eval: Short vs Long Term (deprec.)",
         "Capital Investments: deactivate, don't edit",
     ])
-    section_card(c, x0 + 2 * (col_w + gap), top - row_h, col_w, row_h, HexColor("#b45309"), "DPDP REQUESTS", "!", [
+    section_card(c, x0 + 2 * (col_w + gap), top - row_h, col_w, row_h, HexColor("#b45309"), "PRIVACY REQUESTS", "!", [
         "Anyone logs a request; 90-day deadline auto-set",
         "Only Doctor/Admin resolve",
         "Erasure needs exact name typed to confirm",
@@ -874,7 +876,7 @@ def build_qrc(path):
     c.setFont("Helvetica-Bold", 10.2)
     c.drawString(col_x[1], fy_top, "TOP NAVIGATION")
     nav_items = ["Dashboard", "Patients", "Appointments", "Reports*", "Analytics*",
-                 "Financial Assessment*", "DPDP Requests", "2FA / My Account",
+                 "Financial Assessment*", "Privacy Requests", "2FA / My Account",
                  "Users / Settings†"]
     ny = fy_top - 0.34 * inch
     for item in nav_items:

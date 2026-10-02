@@ -4,7 +4,7 @@ import io
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 
 from app import db, pdf_reports
-from app.auth import current_actor, login_required, reauth_required, role_required
+from app.auth import current_actor, login_required, logs_view, reauth_required, role_required
 from app.constants import DATA_REQUEST_STATUSES, DATA_REQUEST_TYPES
 from app.csrf import validate_csrf
 from app.validators import today_iso
@@ -46,7 +46,7 @@ def new_data_request(patient_id):
 
         if not errors:
             db.create_data_request(patient_id, request_type, description, actor=current_actor())
-            flash("Data-rights request logged.", "success")
+            flash("Privacy request logged.", "success")
             return redirect(url_for("patients.detail", patient_id=patient_id))
 
     return render_template(
@@ -68,6 +68,7 @@ def list_view():
 
 @bp.route("/data-requests/<int:request_id>")
 @login_required
+@logs_view("data_request_viewed", "data_request", "request_id")
 def detail(request_id):
     entry = _get_request_or_404(request_id)
     patient = db.get_patient(entry["patient_id"])

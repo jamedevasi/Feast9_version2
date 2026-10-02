@@ -204,7 +204,8 @@ def login_totp():
 @bp.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     """Step 1 of self-service password reset (§5.1: "no email needed") — enter a
-    username, land on the security question for that account."""
+    username, land on the security question for that account (or, for an account without
+    two-step sign-in, on the "ask an administrator" notice — see forgot_password_verify)."""
     errors = []
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
@@ -234,6 +235,13 @@ def forgot_password_verify():
         session.pop("reset_pending_user_id", None)
         return redirect(url_for("auth.forgot_password"))
 
+    # A security answer is something other people can know or guess, so on its own it must
+    # never be enough to get into an account. Self-service reset is therefore only for
+    # accounts with two-step sign-in, and asks for the code as well; any other account gets
+    # a new password from an administrator (Users > Set Password).
+    if not user["totp_enabled"]:
+        return render_template("forgot_password_verify.html", errors=[], self_service=False)
+
     errors = []
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
@@ -243,30 +251,49 @@ def forgot_password_verify():
             errors.append("Too many attempts. Please try again in 15 minutes.")
         else:
             answer = request.form.get("security_answer", "").strip().lower()
+            code = request.form.get("code", "").strip()
+            recovery_code = request.form.get("recovery_code", "").strip()
             new_password = request.form.get("new_password", "")
             confirm = request.form.get("confirm_password", "")
 
+            # The new password is checked first so a typo in it never uses up a recovery code.
             if account_locked(user):
                 errors.append(_ACCOUNT_LOCKED)
-            elif not check_password(user["security_answer_hash"], answer):
-                db.record_failed_login(ip)
-                note_failed_sign_in(user, "wrong security answer")
-                errors.append("Incorrect answer to the security question.")
             elif password_errors(new_password, user["username"]):
                 errors.extend(password_errors(new_password, user["username"]))
             elif new_password != confirm:
                 errors.append("Passwords do not match.")
+            elif not check_password(user["security_answer_hash"], answer):
+                db.record_failed_login(ip)
+                note_failed_sign_in(user, "wrong security answer")
+                errors.append("Incorrect answer to the security question.")
+            elif not _second_step_ok(user, code, recovery_code):
+                db.record_failed_login(ip)
+                note_failed_sign_in(user, "wrong two-step code")
+                errors.append("Invalid authentication code or recovery code.")
             else:
                 db.clear_failed_logins(ip)
-                db.clear_failed_sign_ins(user["id"])
                 actor = {"user_id": user["id"], "role": user["role"], "ip": ip, "user_agent": ""}
-                db.update_user_password(user["id"], hash_password(new_password), actor=actor)
+                db.update_user_password(
+                    user["id"], hash_password(new_password), actor=actor,
+                    how="reset with security answer + two-step code",
+                )
                 session.pop("reset_pending_user_id", None)
                 flash("Password reset. Please log in with your new password.", "success")
                 return redirect(url_for("auth.login"))
 
     return render_template(
-        "forgot_password_verify.html", errors=errors, security_question=user["security_question"]
+        "forgot_password_verify.html", errors=errors, self_service=True,
+        security_question=user["security_question"],
+    )
+
+
+def _second_step_ok(user, code, recovery_code):
+    """A current authenticator code, or an unused recovery code (used up by this)."""
+    if code and verify_totp_code(user["totp_secret"], code):
+        return True
+    return bool(recovery_code) and db.consume_recovery_code(
+        user["id"], lambda h: check_recovery_code(h, recovery_code)
     )
 
 

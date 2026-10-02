@@ -54,10 +54,10 @@ OLD_CASE_HEADERS = [
     "Case Title", "Status", "Doctor", "Procedures", "Total Cost (Rs.)", "Paid (Rs.)",
     "Balance (Rs.)", "Follow-up Date", "Next Action", "Case Opened", "Case Closed",
 ]
-# Fields this version records that the old export didn't. DPDP first: it's the one worth
+# Fields this version records that the old export didn't. The privacy (DPDP) notice first: it's the one worth
 # filling for every patient, so it sits right next to the pasted block.
 EXTRA_PATIENT_HEADERS = [
-    "DPDP Notice Accepted", "DPDP Notice Accepted Date", "Date of Birth", "Communications Consent",
+    "Privacy Notice Accepted", "Privacy Notice Accepted Date", "Date of Birth", "Communications Consent",
     "Is Pregnant", "Is Nursing", "Emergency Contact Relation",
     "Guardian Name", "Guardian Relation", "Guardian Mobile",
 ]
@@ -78,6 +78,9 @@ TEMPLATE_HEADERS = [
 ]
 _HEADER_ALIASES = {
     "name": "Patient Name",
+    # called "DPDP Notice Accepted" until 2026-10-02 — sheets filled in before then still import
+    "dpdp notice accepted": "Privacy Notice Accepted",
+    "dpdp notice accepted date": "Privacy Notice Accepted Date",
     "emergency contact name": "Emergency Contact",
     "emergency contact number": "EC Number",
 }
@@ -104,9 +107,9 @@ _HEADER_NOTES = {
     "Follow-up Date": "YYYY-MM-DD — shows as a reminder on the dashboard.",
     "Case Opened": "YYYY-MM-DD. Defaults to the import date.",
     "Case Closed": "YYYY-MM-DD, for a Closed case. Defaults to the import date.",
-    "DPDP Notice Accepted": "Yes / No — recorded as entered. Yes only once the patient has accepted the "
+    "Privacy Notice Accepted": "Yes / No — recorded as entered. Yes only once the patient has accepted the "
                             "data notice. No or blank: the patient is imported and shown as not yet accepted.",
-    "DPDP Notice Accepted Date": "YYYY-MM-DD, when Yes. Defaults to the import date.",
+    "Privacy Notice Accepted Date": "YYYY-MM-DD, when Yes. Defaults to the import date.",
     "Date of Birth": "YYYY-MM-DD. If given, age is worked out from it.",
     "Communications Consent": "Yes / No — consent to reminders by SMS/WhatsApp.",
     "Guardian Name": "Required when the patient is under 18.",
@@ -180,7 +183,7 @@ def add_dropdowns(wb, sheets):
     for title, headers in sheets:
         ws = wb[title]
         _add_list_validation(ws, headers, "Sex", f'"{",".join(SEX_OPTIONS)}"')
-        for header in ("DPDP Notice Accepted", "Communications Consent", "Is Pregnant", "Is Nursing"):
+        for header in ("Privacy Notice Accepted", "Communications Consent", "Is Pregnant", "Is Nursing"):
             _add_list_validation(ws, headers, header, '"Yes,No"')
         _add_list_validation(ws, headers, "Status", f'"{",".join(CASE_STATUSES)}"')
         if doctor_names:
@@ -199,7 +202,7 @@ _READ_ME = [
     ("Header colours", "RED = required on every row.  AMBER = required on some rows: Doctor when the row has a "
                        "case, Guardian Name and Mobile for a patient under 18.  GREEN = optional.  "
                        "GREY = ignored (worked out by Feast9). Hover over a header to see its rule."),
-    ("DPDP Notice Accepted", "The old version didn't record this. Enter Yes only for patients who have accepted "
+    ("Privacy Notice Accepted", "The old version didn't record this. Enter Yes only for patients who have accepted "
                              "the clinic's data notice. No or blank is imported too: the patient is shown in "
                              "Feast9 as not yet accepted, until that is recorded on their page."),
     ("Dates", "Type dates as YYYY-MM-DD (e.g. 2026-09-30), or as normal Excel dates."),
@@ -391,8 +394,8 @@ def _parse_patient(get):
 
     sex = get("Sex").capitalize()
     mobile = get("Mobile")
-    dpdp_accepted = _yes(get("DPDP Notice Accepted"))
-    dpdp_date = (_to_date(get("DPDP Notice Accepted Date")) or today_iso()) if dpdp_accepted else ""
+    dpdp_accepted = _yes(get("Privacy Notice Accepted"))
+    dpdp_date = (_to_date(get("Privacy Notice Accepted Date")) or today_iso()) if dpdp_accepted else ""
     # No reminders consent without the data notice having been accepted first.
     comms_consent = dpdp_accepted and _yes(get("Communications Consent"))
     guardian_name = get("Guardian Name")

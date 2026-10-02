@@ -68,6 +68,38 @@ def new():
     return render_template("user_form.html", errors=errors, user=form_state, roles=ROLES)
 
 
+@bp.route("/<int:user_id>/password", methods=["GET", "POST"])
+@login_required
+@role_required("admin")
+@reauth_required
+def set_password(user_id):
+    """An admin gives another user a new password — the way back in for someone who forgot
+    theirs and has no two-step sign-in (the security question alone is not accepted, see
+    auth.forgot_password_verify). Signs that account out everywhere and ends any lockout."""
+    target = db.get_user_by_id(user_id)
+    if not target:
+        abort(404)
+    if user_id == session.get("admin_id"):  # your own goes through My Account (needs the current one)
+        return redirect(url_for("account.index"))
+
+    errors = []
+    if request.method == "POST":
+        validate_csrf(request.form.get("csrf_token"))
+        password = request.form.get("password", "")
+        errors.extend(password_errors(password, target["username"]))
+        if password != request.form.get("confirm", ""):
+            errors.append("Passwords do not match.")
+        if not errors:
+            db.update_user_password(
+                user_id, hash_password(password), actor=current_actor(), how="set by an administrator"
+            )
+            flash(f"New password set for '{target['username']}'. They've been signed out everywhere — "
+                  "ask them to change it under My Account after signing in.", "success")
+            return redirect(url_for("users.list_view"))
+
+    return render_template("user_password.html", errors=errors, target=target)
+
+
 @bp.route("/<int:user_id>/deactivate", methods=["POST"])
 @login_required
 @role_required("admin")

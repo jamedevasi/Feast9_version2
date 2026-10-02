@@ -707,18 +707,6 @@ def create_admin(username, password_hash, security_question, security_answer_has
     conn.close()
 
 
-def update_admin_password(password_hash):
-    conn = get_db()
-    admin = conn.execute("SELECT id FROM admin ORDER BY id LIMIT 1").fetchone()
-    if admin:
-        conn.execute(
-            "UPDATE admin SET password_hash = ?, updated_at = ? WHERE id = ?",
-            (password_hash, now_iso(), admin["id"]),
-        )
-        conn.commit()
-    conn.close()
-
-
 # ── Multi-user accounts (admin / doctor / receptionist) ────────────────────
 # The `admin` table now holds every login, not just the bootstrap admin —
 # `role` distinguishes them. Kept the table name to avoid an unnecessary
@@ -830,16 +818,19 @@ def set_user_active(user_id, is_active, actor=None):
     conn.close()
 
 
-def update_user_password(user_id, password_hash, actor=None):
-    """Self-service change-password (logged in) and the forgot-password reset flow
-    (§5.1 'self-service password reset — no email needed') both call this — the only
-    difference is where the caller got its authorization from."""
+def update_user_password(user_id, password_hash, actor=None, how=""):
+    """Every way a password changes goes through here: self-service change (logged in), the
+    forgot-password reset, an admin setting one from Users, and reset_admin_password.py —
+    the only difference is where the caller got its authorization from. `how` says which
+    one in the audit row when it wasn't the user themselves. Also ends a lockout: whoever
+    was allowed to set a new password shouldn't then be refused for old wrong guesses."""
     conn = get_db()
     conn.execute(
-        f"UPDATE admin SET password_hash = ?, updated_at = ?, {_BUMP_SESSIONS} WHERE id = ?",
+        f"""UPDATE admin SET password_hash = ?, updated_at = ?, failed_login_count = 0, locked_until = '',
+            {_BUMP_SESSIONS} WHERE id = ?""",
         (password_hash, now_iso(), user_id),
     )
-    _write_audit(conn, actor, "password_changed", "user", user_id)
+    _write_audit(conn, actor, "password_changed", "user", user_id, after_summary=how)
     conn.commit()
     conn.close()
 
@@ -1791,9 +1782,15 @@ def update_lab_req(req_id, status, received_date, notes):
     conn.close()
 
 
-def delete_lab_req(req_id):
+def delete_lab_req(req_id, actor=None):
     conn = get_db()
+    row = conn.execute("SELECT case_id, status FROM lab_requisitions WHERE id = ?", (req_id,)).fetchone()
     conn.execute("DELETE FROM lab_requisitions WHERE id = ?", (req_id,))
+    if row:
+        _write_audit(
+            conn, actor, "lab_requisition_deleted", "lab_requisition", req_id,
+            before_summary=f"case_id={row['case_id']}, status={row['status']}",
+        )
     conn.commit()
     conn.close()
 
@@ -1873,9 +1870,16 @@ def get_referral(ref_id):
     return dict(row) if row else None
 
 
-def delete_referral(ref_id):
+def delete_referral(ref_id, actor=None):
     conn = get_db()
+    row = conn.execute("SELECT case_id, referral_date FROM referral_notes WHERE id = ?", (ref_id,)).fetchone()
     conn.execute("DELETE FROM referral_notes WHERE id = ?", (ref_id,))
+    if row:
+        # Who it was referred to and why are free text — the audit row keeps the fact and date only.
+        _write_audit(
+            conn, actor, "referral_deleted", "referral", ref_id,
+            before_summary=f"case_id={row['case_id']}, date={row['referral_date']}",
+        )
     conn.commit()
     conn.close()
 
@@ -2280,10 +2284,16 @@ def get_appointment(appt_id):
     return dict(row) if row else None
 
 
-def delete_appointment(appt_id):
+def delete_appointment(appt_id, actor=None):
     conn = get_db()
+    row = conn.execute("SELECT patient_id, appt_date, status FROM appointments WHERE id = ?", (appt_id,)).fetchone()
     _clear_noshow_followups(conn, "follow_up_appointment_id = ?", (appt_id,))
     conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
+    if row:
+        _write_audit(
+            conn, actor, "appointment_deleted", "appointment", appt_id,
+            before_summary=f"patient_id={row['patient_id']}, date={row['appt_date']}, status={row['status']}",
+        )
     conn.commit()
     conn.close()
 

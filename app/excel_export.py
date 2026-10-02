@@ -187,7 +187,7 @@ def build_export_xlsx(generated_by=""):
                      f"{len(snap['visit_notes'])} visit notes, {len(snap['prescriptions'])} prescriptions, "
                      f"{len(snap['lab_requisitions'])} lab requisitions."),
         ("Confidential", "Full patient health and financial records. Keep it on a secured device, don't email or "
-                         "share it, and delete it once it's no longer needed (DPDP Act 2023)."),
+                         "share it, and delete it once it's no longer needed."),
         ("", ""),
         ("If Feast9 is down", None),
         ("Look up", "Upcoming Appointments, Patients & Cases (allergies and medical conditions are in the patient "

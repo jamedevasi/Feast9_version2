@@ -1,5 +1,7 @@
+import pyotp
+
 from app import db
-from tests.conftest import get_csrf
+from tests.conftest import enable_two_step, get_csrf
 from tests.test_roles import _create_user, _login, _logout
 
 
@@ -167,6 +169,7 @@ def test_my_account_link_visible_to_all_roles(logged_in_client, patient_id):
 # ── Forgot Password (public, unauthenticated) ────────────────────────────────
 
 def test_forgot_password_shows_security_question(setup_admin):
+    secret = enable_two_step("admin")
     token = get_csrf(setup_admin, "/forgot-password")
     resp = setup_admin.post(
         "/forgot-password", data={"username": "admin", "csrf_token": token}
@@ -193,6 +196,7 @@ def test_forgot_password_verify_blocked_without_step_one(setup_admin):
 
 
 def test_forgot_password_full_reset_flow(setup_admin):
+    secret = enable_two_step("admin")
     token = get_csrf(setup_admin, "/forgot-password")
     setup_admin.post("/forgot-password", data={"username": "admin", "csrf_token": token})
 
@@ -201,7 +205,7 @@ def test_forgot_password_full_reset_flow(setup_admin):
         "/forgot-password/verify",
         data={
             "security_answer": "Test", "new_password": "resetpass456",
-            "confirm_password": "resetpass456", "csrf_token": token,
+            "confirm_password": "resetpass456", "code": pyotp.TOTP(secret).now(), "csrf_token": token,
         },
     )
     assert resp.status_code == 302
@@ -212,10 +216,11 @@ def test_forgot_password_full_reset_flow(setup_admin):
         "/login", data={"username": "admin", "password": "resetpass456", "csrf_token": token}
     )
     assert login_resp.status_code == 302
-    assert "dashboard" in login_resp.headers["Location"]
+    assert "/login/totp" in login_resp.headers["Location"]  # the new password works; the code is still asked for
 
 
 def test_forgot_password_verify_rejects_wrong_answer(setup_admin):
+    secret = enable_two_step("admin")
     token = get_csrf(setup_admin, "/forgot-password")
     setup_admin.post("/forgot-password", data={"username": "admin", "csrf_token": token})
 
@@ -224,7 +229,7 @@ def test_forgot_password_verify_rejects_wrong_answer(setup_admin):
         "/forgot-password/verify",
         data={
             "security_answer": "WrongAnswer", "new_password": "resetpass456",
-            "confirm_password": "resetpass456", "csrf_token": token,
+            "confirm_password": "resetpass456", "code": pyotp.TOTP(secret).now(), "csrf_token": token,
         },
     )
     assert b"Incorrect answer" in resp.data
@@ -237,6 +242,7 @@ def test_forgot_password_verify_rejects_wrong_answer(setup_admin):
 
 
 def test_forgot_password_answer_is_case_insensitive(setup_admin):
+    secret = enable_two_step("admin")
     token = get_csrf(setup_admin, "/forgot-password")
     setup_admin.post("/forgot-password", data={"username": "admin", "csrf_token": token})
 
@@ -245,13 +251,14 @@ def test_forgot_password_answer_is_case_insensitive(setup_admin):
         "/forgot-password/verify",
         data={
             "security_answer": "TEST", "new_password": "resetpass456",
-            "confirm_password": "resetpass456", "csrf_token": token,
+            "confirm_password": "resetpass456", "code": pyotp.TOTP(secret).now(), "csrf_token": token,
         },
     )
     assert resp.status_code == 302
 
 
 def test_forgot_password_reset_is_audited(setup_admin):
+    secret = enable_two_step("admin")
     token = get_csrf(setup_admin, "/forgot-password")
     setup_admin.post("/forgot-password", data={"username": "admin", "csrf_token": token})
     token = get_csrf(setup_admin, "/forgot-password/verify")
@@ -259,7 +266,7 @@ def test_forgot_password_reset_is_audited(setup_admin):
         "/forgot-password/verify",
         data={
             "security_answer": "Test", "new_password": "resetpass456",
-            "confirm_password": "resetpass456", "csrf_token": token,
+            "confirm_password": "resetpass456", "code": pyotp.TOTP(secret).now(), "csrf_token": token,
         },
     )
     actions = [e["action"] for e in db.list_audit_log()]
@@ -275,3 +282,135 @@ def test_forgot_password_rate_limited_after_8_failed_usernames(setup_admin):
     token = get_csrf(client, "/forgot-password")
     resp = client.post("/forgot-password", data={"username": "admin", "csrf_token": token})
     assert b"Too many attempts" in resp.data
+
+
+# ── A security answer alone never resets a password ─────────────────────────
+
+def _start_reset(client, username="admin"):
+    token = get_csrf(client, "/forgot-password")
+    client.post("/forgot-password", data={"username": username, "csrf_token": token})
+
+
+def test_account_without_two_step_cannot_reset_its_own_password(setup_admin):
+    _start_reset(setup_admin)
+    page = setup_admin.get("/forgot-password/verify")
+    assert b"administrator" in page.data
+    assert b"City?" not in page.data and b'name="security_answer"' not in page.data
+
+    # even a hand-made request with the right answer changes nothing
+    token = get_csrf(setup_admin, "/login")
+    setup_admin.post("/forgot-password/verify", data={
+        "security_answer": "Test", "new_password": "resetpass456", "confirm_password": "resetpass456",
+        "csrf_token": token,
+    })
+    from app.auth import check_password
+    assert check_password(db.get_user_by_username("admin")["password_hash"], "testpass123")
+
+
+def test_reset_needs_the_two_step_code_as_well_as_the_answer(setup_admin):
+    from app.auth import check_password
+    enable_two_step("admin")
+    _start_reset(setup_admin)
+    for extra in ({}, {"code": "000000"}):
+        token = get_csrf(setup_admin, "/forgot-password/verify")
+        resp = setup_admin.post("/forgot-password/verify", data={
+            "security_answer": "Test", "new_password": "resetpass456", "confirm_password": "resetpass456",
+            "csrf_token": token, **extra,
+        })
+        assert b"Invalid authentication code" in resp.data
+    assert check_password(db.get_user_by_username("admin")["password_hash"], "testpass123")
+
+
+def test_reset_accepts_a_recovery_code_once(setup_admin):
+    from app.auth import hash_recovery_code
+    enable_two_step("admin", [hash_recovery_code("ABCD-EFGH")])
+    _start_reset(setup_admin)
+    token = get_csrf(setup_admin, "/forgot-password/verify")
+    resp = setup_admin.post("/forgot-password/verify", data={
+        "security_answer": "Test", "new_password": "resetpass456", "confirm_password": "resetpass456",
+        "recovery_code": "abcd-efgh", "csrf_token": token,
+    })
+    assert resp.status_code == 302
+    assert db.get_user_by_username("admin")["totp_recovery_codes_json"] == "[]"
+
+
+def test_a_password_typo_does_not_use_up_a_recovery_code(setup_admin):
+    from app.auth import hash_recovery_code
+    enable_two_step("admin", [hash_recovery_code("ABCD-EFGH")])
+    _start_reset(setup_admin)
+    token = get_csrf(setup_admin, "/forgot-password/verify")
+    resp = setup_admin.post("/forgot-password/verify", data={
+        "security_answer": "Test", "new_password": "resetpass456", "confirm_password": "different789",
+        "recovery_code": "ABCD-EFGH", "csrf_token": token,
+    })
+    assert b"do not match" in resp.data
+    assert db.get_user_by_username("admin")["totp_recovery_codes_json"] != "[]"
+
+
+# ── Admin sets a new password for someone (Users > Set Password) ─────────────
+
+def test_admin_sets_a_new_password_for_a_user(app, logged_in_client):
+    _create_user(logged_in_client, "forgetful", "receptionist")
+    user_id = db.get_user_by_username("forgetful")["id"]
+    other = app.test_client()
+    _login(other, "forgetful")
+    assert other.get("/dashboard").status_code == 200
+    db.register_failed_sign_in(user_id, 1, 15, actor=None, reason="wrong password")  # locked out
+
+    assert b"Set Password" in logged_in_client.get("/users/").data
+    token = get_csrf(logged_in_client, f"/users/{user_id}/password")
+    resp = logged_in_client.post(f"/users/{user_id}/password", data={
+        "password": "brand-new-pass-1", "confirm": "brand-new-pass-1", "csrf_token": token,
+    })
+    assert resp.status_code == 302
+
+    user = db.get_user_by_username("forgetful")
+    assert user["failed_login_count"] == 0 and not user["locked_until"]
+    assert other.get("/dashboard").status_code == 302  # signed out everywhere
+    token = get_csrf(other, "/login")
+    resp = other.post("/login", data={"username": "forgetful", "password": "brand-new-pass-1", "csrf_token": token})
+    assert "dashboard" in resp.headers["Location"]
+
+    row = [e for e in db.list_audit_log() if e["action"] == "password_changed"][0]
+    assert row["entity_id"] == user_id and row["after_summary"] == "set by an administrator"
+    assert row["actor_user_id"] == db.get_user_by_username("admin")["id"]
+
+
+def test_set_password_applies_the_password_rules_and_is_admin_only(logged_in_client):
+    from app.auth import check_password
+    _create_user(logged_in_client, "target1", "doctor")
+    user_id = db.get_user_by_username("target1")["id"]
+    before = db.get_user_by_username("target1")["password_hash"]
+    token = get_csrf(logged_in_client, f"/users/{user_id}/password")
+    resp = logged_in_client.post(f"/users/{user_id}/password", data={
+        "password": "password123", "confirm": "password123", "csrf_token": token,
+    })
+    assert b"too easy to guess" in resp.data
+    assert db.get_user_by_username("target1")["password_hash"] == before
+
+    # an admin's own password is changed under My Account, which asks for the current one
+    admin_id = db.get_user_by_username("admin")["id"]
+    assert logged_in_client.get(f"/users/{admin_id}/password").headers["Location"].endswith("/account/")
+
+    _logout(logged_in_client)
+    _login(logged_in_client, "target1")
+    assert logged_in_client.get(f"/users/{admin_id}/password").status_code == 403
+    assert check_password(db.get_user_by_username("admin")["password_hash"], "testpass123")
+
+
+def test_emergency_reset_script_uses_the_rules_audits_and_signs_out(app, logged_in_client, monkeypatch, capsys):
+    import pytest
+    import reset_admin_password
+    from app.auth import check_password
+
+    monkeypatch.setattr(reset_admin_password.getpass, "getpass", lambda prompt="": "short1")
+    with pytest.raises(SystemExit):
+        reset_admin_password.main()
+    assert "at least 10 characters" in capsys.readouterr().out
+
+    monkeypatch.setattr(reset_admin_password.getpass, "getpass", lambda prompt="": "a-long-new-passphrase")
+    reset_admin_password.main()
+    assert check_password(db.get_user_by_username("admin")["password_hash"], "a-long-new-passphrase")
+    assert logged_in_client.get("/dashboard").status_code == 302  # the old session is over
+    row = [e for e in db.list_audit_log() if e["action"] == "password_changed"][0]
+    assert row["after_summary"] == "reset on the Feast9 computer" and row["actor_user_id"] is None

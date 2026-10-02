@@ -83,11 +83,13 @@
   <form method="post" action="{{ url_for('settings.index') }}" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="signin_security">
-    <label class="checkbox"><input type="checkbox" name="require_two_factor" {% if require_two_factor %}checked{% endif %}> Require two-step sign-in for admins and doctors</label>
+    <label class="checkbox"><input type="checkbox" name="require_two_factor" {% if require_two_factor != '0' %}checked{% endif %}> Require two-step sign-in for admins and doctors</label>
+    <label class="checkbox"><input type="checkbox" name="require_two_factor_all" {% if require_two_factor == 'all' %}checked{% endif %}> Also require it for receptionists</label>
     <button type="submit">Save</button>
   </form>
   <ul class="muted-note">
-    <li>When required, an admin or doctor who hasn't set it up is taken to the setup page and can't open anything else until it's done. Receptionists can still choose to use it.</li>
+    <li>When required, an admin or doctor who hasn't set it up is taken to the setup page and can't open anything else until it's done. Receptionists can choose to use it unless the second box is ticked.</li>
+    <li>A forgotten password can only be reset from the login page by someone who has two-step sign-in: it asks for their security answer and a code. For anyone else, an admin sets a new password from Users.</li>
     <li>Passwords must be at least {{ min_password_length }} characters and can't be a common password, repeated characters or contain the username. This applies when a password is set or changed.</li>
     <li>After {{ account_max_failed }} wrong passwords or codes in a row an account is locked for {{ account_lock_minutes }} minutes. An admin can unlock it sooner from Users.</li>
   </ul>

@@ -160,6 +160,7 @@ def summary_pdf(patient_id):
 
 @bp.route("/<int:patient_id>/edit", methods=["GET", "POST"])
 @login_required
+@logs_view("patient_edit_form_viewed", "patient", "patient_id")
 def edit(patient_id):
     patient = db.get_patient(patient_id)
     if not patient:
