@@ -1324,18 +1324,14 @@ def add_visit_note(case_id, patient_id, note, visit_date, actor=None):
     appointment by hand). Only one appointment, only a `Scheduled` one — a Cancelled/No-show
     entry is a deliberate choice and is left alone — and never a future-dated one. With several
     that day, the one booked for this case wins, then this case's doctor, then the earliest.
-    Returns the completed appointment as a dict, or None."""
+
+    If that visit's appointment was with a doctor other than the case's own, the doctor's name
+    is appended to the note ("— Seen by Dr. X"): the case keeps its primary doctor (that only
+    changes by editing the case), and the note records who actually saw the patient. The same
+    applies when the case's appointment that day was already marked Completed by hand.
+    Returns the appointment this note completed as a dict, or None."""
     conn = get_db()
-    conn.execute(
-        """INSERT INTO case_visit_notes (case_id, patient_id, note, visit_date, created_at)
-           VALUES (?, ?, ?, ?, ?)""",
-        (case_id, patient_id, note, visit_date, now_iso()),
-    )
-    _write_audit(
-        conn, actor, "visit_note_added", "case", case_id,
-        after_summary=f"visit note added ({len(note)} chars), visit_date={visit_date}",
-    )
-    appt = None
+    appt = seen_appt = None
     if visit_date <= date.today().isoformat():
         appt = conn.execute(
             """SELECT a.* FROM appointments a
@@ -1347,10 +1343,36 @@ def add_visit_note(case_id, patient_id, note, visit_date, actor=None):
                LIMIT 1""",
             (patient_id, visit_date, case_id, case_id),
         ).fetchone()
+        seen_appt = appt or conn.execute(
+            """SELECT a.* FROM appointments a
+               WHERE a.case_id = ? AND a.appt_date = ? AND a.status = 'Completed'
+               ORDER BY a.start_time DESC, a.id DESC LIMIT 1""",
+            (case_id, visit_date),
+        ).fetchone()
+    if seen_appt and seen_appt["doctor_id"]:
+        seen_by = conn.execute(
+            """SELECT d.name FROM doctors d
+               WHERE d.id = ? AND d.id IS NOT (SELECT doctor_id FROM cases WHERE id = ?)""",
+            (seen_appt["doctor_id"], case_id),
+        ).fetchone()
+        if seen_by:
+            note = f"{note} — Seen by {seen_by['name']}"
+    conn.execute(
+        """INSERT INTO case_visit_notes (case_id, patient_id, note, visit_date, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (case_id, patient_id, note, visit_date, now_iso()),
+    )
+    _write_audit(
+        conn, actor, "visit_note_added", "case", case_id,
+        after_summary=f"visit note added ({len(note)} chars), visit_date={visit_date}",
+    )
     if appt:
+        # An appointment booked for the patient without a case is linked to this one now —
+        # the note says which case the visit was for.
         conn.execute(
-            "UPDATE appointments SET status = 'Completed', updated_at = ? WHERE id = ?",
-            (now_iso(), appt["id"]),
+            """UPDATE appointments SET status = 'Completed', case_id = COALESCE(case_id, ?),
+               updated_at = ? WHERE id = ?""",
+            (case_id, now_iso(), appt["id"]),
         )
         _write_audit(
             conn, actor, "appointment_completed_by_visit_note", "appointment", appt["id"],
@@ -2026,6 +2048,17 @@ def add_appointment(patient_id, case_id, doctor_id, appt_date, start_time, end_t
     return appt_id
 
 
+def set_appointment_case(appt_id, case_id):
+    """Links an appointment to the case it is for (or was seen under) — the patient's own
+    cases only; the caller checks that."""
+    conn = get_db()
+    conn.execute(
+        "UPDATE appointments SET case_id = ?, updated_at = ? WHERE id = ?", (case_id, now_iso(), appt_id)
+    )
+    conn.commit()
+    conn.close()
+
+
 def update_appointment(appt_id, patient_id, case_id, doctor_id, appt_date, start_time, end_time, title, notes, status):
     conn = get_db()
     conn.execute(
@@ -2289,10 +2322,12 @@ def get_todays_appointments():
     conn = get_db()
     today_str = date.today().isoformat()
     rows = conn.execute(
-        """SELECT a.*, p.name AS patient_name, d.name AS doctor_name, d.color AS doctor_color
+        """SELECT a.*, p.name AS patient_name, d.name AS doctor_name, d.color AS doctor_color,
+                  c.title AS case_title
            FROM appointments a
            JOIN patients p ON p.id = a.patient_id
            LEFT JOIN doctors d ON d.id = a.doctor_id
+           LEFT JOIN cases c ON c.id = a.case_id
            WHERE a.appt_date = ?
            ORDER BY a.start_time""",
         (today_str,),

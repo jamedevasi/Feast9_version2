@@ -12,6 +12,10 @@
 
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if appointment %}
+  <input type="hidden" name="appointment_id" value="{{ appointment.id }}">
+  <p class="hint">For the appointment on {{ appointment.appt_date }} at {{ appointment.start_time }} — it will be linked to this case.</p>
+  {% endif %}
 
   <fieldset>
     <legend>Case Details</legend>

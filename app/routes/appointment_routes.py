@@ -337,7 +337,26 @@ def edit(appt_id):
         errors=errors,
         clear_followup="",
         editing=True,
+        linked_case=db.get_case(appt["case_id"]) if appt.get("case_id") else None,
+        # Offered for linking when the appointment was booked for the patient, not a case.
+        patient_cases=[] if appt.get("case_id") else db.list_cases_for_patient(appt["patient_id"]),
     )
+
+
+@bp.route("/<int:appt_id>/link-case", methods=["POST"])
+@login_required
+def link_case(appt_id):
+    """Ties an appointment that was booked for a patient to one of that patient's cases."""
+    validate_csrf(request.form.get("csrf_token"))
+    appt = _get_appointment_or_404(appt_id)
+    case_id = request.form.get("case_id", "")
+    case = db.get_case(int(case_id)) if case_id.isdigit() else None
+    if not case or case["patient_id"] != appt["patient_id"]:
+        flash("Choose one of this patient's cases.", "warning")
+    else:
+        db.set_appointment_case(appt_id, case["id"])
+        flash(f"Appointment linked to the case '{case['title']}'.", "success")
+    return redirect(url_for("appointments.edit", appt_id=appt_id))
 
 
 @bp.route("/<int:appt_id>/delete", methods=["POST"])

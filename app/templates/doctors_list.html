@@ -18,21 +18,23 @@
         {% if d.registration_number %}{{ d.registration_number }}{% if d.registration_council %}<br><span class="rx-note">{{ d.registration_council }}</span>{% endif %}
         {% else %}<span class="badge badge-due-soon">Missing</span>{% endif %}
       </td>
-      <td>{% if d.color %}<span class="color-swatch" style="background: {{ d.color }};"></span> {{ d.color }}{% else %}—{% endif %}</td>
+      <td>{% if d.color %}<span class="color-swatch" style="background: {{ d.color }};" title="Calendar colour"></span>{% else %}—{% endif %}</td>
       <td>{{ 'Active' if d.is_active else 'Deactivated' }}</td>
       <td>
+        <div class="row-actions">
         <a class="button button-small button-outline" href="{{ url_for('doctors.edit', doctor_id=d.id) }}">Edit</a>
         {% if d.is_active %}
         <form method="post" action="{{ url_for('doctors.deactivate', doctor_id=d.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="link-button">Deactivate</button>
+          <button type="submit" class="button button-small button-outline">Deactivate</button>
         </form>
         {% else %}
         <form method="post" action="{{ url_for('doctors.activate', doctor_id=d.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="link-button">Reactivate</button>
+          <button type="submit" class="button button-small button-outline">Reactivate</button>
         </form>
         {% endif %}
+        </div>
       </td>
     </tr>
     {% endfor %}
@@ -44,7 +46,7 @@
 
 <section class="card">
   <h2>Add Doctor</h2>
-  <form method="post" action="{{ url_for('doctors.new') }}" class="inline-form">
+  <form method="post" action="{{ url_for('doctors.new') }}" class="inline-form doctor-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% set doctor = {} %}
     {% include "doctor_fields.html" %}

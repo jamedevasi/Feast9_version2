@@ -100,6 +100,19 @@ def new(patient_id):
     errors = []
     form_state = {"procedures": []}
 
+    # "New Case" from an appointment that was booked for the patient without a case: the case
+    # starts from the appointment's title and doctor, and the appointment is linked to it.
+    appt_arg = request.values.get("appointment_id", "")
+    appointment = db.get_appointment(int(appt_arg)) if appt_arg.isdigit() else None
+    if appointment and (appointment["patient_id"] != patient_id or appointment["case_id"]):
+        appointment = None
+    if appointment and request.method == "GET":
+        doctor = db.get_doctor(appointment["doctor_id"]) if appointment["doctor_id"] else None
+        form_state.update(
+            title=appointment["title"] or "",
+            doctor_id=doctor["id"] if doctor and doctor["is_active"] else None,
+        )
+
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
         data = _collect_case_form(request.form)
@@ -111,6 +124,9 @@ def new(patient_id):
             data["patient_id"] = patient_id
             case_id = db.add_case(data)
             flash("Case created.", "success")
+            if appointment:
+                db.set_appointment_case(appointment["id"], case_id)
+                flash(f"The appointment on {appointment['appt_date']} is linked to this case.", "success")
             return redirect(url_for("cases.detail", case_id=case_id))
 
     return render_template(
@@ -121,6 +137,7 @@ def new(patient_id):
         doctors=db.list_doctors(),
         procedure_types=db.list_procedure_types(),
         editing=False,
+        appointment=appointment,
     )
 
 

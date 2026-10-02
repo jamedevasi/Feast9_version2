@@ -89,13 +89,17 @@
   {% if todays_appointments %}
   <table class="data-table stack-mobile">
     <thead>
-      <tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Status</th></tr>
+      <tr><th>Time</th><th>Patient</th><th>Case</th><th>Doctor</th><th>Status</th></tr>
     </thead>
     <tbody>
       {% for a in todays_appointments %}
       <tr{% if a.status == 'Completed' %} class="appt-row-completed"{% endif %}>
         <td>{{ a.start_time }}</td>
         <td><a href="{{ url_for('patients.detail', patient_id=a.patient_id) }}">{{ a.patient_name }}</a></td>
+        <td>
+          {% if a.case_id %}<a href="{{ url_for('cases.detail', case_id=a.case_id) }}">{{ a.case_title }}</a>
+          {% else %}<a class="button button-small button-outline" href="{{ url_for('appointments.edit', appt_id=a.id) }}#appointment-case">Choose case</a>{% endif %}
+        </td>
         <td>{{ a.doctor_name or '—' }}</td>
         <td><span class="badge badge-status-{{ a.status|lower|replace(' ', '-') }}">{% if a.status == 'Completed' %}✓ {% endif %}{{ a.status }}</span></td>
       </tr>

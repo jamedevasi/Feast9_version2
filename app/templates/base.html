@@ -28,7 +28,7 @@
       <a href="{{ url_for('dpdp.list_view') }}" class="{{ 'nav-active' if current_bp == 'dpdp' }}">DPDP Requests{% if pending_data_requests_count %} ({{ pending_data_requests_count }}){% endif %}</a>
       <a href="{{ url_for('account.index') }}" class="{{ 'nav-active' if current_bp in ('account', 'totp', 'google_auth') }}">My Account</a>
       {% if session.get('role') == 'admin' %}
-      <details class="nav-dropdown" {% if current_bp in settings_bps %}open{% endif %}>
+      <details class="nav-dropdown">
         <summary class="{{ 'nav-active' if current_bp in settings_bps }}">Settings</summary>
         <div class="nav-dropdown-menu">
           <a href="{{ url_for('settings.index') }}" class="{{ 'nav-active' if current_bp == 'settings' }}">Settings Home</a>

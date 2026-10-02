@@ -4,11 +4,13 @@
 <h1>Edit Doctor</h1>
 
 <section class="card">
-  <form method="post" action="{{ url_for('doctors.edit', doctor_id=doctor.id) }}">
+  <form method="post" action="{{ url_for('doctors.edit', doctor_id=doctor.id) }}" class="doctor-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% include "doctor_fields.html" %}
-    <button type="submit">Save</button>
-    <a class="button button-outline" href="{{ url_for('doctors.list_view') }}">Cancel</a>
+    <div class="row-actions">
+      <button type="submit">Save</button>
+      <a class="button button-outline" href="{{ url_for('doctors.list_view') }}">Cancel</a>
+    </div>
   </form>
 </section>
 {% endblock %}

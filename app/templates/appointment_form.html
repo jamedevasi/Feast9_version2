@@ -82,6 +82,32 @@
 </form>
 
 {% if editing %}
+<section class="card" id="appointment-case">
+  <h2>Case</h2>
+  {% if linked_case %}
+  <p>This appointment is for the case <strong>{{ linked_case.title }}</strong>
+    <span class="badge badge-{{ 'active' if linked_case.status == 'Active' else 'closed' }}">{{ linked_case.status }}</span></p>
+  <a class="button" href="{{ url_for('cases.detail', case_id=linked_case.id) }}">Open Case</a>
+  {% else %}
+  <p>This appointment was booked for the patient and is not linked to a case yet.</p>
+  <div class="followup-actions">
+    <a class="button" href="{{ url_for('cases.new', patient_id=appt.patient_id, appointment_id=appt.id) }}">+ New Case for this Appointment</a>
+    {% if patient_cases %}
+    <form method="post" action="{{ url_for('appointments.link_case', appt_id=appt.id) }}" class="link-case-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <select name="case_id" required aria-label="Existing case">
+        <option value="">or link to an existing case…</option>
+        {% for c in patient_cases %}
+        <option value="{{ c.id }}">{{ c.title }}{% if c.status != 'Active' %} ({{ c.status }}){% endif %}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="button button-outline">Link</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
 <section class="card">
   <h2>Reminder Text</h2>
   <p class="hint">Click to copy, then paste into WhatsApp or SMS.</p>

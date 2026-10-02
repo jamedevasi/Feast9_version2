@@ -508,6 +508,21 @@ dd { margin: 0; }
 .followup-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.75rem 0 1rem; }
 .followup-actions form { margin: 0; }
 .followup-actions .followup-clear { margin-left: auto; }
+/* Buttons that sit together in a table row or at the foot of a form: one line, one height. */
+.row-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.row-actions form { margin: 0; }
+/* Doctors: the fields share rows and the button lines up with the inputs' bottom edge. */
+.doctor-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0 1rem;
+  align-items: end;
+  max-width: none;
+}
+.doctor-form > button, .doctor-form > .row-actions { justify-self: start; margin-bottom: 0.6rem; }
+.doctor-form input[type="color"] { height: 2.3rem; padding: 0.15rem; }
+.link-case-form { display: flex; gap: 0.5rem; align-items: center; }
+.link-case-form select { width: auto; min-width: 14rem; margin: 0; }
 .followup-edit { max-width: none; }
 .followup-edit h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--muted); font-weight: 600; }
 .followup-edit-row { display: flex; flex-wrap: wrap; gap: 0 1rem; align-items: flex-end; }
@@ -1124,3 +1139,6 @@ details[open] summary { margin-bottom: 0.75rem; }
 
 .quick-links { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.25rem; }
 .empty-state .button { margin-top: 0.25rem; }
+
+/* A top-level table followed by a card (Doctors, Users, ...) needs air between them. */
+.container > .data-table { margin-bottom: 1rem; }
