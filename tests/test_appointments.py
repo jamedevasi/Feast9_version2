@@ -236,8 +236,8 @@ def test_every_occurrence_has_its_own_calendar_entry_across_months(logged_in_cli
 
     october = logged_in_client.get("/appointments/2026/10").data.decode()
     november = logged_in_client.get("/appointments/2026/11").data.decode()
-    assert october.count("calendar-appt") == 2 and october.count("🔁") == 2
-    assert november.count("calendar-appt") == 2 and november.count("🔁") == 2
+    assert october.count("calendar-appt") == 2 and october.count("icon-repeat") == 2
+    assert november.count("calendar-appt") == 2 and november.count("icon-repeat") == 2
 
 
 def test_recurring_series_cut_short_by_the_cap_says_so(logged_in_client, patient_id):
@@ -382,7 +382,7 @@ def test_noshow_on_one_series_occurrence_does_not_affect_others(logged_in_client
 def test_calendar_shows_recurrence_icon(logged_in_client, patient_id):
     _book_recurring(logged_in_client, patient_id)
     resp = logged_in_client.get("/appointments/2026/10")
-    assert "🔁".encode() in resp.data
+    assert b"icon-repeat" in resp.data
 
 
 # ── Appointment ↔ case link ─────────────────────────────────────────────────

@@ -248,3 +248,75 @@ def test_doctor_edit_is_admin_only(logged_in_client):
     _logout(logged_in_client)
     _login(logged_in_client, "recep_doc_edit")
     assert logged_in_client.get(f"/doctors/{doctor_id}/edit").status_code == 403
+
+
+# ── Renaming a case type also renames it on existing cases ──────────────────
+
+def _type_id(name):
+    return next(p["id"] for p in db.list_procedure_types(active_only=False) if p["name"] == name)
+
+
+def _rename(client, type_id, new_name):
+    url = f"/procedure-types/{type_id}/edit"
+    return client.post(url, data={"name": new_name, "csrf_token": get_csrf(client, url)}, follow_redirects=True)
+
+
+def _case_with(client, patient_id, procedures):
+    import json
+    from tests.test_cases import _create_case
+    resp, _ = _create_case(client, patient_id, procedures=procedures)
+    case_id = int(resp.headers["Location"].rstrip("/").rsplit("/", 1)[-1])
+    return case_id, lambda: json.loads(db.get_case(case_id)["procedures_json"])
+
+
+def test_renaming_a_case_type_updates_existing_cases(logged_in_client, patient_id):
+    case_id, procedures = _case_with(logged_in_client, patient_id, ["Scaling", "Crown"])
+    _other_id, other = _case_with(logged_in_client, patient_id, ["Crown"])
+    updated_before = db.get_case(case_id)["updated_at"]
+
+    type_id = _type_id("Scaling")
+    assert b"1 existing case uses" in logged_in_client.get(f"/procedure-types/{type_id}/edit").data
+    resp = _rename(logged_in_client, type_id, "Scaling & Polishing")
+    assert b"also updated on 1 existing case." in resp.data
+
+    assert procedures() == ["Scaling & Polishing", "Crown"]
+    assert other() == ["Crown"]
+    assert db.get_case(case_id)["updated_at"] == updated_before  # a label fix, not case activity
+    names = [p["name"] for p in db.list_procedure_types(active_only=False)]
+    assert "Scaling & Polishing" in names and "Scaling" not in names
+
+    conn = db.get_db()
+    row = conn.execute("SELECT before_summary, after_summary FROM audit_log WHERE action = 'procedure_type_renamed'").fetchone()
+    conn.close()
+    assert row["before_summary"] == "name=Scaling"
+    assert row["after_summary"] == "name=Scaling & Polishing, cases_updated=1"
+
+
+def test_renamed_standard_case_type_is_not_seeded_back(logged_in_client, app):
+    _rename(logged_in_client, _type_id("Scaling"), "Scaling & Polishing")
+    with app.app_context():
+        db.init_db()  # what every startup runs
+    names = [p["name"] for p in db.list_procedure_types(active_only=False)]
+    assert "Scaling" not in names and names.count("Scaling & Polishing") == 1
+    # ...and still not after a second rename
+    _rename(logged_in_client, _type_id("Scaling & Polishing"), "Oral Prophylaxis")
+    with app.app_context():
+        db.init_db()
+    assert "Scaling" not in [p["name"] for p in db.list_procedure_types(active_only=False)]
+
+
+def test_case_type_cannot_be_renamed_to_an_existing_or_blank_name(logged_in_client, patient_id):
+    _case_id, procedures = _case_with(logged_in_client, patient_id, ["Scaling"])
+    type_id = _type_id("Scaling")
+    assert b"already a case type called" in _rename(logged_in_client, type_id, "crown").data
+    _rename(logged_in_client, type_id, "   ")
+    assert db.get_procedure_type(type_id)["name"] == "Scaling" and procedures() == ["Scaling"]
+
+
+def test_case_type_rename_is_admin_only(logged_in_client):
+    type_id = _type_id("Scaling")
+    _create_user(logged_in_client, "recep_type_edit", "receptionist")
+    _logout(logged_in_client)
+    _login(logged_in_client, "recep_type_edit")
+    assert logged_in_client.get(f"/procedure-types/{type_id}/edit").status_code == 403
+    assert db.get_procedure_type(type_id)["name"] == "Scaling"

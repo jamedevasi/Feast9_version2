@@ -21,29 +21,31 @@
       <td>{{ u.google_email if u.google_email else 'Not linked' }}</td>
       <td>{{ u.created_at }}</td>
       <td>
+        <div class="row-actions">
         {% if u.is_active %}
         <form method="post" action="{{ url_for('users.deactivate', user_id=u.id) }}" data-confirm="Deactivate this user?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="link-button">Deactivate</button>
+          <button type="submit" class="button button-small button-outline">Deactivate</button>
         </form>
         {% else %}
         <form method="post" action="{{ url_for('users.activate', user_id=u.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="link-button">Reactivate</button>
+          <button type="submit" class="button button-small button-outline">Reactivate</button>
         </form>
         {% endif %}
         {% if u.totp_enabled %}
         <form method="post" action="{{ url_for('users.reset_totp', user_id=u.id) }}" data-confirm="Reset 2FA for this user? They will need to set it up again.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="link-button">Reset 2FA</button>
+          <button type="submit" class="button button-small button-outline">Reset 2FA</button>
         </form>
         {% endif %}
         {% if u.google_email %}
         <form method="post" action="{{ url_for('users.unlink_google', user_id=u.id) }}" data-confirm="Unlink this user's Google account?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="link-button">Unlink Google</button>
+          <button type="submit" class="button button-small button-outline">Unlink Google</button>
         </form>
         {% endif %}
+        </div>
       </td>
     </tr>
     {% endfor %}

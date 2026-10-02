@@ -6,13 +6,13 @@
   {% if payments %}
   <table class="data-table">
     <thead>
-      <tr><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th>Notes</th></tr>
+      <tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Reference</th><th>Notes</th></tr>
     </thead>
     <tbody>
       {% for p in payments %}
       <tr>
         <td>{{ p.payment_date }}</td>
-        <td>₹{{ '%.2f'|format(p.amount) }}</td>
+        <td class="num">₹{{ '%.2f'|format(p.amount) }}</td>
         <td>{{ p.method or '—' }}</td>
         <td>{{ p.reference or '—' }}</td>
         <td>{{ p.notes or '—' }}</td>

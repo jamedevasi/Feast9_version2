@@ -1,11 +1,20 @@
 :root {
   color-scheme: light;
-  --border: #d8dee4;
-  --text: #1f2933;
-  --muted: #5b6672;
-  --brand: #2b6cb0;
+  --border: #dde3e8;
+  --text: #1b2530;
+  --muted: #5d6975;
+  --brand: #0f766e;
   --danger: #b91c1c;
-  --bg: #f7f8fa;
+  --bg: #f5f7f8;
+  --topbar-h: 3.4rem;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("vendor/fonts/inter-latin-variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
 }
 
 * { box-sizing: border-box; }
@@ -15,7 +24,9 @@ a:hover { text-decoration-thickness: 2px; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
   color: var(--text);
   background: var(--bg);
 }
@@ -27,10 +38,12 @@ body {
   display: flex;
   align-items: center;
   gap: 1.25rem;
-  padding: 0.6rem 1.5rem;
-  background: var(--brand);
-  color: var(--on-brand, #fff);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  min-height: var(--topbar-h);
+  padding: 0 1.5rem;
+  background: white;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 
 .brand {
@@ -42,29 +55,36 @@ body {
   font-size: 1.05rem;
   color: inherit;
   white-space: nowrap;
+  max-width: 15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.brand-logo { width: 30px; height: 30px; border-radius: 6px; object-fit: contain; flex-shrink: 0; background: white; padding: 2px; }
+.brand-logo { width: 30px; height: 30px; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
 
-.topbar nav { display: flex; align-items: center; flex-wrap: wrap; gap: 0.15rem; flex: 1; }
+.topbar nav { display: flex; align-items: stretch; flex-wrap: nowrap; gap: 0.1rem; flex: 1; align-self: stretch; min-width: 0; }
 .topbar nav a,
 .topbar .nav-dropdown > summary {
-  color: inherit;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
   text-decoration: none;
-  padding: 0.4rem 0.7rem;
-  border-radius: 6px;
-  font-size: 0.92rem;
+  padding: 0 0.55rem;
+  font-size: 0.86rem;
+  font-weight: 500;
+  white-space: nowrap;
 }
+.topbar .nav-dropdown { display: flex; }
 .topbar nav a:hover,
-.topbar .nav-dropdown > summary:hover { background: rgba(255, 255, 255, 0.18); color: inherit; }
+.topbar .nav-dropdown > summary:hover { color: var(--text); background: var(--bg); }
 
 /* The current section stays visibly marked (not just on hover) so a user can tell where they
    are without reading the page title — a pill background plus a bottom accent bar, since the
    hover background alone would be indistinguishable once the pointer moves away. */
 .topbar nav a.nav-active,
 .topbar .nav-dropdown > summary.nav-active {
-  background: rgba(255, 255, 255, 0.22);
+  color: var(--brand);
   font-weight: 600;
-  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 -2px 0 var(--brand);
 }
 
 .nav-dropdown { position: relative; }
@@ -72,8 +92,6 @@ body {
   display: block;
   cursor: pointer;
   list-style: none;
-  font-weight: 400;
-  font-size: 0.92rem;
 }
 .nav-dropdown[open] > summary { margin-bottom: 0; }
 .nav-dropdown > summary::-webkit-details-marker { display: none; }
@@ -83,7 +101,7 @@ body {
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: 0.4rem;
+  margin-top: 0.25rem;
   display: flex;
   flex-direction: column;
   min-width: 10rem;
@@ -94,9 +112,9 @@ body {
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
   z-index: 40;
 }
-.topbar .nav-dropdown-menu a { color: var(--text); padding: 0.5rem 1rem; border-radius: 0; }
+.topbar .nav-dropdown-menu a { color: var(--text); padding: 0.5rem 1rem; border-radius: 0; box-shadow: none; }
 .topbar .nav-dropdown-menu a:hover { background: var(--bg); color: var(--brand); }
-.topbar .nav-dropdown-menu a.nav-active { background: var(--bg); color: var(--brand); font-weight: 600; }
+.topbar .nav-dropdown-menu a.nav-active { background: var(--bg); color: var(--brand); font-weight: 600; box-shadow: none; }
 
 .logout-form { margin: 0; }
 .link-button {
@@ -108,13 +126,16 @@ body {
   padding: 0;
 }
 .topbar .link-button {
-  color: inherit;
+  background: white;
+  color: var(--text);
+  white-space: nowrap;
   padding: 0.35rem 0.8rem;
-  border: 1px solid currentColor;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  opacity: 0.9;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
-.topbar .link-button:hover { background: rgba(255, 255, 255, 0.18); opacity: 1; }
+.topbar .link-button:hover { background: var(--bg); border-color: var(--muted); }
 
 /* Hamburger — a CSS-only checkbox toggle, since CSP forbids inline scripts. Hidden on wide screens. */
 .nav-toggle-input { position: absolute; opacity: 0; pointer-events: none; }
@@ -640,7 +661,6 @@ details[open] summary { margin-bottom: 0.75rem; }
 .lab-req-alert { color: #8a6100; font-weight: 600; margin: 0.3rem 0; }
 
 .calendar-nav { display: flex; justify-content: space-between; margin-bottom: 0.75rem; }
-.calendar-nav a { color: var(--brand); text-decoration: none; font-weight: 600; }
 
 .calendar-scroll { overflow-x: auto; }
 
@@ -714,6 +734,10 @@ details[open] summary { margin-bottom: 0.75rem; }
 .badge-status-completed { background: #c8f0d0; color: #1a7431; }
 .badge-status-cancelled { background: #e2e5e9; color: var(--muted); }
 .badge-status-no-show { background: #fbd0ce; color: var(--danger); }
+/* Data-rights request statuses reuse the same four tones. */
+.badge-status-pending { background: #fef3c7; color: #92400e; }
+.badge-status-in-progress { background: #cfe2ff; color: #1c4e80; }
+.badge-status-rejected { background: #e2e5e9; color: var(--muted); }
 
 .doctor-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; font-size: 0.85rem; }
 .doctor-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
@@ -935,8 +959,7 @@ details[open] summary { margin-bottom: 0.75rem; }
    and a row of in-page jump links above the sections. */
 .stat-tile > .badge, .stat-tile > .badge-plain { align-self: flex-start; }
 .stat-tile > .muted-note { margin-top: 0; }
-.page-sections { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin: 0 0 1rem; }
-.page-sections a { font-weight: 600; }
+.page-sections { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1rem; }
 .card[id] { scroll-margin-top: 1rem; }
 .older-backups { margin-top: 0.5rem; }
 .setup-panel, .backup-settings {
@@ -978,7 +1001,7 @@ details[open] summary { margin-bottom: 0.75rem; }
 .ledger-filters label { margin-bottom: 0; }
 .ledger-filters select { min-width: 9rem; }
 .ledger-filters + .ledger-scope { margin: 0.6rem 0 0.4rem; }
-.ledger-table .num { text-align: right; white-space: nowrap; }
+
 .ledger-table tr.ledger-group td { background: var(--bg); font-weight: 700; border-top: 2px solid var(--border); }
 .ledger-count { color: var(--muted); font-weight: 400; }
 .ledger-table tfoot tr.ledger-total td { font-weight: 700; border-top: 2px solid var(--text, #333); }
@@ -1013,7 +1036,8 @@ details[open] summary { margin-bottom: 0.75rem; }
   text-align: center;
 }
 .settings-card:hover { border-color: var(--brand); }
-.settings-card-icon { font-size: 2rem; }
+.settings-card-icon { color: var(--brand); line-height: 1; }
+.settings-card-icon .icon { width: 1.9rem; height: 1.9rem; stroke-width: 1.6; }
 .settings-card-label { font-weight: 600; }
 
 .color-swatch {
@@ -1048,16 +1072,20 @@ details[open] summary { margin-bottom: 0.75rem; }
 /* ---------- Responsive: tablet & phone ---------- */
 
 /* Collapse the menu into a hamburger before the nav links would wrap onto a second row. */
-@media (max-width: 1100px) {
+@media (max-width: 1240px) {
   .topbar { flex-wrap: wrap; gap: 0.5rem 1rem; padding: 0.55rem 1rem; }
   .brand { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .nav-toggle { display: block; }
   .topbar nav,
   .topbar .logout-form { display: none; flex: 1 1 100%; }
-  .nav-toggle-input:checked ~ nav { display: flex; flex-direction: column; align-items: stretch; gap: 0.1rem; padding-top: 0.4rem; border-top: 1px solid rgba(255, 255, 255, 0.25); }
+  .nav-toggle-input:checked ~ nav { display: flex; flex-wrap: wrap; flex-direction: column; align-items: stretch; gap: 0.1rem; padding: 0.4rem 0; border-top: 1px solid var(--border); }
   .nav-toggle-input:checked ~ .logout-form { display: block; }
   .topbar nav a,
   .topbar .nav-dropdown > summary { padding: 0.65rem 0.75rem; font-size: 1rem; }
+  .topbar .nav-dropdown { display: block; }
+  .topbar nav a.nav-active,
+  .topbar .nav-dropdown > summary.nav-active { box-shadow: inset 3px 0 0 var(--brand); }
+  .topbar .logout-form { padding-bottom: 0.6rem; }
   .topbar .link-button { width: 100%; padding: 0.65rem; }
   /* Dropdown opens in the flow rather than floating, so it can't run off a narrow screen. */
   .nav-dropdown-menu { position: static; margin: 0.2rem 0 0.2rem 0.75rem; box-shadow: none; }
@@ -1142,3 +1170,79 @@ details[open] summary { margin-bottom: 0.75rem; }
 
 /* A top-level table followed by a card (Doctors, Users, ...) needs air between them. */
 .container > .data-table { margin-bottom: 1rem; }
+
+/* Plain text links (a name in a table, a link inside a sentence) look the same everywhere:
+   brand colour, underlined only on hover. Buttons and chips carry their own classes. */
+main a { text-decoration: none; }
+main a:not([class]):hover { text-decoration: underline; }
+
+/* ── Visual refresh (2026-10-02): icons, type, tables, cards ─────────────────────────────── */
+
+/* Line icons (app/icons.py) take the size and colour of the text they sit beside. */
+.icon { width: 1.1em; height: 1.1em; vertical-align: -0.18em; flex-shrink: 0; }
+.nav-toggle .icon { width: 1.5rem; height: 1.5rem; display: block; }
+.alert-list .icon, .allergy-alert .icon { margin-right: 0.15em; }
+
+h1 { font-weight: 650; letter-spacing: -0.015em; }
+h2, h3, h4 { letter-spacing: -0.005em; }
+
+/* Amounts and counts line up digit under digit; a money column is right-aligned (class "num"
+   on both the header and the cells). */
+.data-table, .stat-value, .figure-row, .balance-line, .calendar-table, input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+th.num, td.num { text-align: right; white-space: nowrap; }
+.data-table td input[type="number"] { text-align: right; }
+
+/* Tables: quiet small-caps header that stays in view under the top bar while a long list
+   scrolls, a little more room per row, and a hover tint on plain rows (rows that already carry
+   a meaning colour — overdue, completed, subtotal — keep theirs). */
+.data-table { background: white; border: 1px solid var(--border); border-radius: 8px; border-collapse: separate; border-spacing: 0; }
+.data-table th, .data-table td { padding: 0.6rem 0.8rem; }
+.data-table thead th {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 5;
+  background: #f1f4f6;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.data-table thead th:first-child { border-top-left-radius: 8px; }
+.data-table thead th:last-child { border-top-right-radius: 8px; }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr:not([class]):hover { background: #f7f9fa; }
+.card .data-table { border: none; border-radius: 0; }
+.card .data-table thead th { position: static; }
+
+/* Cards: softer edge, a faint lift, and one style of section heading. */
+.card {
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.04);
+}
+.card h2 { font-size: 1rem; font-weight: 650; }
+
+.stat-tile {
+  border-radius: 10px;
+  border-top: 3px solid var(--brand);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.04);
+}
+.stat-label { font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-value { letter-spacing: -0.02em; }
+
+/* Buttons and fields: one radius, a visible keyboard focus ring in the brand colour. */
+button[type="submit"], .button { border-radius: 6px; font-weight: 600; transition: background-color 0.12s, border-color 0.12s, color 0.12s; }
+input, select, textarea { border-radius: 6px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible,
+.button:focus-visible, button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.badge { font-weight: 600; white-space: nowrap; }
+
+/* The '← Back' button that opens or closes a page. */
+.back-row { margin: 0 0 0.6rem; }
+.card + .back-row, .data-table + .back-row { margin-top: 1rem; }

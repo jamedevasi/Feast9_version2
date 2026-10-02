@@ -9,7 +9,7 @@
   {% for k, v in ledger.params.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
   <button type="submit">Apply</button>
   <span class="toolbar-end">
-    <a class="button button-outline" href="{{ url_for('reports.report_pdf', start=start, end=end) }}" target="_blank" rel="noopener">🖨 Print Report (PDF)</a>
+    <a class="button button-outline" href="{{ url_for('reports.report_pdf', start=start, end=end) }}" target="_blank" rel="noopener">{{ icon('printer') }} Print Report (PDF)</a>
   </span>
 </form>
 
@@ -62,8 +62,8 @@
   </div>
   <p class="hint">Billed &minus; Expenses, across {{ financial_summary.case_count }} cases.</p>
   <p class="figure-links">
-    <a href="{{ url_for('financial.index') }}">Financial Assessment →</a>
-    <a href="{{ url_for('financial.monthly') }}">Monthly Evaluation →</a>
+    <a class="button button-small button-outline" href="{{ url_for('financial.index') }}">Financial Assessment</a>
+    <a class="button button-small button-outline" href="{{ url_for('financial.monthly') }}">Monthly Evaluation</a>
   </p>
 </section>
 </div>
@@ -76,14 +76,14 @@
   {% if doctor_revenue %}
   <table class="data-table">
     <thead>
-      <tr><th>Doctor</th><th>Billed</th><th>Collected</th><th>Collection Rate</th></tr>
+      <tr><th>Doctor</th><th class="num">Billed</th><th class="num">Collected</th><th>Collection Rate</th></tr>
     </thead>
     <tbody>
       {% for doc in doctor_revenue %}
       <tr>
         <td>{{ doc.doctor_name }}</td>
-        <td>₹{{ '%.2f'|format(doc.billed) }}</td>
-        <td>₹{{ '%.2f'|format(doc.collected) }}</td>
+        <td class="num">₹{{ '%.2f'|format(doc.billed) }}</td>
+        <td class="num">₹{{ '%.2f'|format(doc.collected) }}</td>
         <td>
           <div class="progress-bar"><div class="progress-fill" style="width: {{ [doc.collection_rate, 100]|min|int }}%;"></div></div>
           {{ '%.0f'|format(doc.collection_rate) }}%
@@ -114,7 +114,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="badge badge-active">All clear — no lapsed patients 🎉</p>
+  <p class="badge badge-active">All clear — no lapsed patients</p>
   {% endif %}
 </section>
 </div>

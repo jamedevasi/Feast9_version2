@@ -3,26 +3,27 @@
 {% block content %}
 <h1>Data-Rights Requests</h1>
 
-<div class="search-form">
-  <a href="{{ url_for('dpdp.list_view') }}" class="{{ 'button' if not current_status else '' }}">All</a>
+<p class="view-toggle">
+  <a href="{{ url_for('dpdp.list_view') }}" class="button {{ 'button-active' if not current_status }}">All</a>
   {% for s in statuses %}
-  <a href="{{ url_for('dpdp.list_view', status=s) }}" class="{{ 'button' if current_status == s else '' }}">{{ s }}</a>
+  <a href="{{ url_for('dpdp.list_view', status=s) }}" class="button {{ 'button-active' if current_status == s }}">{{ s }}</a>
   {% endfor %}
-</div>
+</p>
 
 {% if entries %}
-<table class="data-table">
+<table class="data-table stack-mobile">
   <thead>
-    <tr><th>Patient</th><th>Type</th><th>Status</th><th>Requested</th><th>Deadline</th></tr>
+    <tr><th>Patient</th><th>Type</th><th>Status</th><th>Requested</th><th>Deadline</th><th></th></tr>
   </thead>
   <tbody>
     {% for e in entries %}
     <tr>
       <td><a href="{{ url_for('patients.detail', patient_id=e.patient_id) }}">{{ e.patient_name }}</a></td>
       <td>{{ e.request_type }}</td>
-      <td><a href="{{ url_for('dpdp.detail', request_id=e.id) }}">{{ e.status }}</a></td>
+      <td><span class="badge badge-status-{{ e.status|lower|replace(' ', '-') }}">{{ e.status }}</span></td>
       <td>{{ e.requested_at }}</td>
       <td class="{{ 'errors' if e.status == 'Pending' and e.deadline_at < today }}">{{ e.deadline_at }}</td>
+      <td><a class="button button-small button-outline" href="{{ url_for('dpdp.detail', request_id=e.id) }}">Open</a></td>
     </tr>
     {% endfor %}
   </tbody>

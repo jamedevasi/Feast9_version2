@@ -32,9 +32,9 @@
 {% endif %}
 
 <nav class="page-sections" aria-label="Sections on this page">
-  <a href="#system-backup">Backup</a>
-  <a href="#export">Excel Copy</a>
-  <a href="#import">Import from Excel</a>
+  <a class="period-chip" href="#system-backup">Backup</a>
+  <a class="period-chip" href="#export">Excel Copy</a>
+  <a class="period-chip" href="#import">Import from Excel</a>
 </nav>
 
 {% if result %}
@@ -108,7 +108,7 @@
     <p class="hint">Older backups are deleted automatically to save disk space.</p>
     <div class="form-actions">
       <button type="submit">Save Settings</button>
-      <a href="{{ url_for('backup.show_key') }}">Show backup key</a>
+      <a class="button button-outline" href="{{ url_for('backup.show_key') }}">Show backup key</a>
     </div>
   </form>
   {% endif %}
@@ -141,7 +141,7 @@
 <section class="card" id="export">
   <div class="card-heading">
     <h2>Excel Copy (Plan B)</h2>
-    <a class="button" href="{{ url_for('import_data.export') }}">📤 Download Excel Copy</a>
+    <a class="button" href="{{ url_for('import_data.export') }}">{{ icon('download') }} Download Excel Copy</a>
   </div>
   <p>Everything in one spreadsheet, to keep the clinic running if Feast9 is unavailable: upcoming appointments, patients with their allergies and medical conditions, cases with balances and follow-ups, payments, visit notes, prescriptions and lab work.</p>
   <p>While Feast9 is down, add new patients and cases as new rows, and raise a case's Paid amount when a payment comes in. When Feast9 is back, import the file below. Only what you added or changed is brought in.</p>
@@ -151,7 +151,7 @@
 <section class="card" id="import">
   <div class="card-heading">
     <h2>Import from Excel</h2>
-    <a class="button button-outline" href="{{ url_for('import_data.template') }}">📥 Download Template</a>
+    <a class="button button-outline" href="{{ url_for('import_data.template') }}">{{ icon('download') }} Download Template</a>
   </div>
   <p>Bring in patients, cases and payments from a spreadsheet: an Excel copy you kept working in, records from the earlier version of Feast9, or paper records typed into the template.</p>
   <ul class="muted-note">

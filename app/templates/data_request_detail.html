@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Data Request #{{ entry.id }} — Feast9{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('dpdp.list_view') }}">← Data-Rights Requests</a></p>
+<p class="back-row"><a class="button button-small button-outline" href="{{ url_for('dpdp.list_view') }}">← Data-Rights Requests</a></p>
 <h1>{{ entry.request_type }} request — {{ patient.name }}</h1>
 
 <section class="card">
   <dl>
     <dt>Patient</dt><dd><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">{{ patient.name }}</a></dd>
-    <dt>Status</dt><dd>{{ entry.status }}</dd>
+    <dt>Status</dt><dd><span class="badge badge-status-{{ entry.status|lower|replace(' ', '-') }}">{{ entry.status }}</span></dd>
     <dt>Requested</dt><dd>{{ entry.requested_at }}</dd>
     <dt>Deadline</dt><dd>{{ entry.deadline_at }}</dd>
     {% if entry.resolved_at %}<dt>Resolved</dt><dd>{{ entry.resolved_at }}</dd>{% endif %}
@@ -15,7 +15,7 @@
     {% if entry.resolution_note %}<dt>Resolution Note</dt><dd>{{ entry.resolution_note }}</dd>{% endif %}
   </dl>
   {% if entry.request_type == 'Access' and session.get('role') in ('admin', 'doctor') %}
-  <p><a class="button" href="{{ url_for('dpdp.access_pdf', request_id=entry.id) }}" target="_blank" rel="noopener">📄 Download Patient Data (PDF)</a></p>
+  <p><a class="button" href="{{ url_for('dpdp.access_pdf', request_id=entry.id) }}" target="_blank" rel="noopener">{{ icon('file-text') }} Download Patient Data (PDF)</a></p>
   {% endif %}
 </section>
 
@@ -23,7 +23,7 @@
 <section class="card">
   <h2>Resolve</h2>
   {% if entry.request_type == 'Erasure' %}
-  <p class="allergy-alert">⚠ Marking this Completed will permanently soft-anonymise this patient's contact details
+  <p class="allergy-alert">{{ icon('triangle-alert') }} Marking this Completed will permanently soft-anonymise this patient's contact details
     (name, DOB, mobile, email, address, emergency/guardian contacts). Clinical and financial records are preserved.
     This cannot be undone.</p>
   {% endif %}

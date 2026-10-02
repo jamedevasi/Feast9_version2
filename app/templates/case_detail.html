@@ -2,7 +2,7 @@
 {% block title %}{{ case.title }} — Feast9{% endblock %}
 {% block body_class %}case-page{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
+<p class="back-row"><a class="button button-small button-outline" href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
 
 <div class="page-header">
   <div>
@@ -10,7 +10,7 @@
     <span class="badge badge-{{ 'active' if case.status == 'Active' else 'closed' }}">{{ case.status }}</span>
   </div>
   <div class="case-actions">
-    <a class="button" href="{{ url_for('cases.summary_pdf', case_id=case.id) }}" target="_blank" rel="noopener">📄 Case Summary (PDF)</a>
+    <a class="button" href="{{ url_for('cases.summary_pdf', case_id=case.id) }}" target="_blank" rel="noopener">{{ icon('file-text') }} Case Summary (PDF)</a>
     {% if case.status == 'Active' %}
     <a class="button" href="{{ url_for('cases.edit', case_id=case.id) }}">Edit</a>
     <form method="post" action="{{ url_for('cases.close', case_id=case.id) }}" data-confirm="Close this case? This cannot be undone from the UI.">

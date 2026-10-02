@@ -11,7 +11,7 @@
   <td>{% if not e.offsite_status or e.offsite_status == 'not_configured' %}—{% elif e.offsite_status == 'success' %}Copied{% else %}<span title="{{ e.offsite_status }}">Not copied</span>{% endif %}</td>
   <td>
     {% if e.status == 'success' %}
-    <a href="{{ url_for('backup.download', backup_id=e.id) }}">Download</a>
+    <a class="button button-small button-outline" href="{{ url_for('backup.download', backup_id=e.id) }}">Download</a>
     {% endif %}
   </td>
 </tr>

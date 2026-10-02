@@ -7,8 +7,8 @@
 </div>
 
 <div class="calendar-nav">
-  <a href="{{ url_for('appointments.view_calendar', year=prev_year, month=prev_month) }}">← Previous</a>
-  <a href="{{ url_for('appointments.view_calendar', year=next_year, month=next_month) }}">Next →</a>
+  <a class="button button-small button-outline" href="{{ url_for('appointments.view_calendar', year=prev_year, month=prev_month) }}">← Previous</a>
+  <a class="button button-small button-outline" href="{{ url_for('appointments.view_calendar', year=next_year, month=next_month) }}">Next →</a>
 </div>
 
 <div class="calendar-scroll">
@@ -35,7 +35,7 @@
         <a class="calendar-appt badge-status-{{ a.status|lower|replace(' ', '-') }}" href="{{ url_for('appointments.edit', appt_id=a.id) }}"
            title="{{ a.doctor_name }}">
           <span class="appt-dot" style="background: {{ a.doctor_color or '#adb5bd' }};"></span>
-          <span class="appt-label">{% if a.series_id %}🔁{% endif %}{{ a.start_time }} {{ a.patient_name }}</span>
+          <span class="appt-label">{% if a.series_id %}{{ icon('repeat') }}{% endif %}{{ a.start_time }} {{ a.patient_name }}</span>
         </a>
         {% endfor %}
       </td>

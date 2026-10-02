@@ -11,11 +11,14 @@
   "This month" means cases opened in the selected month, same as Reports' period figures.
 </p>
 
-<form method="get" action="{{ url_for('financial.monthly') }}" class="search-form">
+<form method="get" action="{{ url_for('financial.monthly') }}" class="search-form toolbar-wide">
   <label>Month <input type="month" name="month" value="{{ month }}"></label>
   <input type="hidden" name="view" value="{{ view }}">
   <button type="submit">Apply</button>
-  <a href="{{ url_for('financial.index', **{'from': month_start, 'to': month_end}) }}">View this month's cases in Financial Assessment →</a>
+  <span class="toolbar-end">
+    <a class="button button-outline" href="{{ url_for('financial.index', **{'from': month_start, 'to': month_end}) }}" title="This month's cases in Financial Assessment">{{ icon('clipboard-list') }} This Month's Cases</a>
+    <a class="button button-outline" href="{{ url_for('financial.capital_investments') }}">{{ icon('building-2') }} Capital Investments</a>
+  </span>
 </form>
 
 <p class="view-toggle">
@@ -71,10 +74,10 @@
   <h2>Capital Depreciation — {{ month }}</h2>
   {% if depreciation.breakdown %}
   <table class="data-table">
-    <thead><tr><th>Asset</th><th>Monthly Depreciation</th></tr></thead>
+    <thead><tr><th>Asset</th><th class="num">Monthly Depreciation</th></tr></thead>
     <tbody>
       {% for item in depreciation.breakdown %}
-      <tr><td>{{ item.asset_name }}</td><td>₹{{ '%.2f'|format(item.monthly_amount) }}</td></tr>
+      <tr><td>{{ item.asset_name }}</td><td class="num">₹{{ '%.2f'|format(item.monthly_amount) }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -82,10 +85,10 @@
   <p class="empty-state">No active capital investments are being depreciated this month.</p>
   {% endif %}
   <p>Total Depreciation: ₹{{ '%.2f'|format(depreciation.total) }}</p>
-  <p><a href="{{ url_for('financial.capital_investments') }}">Manage Capital Investments →</a></p>
+  <p><a class="button button-small button-outline" href="{{ url_for('financial.capital_investments') }}">Manage Capital Investments</a></p>
 </section>
 {% else %}
-<p><a href="{{ url_for('financial.capital_investments') }}">Manage Capital Investments →</a></p>
+<p><a class="button button-small button-outline" href="{{ url_for('financial.capital_investments') }}">Manage Capital Investments</a></p>
 {% endif %}
 
 <section class="card">

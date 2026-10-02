@@ -2,7 +2,7 @@
   <h2>Prescriptions</h2>
   {% if patient.allergies or patient.allergies_other %}
   <div class="allergy-alert">
-    🚫 Allergy alert:
+    {{ icon('ban') }} Allergy alert:
     {{ (patient.allergies + ([patient.allergies_other] if patient.allergies_other else [])) | join(', ') }}
   </div>
   {% endif %}
@@ -28,7 +28,7 @@
       {% else %}
       <p>{{ rx.rx_details }}</p>
       {% endif %}
-      <a class="button button-small button-outline" href="{{ url_for('cases.prescription_pdf', case_id=case.id, rx_id=rx.id) }}" target="_blank" rel="noopener">📄 Print</a>
+      <a class="button button-small button-outline" href="{{ url_for('cases.prescription_pdf', case_id=case.id, rx_id=rx.id) }}" target="_blank" rel="noopener">{{ icon('printer') }} Print</a>
     </li>
     {% endfor %}
   </ul>

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Dental Chart — {{ patient.name }} — Feast9{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
+<p class="back-row"><a class="button button-small button-outline" href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
 <h1>Dental Chart — {{ patient.name }}</h1>
 
 <div class="severity-summary">
@@ -67,7 +67,7 @@
         {{ e.surface }}: {{ e.finding }}
         <span class="badge-plain">{{ e.status }}</span>
         {% if e.planned_date %}
-        <span class="hint">{% if e.status == 'Planned' and e.planned_date < today %}⚠ Overdue since {{ e.planned_date }}{% else %}Planned by {{ e.planned_date }}{% endif %}</span>
+        <span class="hint">{% if e.status == 'Planned' and e.planned_date < today %}{{ icon('triangle-alert') }} Overdue since {{ e.planned_date }}{% else %}Planned by {{ e.planned_date }}{% endif %}</span>
         {% endif %}
       </li>
       {% endfor %}
@@ -154,7 +154,7 @@
           <span class="badge-plain">{{ e.status }}</span>
           {% if not e.is_current %}<span class="hint">Superseded</span>{% endif %}
           {% if e.planned_date %}
-          <span class="hint">{% if e.status == 'Planned' and e.planned_date < today %}⚠ Overdue since {{ e.planned_date }}{% else %}Planned by {{ e.planned_date }}{% endif %}</span>
+          <span class="hint">{% if e.status == 'Planned' and e.planned_date < today %}{{ icon('triangle-alert') }} Overdue since {{ e.planned_date }}{% else %}Planned by {{ e.planned_date }}{% endif %}</span>
           {% endif %}
           {% if e.notes %}<p>{{ e.notes }}</p>{% endif %}
         </li>

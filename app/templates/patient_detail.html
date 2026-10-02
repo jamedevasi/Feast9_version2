@@ -4,8 +4,8 @@
 <div class="page-header">
   <h1>{{ patient.name }}{% if patient.is_historic_import %} <span class="badge badge-closed" title="Bulk-imported historic record">Historic Import</span>{% endif %}</h1>
   <div class="case-actions">
-    <a class="button" href="{{ url_for('dental.chart', patient_id=patient.id) }}">🦷 Dental Chart</a>
-    <a class="button" href="{{ url_for('patients.summary_pdf', patient_id=patient.id) }}" target="_blank" rel="noopener">📄 Patient Summary (PDF)</a>
+    <a class="button" href="{{ url_for('dental.chart', patient_id=patient.id) }}">{{ icon('tooth') }} Dental Chart</a>
+    <a class="button" href="{{ url_for('patients.summary_pdf', patient_id=patient.id) }}" target="_blank" rel="noopener">{{ icon('file-text') }} Patient Summary (PDF)</a>
     <a class="button" href="{{ url_for('patients.edit', patient_id=patient.id) }}">Edit</a>
   </div>
 </div>
@@ -14,12 +14,12 @@
   <h2>Medical Alerts</h2>
   {% if patient.medical_conditions or patient.medical_conditions_other or patient.allergies or patient.allergies_other or patient.is_pregnant or patient.is_nursing %}
   <ul class="alert-list">
-    {% for c in patient.medical_conditions %}<li>⚠ {{ c }}</li>{% endfor %}
-    {% if patient.medical_conditions_other %}<li>⚠ {{ patient.medical_conditions_other }}</li>{% endif %}
-    {% if patient.is_pregnant %}<li>⚠ Currently pregnant</li>{% endif %}
-    {% if patient.is_nursing %}<li>⚠ Currently nursing</li>{% endif %}
-    {% for a in patient.allergies %}<li>🚫 Allergy: {{ a }}</li>{% endfor %}
-    {% if patient.allergies_other %}<li>🚫 Allergy: {{ patient.allergies_other }}</li>{% endif %}
+    {% for c in patient.medical_conditions %}<li>{{ icon('triangle-alert') }} {{ c }}</li>{% endfor %}
+    {% if patient.medical_conditions_other %}<li>{{ icon('triangle-alert') }} {{ patient.medical_conditions_other }}</li>{% endif %}
+    {% if patient.is_pregnant %}<li>{{ icon('triangle-alert') }} Currently pregnant</li>{% endif %}
+    {% if patient.is_nursing %}<li>{{ icon('triangle-alert') }} Currently nursing</li>{% endif %}
+    {% for a in patient.allergies %}<li>{{ icon('ban') }} Allergy: {{ a }}</li>{% endfor %}
+    {% if patient.allergies_other %}<li>{{ icon('ban') }} Allergy: {{ patient.allergies_other }}</li>{% endif %}
   </ul>
   {% else %}
   <p class="empty-state">No medical alerts recorded.</p>
@@ -46,9 +46,9 @@
         <a href="{{ url_for('cases.detail', case_id=c.id) }}">{{ c.title }}</a>
         <span class="badge badge-{{ 'active' if c.status == 'Active' else 'closed' }}">{{ c.status }}</span>
         {% if f and f.days_overdue is defined %}
-        <span class="badge badge-overdue">🔴 Follow-up overdue · {{ f.days_overdue }} day{{ '' if f.days_overdue == 1 else 's' }}</span>
+        <span class="badge badge-overdue">{{ icon('circle-alert') }} Follow-up overdue · {{ f.days_overdue }} day{{ '' if f.days_overdue == 1 else 's' }}</span>
         {% elif f %}
-        <span class="badge badge-due-soon">🟡 Follow-up {% if f.days_until == 0 %}due today{% elif f.days_until == 1 %}due tomorrow{% else %}due in {{ f.days_until }} days{% endif %}</span>
+        <span class="badge badge-due-soon">{{ icon('clock') }} Follow-up {% if f.days_until == 0 %}due today{% elif f.days_until == 1 %}due tomorrow{% else %}due in {{ f.days_until }} days{% endif %}</span>
         {% endif %}
         {% if c.doctor_name %}<span class="hint">{{ c.doctor_name }}</span>{% endif %}
       </div>
@@ -87,7 +87,7 @@
 <section class="card">
   <h2>Contact Details &amp; DPDP Status</h2>
   {% if patient.is_anonymized %}
-  <p class="allergy-alert">⚠ This patient's contact details were erased on {{ patient.anonymized_at }} per a DPDP Erasure request. Clinical and financial records are preserved.</p>
+  <p class="allergy-alert">{{ icon('triangle-alert') }} This patient's contact details were erased on {{ patient.anonymized_at }} per a DPDP Erasure request. Clinical and financial records are preserved.</p>
   {% endif %}
   <dl class="dl-two-col">
     <dt>Date of Birth</dt>

@@ -34,8 +34,8 @@
   <div class="card-heading">
     <h2>Follow-ups Needing Attention</h2>
     <p class="indicator-legend">
-      <span class="badge badge-overdue">🔴 Overdue</span>
-      <span class="badge badge-due-soon">🟡 Due in next 3 days</span>
+      <span class="badge badge-overdue">{{ icon('circle-alert') }} Overdue</span>
+      <span class="badge badge-due-soon">{{ icon('clock') }} Due in next 3 days</span>
     </p>
   </div>
   {% if overdue_followups or upcoming_followups %}
@@ -46,7 +46,7 @@
     <tbody>
       {% for f in overdue_followups %}
       <tr class="followup-row-overdue">
-        <td><span class="badge badge-overdue">🔴 Overdue · {{ f.days_overdue }} day{{ '' if f.days_overdue == 1 else 's' }}</span></td>
+        <td><span class="badge badge-overdue">{{ icon('circle-alert') }} Overdue · {{ f.days_overdue }} day{{ '' if f.days_overdue == 1 else 's' }}</span></td>
         <td><a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
         <td><a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a></td>
         <td>{{ f.follow_up_date }}</td>
@@ -55,14 +55,14 @@
           <form method="post" action="{{ url_for('cases.complete_followup', case_id=f.case_id) }}" class="done-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="next" value="dashboard">
-            <button type="submit" class="button button-small" title="Mark this follow-up as done">✓ Done</button>
+            <button type="submit" class="button button-small" title="Mark this follow-up as done">{{ icon('check') }} Done</button>
           </form>
         </td>
       </tr>
       {% endfor %}
       {% for f in upcoming_followups %}
       <tr class="followup-row-upcoming">
-        <td><span class="badge badge-due-soon">🟡 {% if f.days_until == 0 %}Due today{% elif f.days_until == 1 %}Due tomorrow{% else %}Due in {{ f.days_until }} days{% endif %}</span></td>
+        <td><span class="badge badge-due-soon">{{ icon('clock') }} {% if f.days_until == 0 %}Due today{% elif f.days_until == 1 %}Due tomorrow{% else %}Due in {{ f.days_until }} days{% endif %}</span></td>
         <td><a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
         <td><a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a></td>
         <td>{{ f.follow_up_date }}</td>
@@ -71,7 +71,7 @@
           <form method="post" action="{{ url_for('cases.complete_followup', case_id=f.case_id) }}" class="done-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="next" value="dashboard">
-            <button type="submit" class="button button-small" title="Mark this follow-up as done">✓ Done</button>
+            <button type="submit" class="button button-small" title="Mark this follow-up as done">{{ icon('check') }} Done</button>
           </form>
         </td>
       </tr>
@@ -79,7 +79,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty-state">No follow-ups requiring attention 🎉</p>
+  <p class="empty-state">No follow-ups requiring attention</p>
   {% endif %}
 </section>
 
@@ -101,7 +101,7 @@
           {% else %}<a class="button button-small button-outline" href="{{ url_for('appointments.edit', appt_id=a.id) }}#appointment-case">Choose case</a>{% endif %}
         </td>
         <td>{{ a.doctor_name or '—' }}</td>
-        <td><span class="badge badge-status-{{ a.status|lower|replace(' ', '-') }}">{% if a.status == 'Completed' %}✓ {% endif %}{{ a.status }}</span></td>
+        <td><span class="badge badge-status-{{ a.status|lower|replace(' ', '-') }}">{% if a.status == 'Completed' %}{{ icon('check') }} {% endif %}{{ a.status }}</span></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -130,7 +130,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty-state">No open lab requisitions ahead of an upcoming visit 🎉</p>
+  <p class="empty-state">No open lab requisitions ahead of an upcoming visit</p>
   {% endif %}
 </section>
 </div>

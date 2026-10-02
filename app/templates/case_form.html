@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Edit' if editing else 'New' }} Case — Feast9{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
+<p class="back-row"><a class="button button-small button-outline" href="{{ url_for('patients.detail', patient_id=patient.id) }}">← {{ patient.name }}</a></p>
 <h1>{{ 'Edit Case' if editing else 'New Case' }} for {{ patient.name }}</h1>
 
 {% if errors %}

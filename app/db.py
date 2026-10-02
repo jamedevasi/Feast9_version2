@@ -185,11 +185,24 @@ def _migrate_prescriptions_structured(conn):
     conn.commit()
 
 
+def _migrate_procedure_types_original_name(conn):
+    """Additive migration: the name a case type had before it was first renamed. The standard
+    types are re-seeded by name on every startup, so without this a renamed standard type
+    ("Scaling" -> "Scaling & Polishing") would get its old name re-added as a second type."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(procedure_types)")}
+    if "original_name" not in columns:
+        conn.execute("ALTER TABLE procedure_types ADD COLUMN original_name TEXT NOT NULL DEFAULT ''")
+    conn.commit()
+
+
 def _seed_standard_procedure_types(conn):
     """Adds each STANDARD_PROCEDURE_TYPES name not already present (case-insensitive, active or
-    not) — so it's safe on every startup, never duplicates, and never re-activates a type an
-    admin switched off. Not audited: it's shipped master data, not a user action."""
-    existing = {r["name"].strip().lower() for r in conn.execute("SELECT name FROM procedure_types")}
+    not, under its current name or the one it had before a rename) — so it's safe on every
+    startup, never duplicates, never re-activates a type an admin switched off, and never
+    brings back a name an admin renamed. Not audited: it's shipped master data, not a user action."""
+    existing = set()
+    for r in conn.execute("SELECT name, original_name FROM procedure_types"):
+        existing.update({r["name"].strip().lower(), r["original_name"].strip().lower()})
     now = now_iso()
     for name in STANDARD_PROCEDURE_TYPES:
         if name.lower() not in existing:
@@ -484,6 +497,7 @@ def init_db():
     _migrate_dental_chart_planned_date(conn)
     _migrate_doctors_credentials(conn)
     _migrate_prescriptions_structured(conn)
+    _migrate_procedure_types_original_name(conn)
     _seed_standard_procedure_types(conn)
     conn.close()
 
@@ -1010,6 +1024,76 @@ def get_procedure_type(procedure_type_id):
     row = conn.execute("SELECT * FROM procedure_types WHERE id = ?", (procedure_type_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def _cases_using_procedure(conn, name):
+    """[(case_id, procedures list)] for every case whose procedures_json names this case type
+    (compared ignoring case and surrounding spaces). procedures_json is JSON, so it's matched
+    in Python — a LIKE only narrows the candidates."""
+    key = name.strip().lower()
+    matches = []
+    for row in conn.execute("SELECT id, procedures_json FROM cases WHERE procedures_json LIKE '%\"%'"):
+        try:
+            procedures = json.loads(row["procedures_json"] or "[]")
+        except ValueError:
+            continue
+        if any(isinstance(p, str) and p.strip().lower() == key for p in procedures):
+            matches.append((row["id"], procedures))
+    return matches
+
+
+def count_cases_with_procedure_type(name):
+    conn = get_db()
+    count = len(_cases_using_procedure(conn, name))
+    conn.close()
+    return count
+
+
+def rename_procedure_type(procedure_type_id, new_name, actor=None):
+    """Renames a case type and, in the same transaction, rewrites that name on every existing
+    case — cases store case-type *names* in procedures_json, so renaming only the lookup row
+    would leave old cases (and Analytics' per-procedure charts) on the old name. A case that
+    already lists the new name keeps it once. cases.updated_at is deliberately not touched:
+    it's a label fix, not activity on the case. Raises ValueError for a blank name or one
+    another case type already has. Returns the number of cases updated."""
+    new_name = (new_name or "").strip()
+    if not new_name:
+        raise ValueError("Case type name is required.")
+    conn = get_db()
+    row = conn.execute("SELECT * FROM procedure_types WHERE id = ?", (procedure_type_id,)).fetchone()
+    old_name = row["name"]
+    if new_name == old_name:
+        conn.close()
+        return 0
+    clash = conn.execute(
+        "SELECT 1 FROM procedure_types WHERE id != ? AND LOWER(TRIM(name)) = ?",
+        (procedure_type_id, new_name.lower()),
+    ).fetchone()
+    if clash:
+        conn.close()
+        raise ValueError(f"There is already a case type called '{new_name}'.")
+
+    cases = _cases_using_procedure(conn, old_name)
+    old_key = old_name.strip().lower()
+    for case_id, procedures in cases:
+        renamed = []
+        for p in procedures:
+            p = new_name if isinstance(p, str) and p.strip().lower() == old_key else p
+            if p not in renamed:
+                renamed.append(p)
+        conn.execute("UPDATE cases SET procedures_json = ? WHERE id = ?", (json.dumps(renamed), case_id))
+    conn.execute(
+        "UPDATE procedure_types SET name = ?, original_name = ? WHERE id = ?",
+        (new_name, row["original_name"] or old_name, procedure_type_id),
+    )
+    _write_audit(
+        conn, actor, "procedure_type_renamed", "procedure_type", procedure_type_id,
+        before_summary=f"name={old_name}",
+        after_summary=f"name={new_name}, cases_updated={len(cases)}",
+    )
+    conn.commit()
+    conn.close()
+    return len(cases)
 
 
 def set_procedure_type_active(procedure_type_id, is_active, actor=None):

@@ -15,17 +15,20 @@
       <td>{{ 'Active' if p.is_active else 'Deactivated' }}</td>
       <td>{{ p.created_at }}</td>
       <td>
+        <div class="row-actions">
+        <a class="button button-small button-outline" href="{{ url_for('procedure_types.edit', procedure_type_id=p.id) }}">Edit</a>
         {% if p.is_active %}
         <form method="post" action="{{ url_for('procedure_types.deactivate', procedure_type_id=p.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="link-button">Deactivate</button>
+          <button type="submit" class="button button-small button-outline">Deactivate</button>
         </form>
         {% else %}
         <form method="post" action="{{ url_for('procedure_types.activate', procedure_type_id=p.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="link-button">Reactivate</button>
+          <button type="submit" class="button button-small button-outline">Reactivate</button>
         </form>
         {% endif %}
+        </div>
       </td>
     </tr>
     {% endfor %}
@@ -44,5 +47,5 @@
   </form>
 </section>
 
-<p><a href="{{ url_for('settings.index') }}">← Back to Settings</a></p>
+<p class="back-row"><a class="button button-small button-outline" href="{{ url_for('settings.index') }}">← Back to Settings</a></p>
 {% endblock %}

@@ -2,7 +2,7 @@
   {% set due_count = (lab_reqs|rejectattr('status', 'equalto', 'Received')|list|length) if upcoming_appt_date else 0 %}
   <details class="js-collapsible" data-storage-key="section_open_lab_reqs_{{ case.id }}">
     <summary>Lab Requisitions
-      {% if due_count %}<span class="badge badge-lab-delayed">⚠ {{ due_count }} due before visit</span>{% endif %}
+      {% if due_count %}<span class="badge badge-lab-delayed">{{ icon('triangle-alert') }} {{ due_count }} due before visit</span>{% endif %}
       <span class="collapsible-toggle-icon">▶ Show</span>
     </summary>
   {% if lab_reqs %}
@@ -19,7 +19,7 @@
       </div>
       <span class="entry-date">Sent {{ r.sent_date }}{% if r.expected_return %} · Expected {{ r.expected_return }}{% endif %}{% if r.received_date %} · Received {{ r.received_date }}{% endif %}</span>
       {% if is_due_before_visit %}
-      <p class="lab-req-alert">⚠ Appointment on {{ upcoming_appt_date }} — still {{ r.status|lower }}, not yet received.</p>
+      <p class="lab-req-alert">{{ icon('triangle-alert') }} Appointment on {{ upcoming_appt_date }} — still {{ r.status|lower }}, not yet received.</p>
       {% endif %}
       {% if r.notes %}<p>{{ r.notes }}</p>{% endif %}
 

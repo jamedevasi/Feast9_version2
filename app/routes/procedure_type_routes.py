@@ -28,6 +28,35 @@ def new():
     return redirect(url_for("procedure_types.list_view"))
 
 
+@bp.route("/<int:procedure_type_id>/edit", methods=["GET", "POST"])
+@login_required
+@role_required("admin")
+def edit(procedure_type_id):
+    target = db.get_procedure_type(procedure_type_id)
+    if not target:
+        abort(404)
+    name = target["name"]
+    if request.method == "POST":
+        validate_csrf(request.form.get("csrf_token"))
+        name = request.form.get("name", "").strip()
+        try:
+            cases_updated = db.rename_procedure_type(procedure_type_id, name, actor=current_actor())
+        except ValueError as exc:
+            flash(str(exc), "warning")
+        else:
+            if name != target["name"]:
+                flash(
+                    f"Case type '{target['name']}' renamed to '{name}'"
+                    + (f" — also updated on {cases_updated} existing case{'' if cases_updated == 1 else 's'}." if cases_updated else "."),
+                    "success",
+                )
+            return redirect(url_for("procedure_types.list_view"))
+    return render_template(
+        "procedure_type_form.html", procedure_type=target, name=name,
+        case_count=db.count_cases_with_procedure_type(target["name"]),
+    )
+
+
 @bp.route("/<int:procedure_type_id>/deactivate", methods=["POST"])
 @login_required
 @role_required("admin")

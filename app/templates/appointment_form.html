@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Edit' if editing else 'New' }} Appointment — Feast9{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('appointments.index') }}">← Calendar</a></p>
+<p class="back-row"><a class="button button-small button-outline" href="{{ url_for('appointments.index') }}">← Calendar</a></p>
 <h1>{{ 'Edit Appointment' if editing else 'New Appointment' }}</h1>
 
 {% if errors %}
@@ -114,7 +114,7 @@
   <div class="reminder-copy" data-copy>
     Dear {{ appt.patient_name }}, your appointment at {{ appt.start_time }} on {{ appt.appt_date }} with {{ appt.doctor_name }} is confirmed.
   </div>
-  <span class="reminder-copied" data-copy-feedback style="display:none;">✓ Copied</span>
+  <span class="reminder-copied" data-copy-feedback style="display:none;">{{ icon('check') }} Copied</span>
 </section>
 
 <form method="post" action="{{ url_for('appointments.delete', appt_id=appt.id) }}"

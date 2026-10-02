@@ -13,7 +13,7 @@
   <header class="topbar">
     <div class="brand"><img class="brand-logo" src="{{ url_for('auth.login_image') }}" alt="">{{ clinic_name_nav }}</div>
     <input type="checkbox" id="nav-toggle" class="nav-toggle-input" aria-label="Toggle menu">
-    <label for="nav-toggle" class="nav-toggle" aria-hidden="true">☰</label>
+    <label for="nav-toggle" class="nav-toggle" aria-hidden="true">{{ icon('menu') }}</label>
     {% set current_bp = request.blueprint %}
     {% set settings_bps = ('settings', 'users', 'audit', 'backup', 'doctors', 'procedure_types', 'import_data') %}
     <nav>
@@ -28,15 +28,8 @@
       <a href="{{ url_for('dpdp.list_view') }}" class="{{ 'nav-active' if current_bp == 'dpdp' }}">DPDP Requests{% if pending_data_requests_count %} ({{ pending_data_requests_count }}){% endif %}</a>
       <a href="{{ url_for('account.index') }}" class="{{ 'nav-active' if current_bp in ('account', 'totp', 'google_auth') }}">My Account</a>
       {% if session.get('role') == 'admin' %}
-      <details class="nav-dropdown">
-        <summary class="{{ 'nav-active' if current_bp in settings_bps }}">Settings</summary>
-        <div class="nav-dropdown-menu">
-          <a href="{{ url_for('settings.index') }}" class="{{ 'nav-active' if current_bp == 'settings' }}">Settings Home</a>
-          <a href="{{ url_for('users.list_view') }}" class="{{ 'nav-active' if current_bp == 'users' }}">Users</a>
-          <a href="{{ url_for('audit.list_view') }}" class="{{ 'nav-active' if current_bp == 'audit' }}">Audit Log</a>
-          <a href="{{ url_for('backup.list_view') }}" class="{{ 'nav-active' if current_bp in ('backup', 'import_data') }}">Backup &amp; Data</a>
-        </div>
-      </details>
+      {# One link: the Settings page itself carries the cards for Doctors, Case Types, Backup & Data, Users and Audit Log. #}
+      <a href="{{ url_for('settings.index') }}" class="{{ 'nav-active' if current_bp in settings_bps }}">Settings</a>
       {% endif %}
     </nav>
     <form method="post" action="{{ url_for('auth.logout') }}" class="logout-form" id="logout-form"

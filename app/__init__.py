@@ -2,6 +2,7 @@ import os
 
 from flask import Flask, render_template, request
 
+from app.icons import icon
 from app import config as app_config
 from app import db as db_module
 from app.csrf import generate_csrf_token
@@ -75,6 +76,7 @@ def create_app():
     _register_context_processors(app)
     _register_error_handlers(app)
     _register_security_headers(app)
+    app.jinja_env.globals["icon"] = icon
 
     return app
 

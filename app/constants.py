@@ -149,8 +149,8 @@ DEFAULT_CLINIC_NAME = "Feast9"
 # apple-green-and-white combination; an admin can override either value in Settings > Theme.
 # Accent/border shades are derived from these two at render time (see app/theme.py) rather
 # than stored, so there's no way for them to drift out of sync with a custom primary/background.
-DEFAULT_THEME_PRIMARY_COLOR = "#4f7d32"
-DEFAULT_THEME_BACKGROUND_COLOR = "#f3f9ec"
+DEFAULT_THEME_PRIMARY_COLOR = "#0f766e"
+DEFAULT_THEME_BACKGROUND_COLOR = "#f5f7f8"
 
 # Prescriptions: each medicine row states the generic name, strength, dosage, frequency and
 # route of administration (the particulars a prescription must legally carry).

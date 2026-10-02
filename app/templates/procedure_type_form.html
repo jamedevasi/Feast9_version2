@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Edit Case Type — Feast9{% endblock %}
+{% block content %}
+<h1>Edit Case Type</h1>
+
+<section class="card">
+  <form method="post" action="{{ url_for('procedure_types.edit', procedure_type_id=procedure_type.id) }}" class="doctor-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Name<input type="text" name="name" value="{{ name }}" required></label>
+    <div class="row-actions">
+      <button type="submit">Save</button>
+      <a class="button button-outline" href="{{ url_for('procedure_types.list_view') }}">Cancel</a>
+    </div>
+  </form>
+  <p class="rx-note">
+    {% if case_count %}
+    {{ case_count }} existing case{{ '' if case_count == 1 else 's' }} use{{ 's' if case_count == 1 else '' }} "{{ procedure_type.name }}". Renaming it changes the name on {{ 'that case' if case_count == 1 else 'those cases' }} too, so reports and charts stay together under the new name.
+    {% else %}
+    No existing case uses "{{ procedure_type.name }}" yet.
+    {% endif %}
+  </p>
+</section>
+{% endblock %}

@@ -10,7 +10,7 @@
         <span class="entry-date">{{ r.referral_date }}</span>
         <p>{{ r.reason }}</p>
         {% if r.notes %}<p>{{ r.notes }}</p>{% endif %}
-        <a class="button button-small button-outline" href="{{ url_for('clinical.referral_pdf', case_id=case.id, ref_id=r.id) }}" target="_blank" rel="noopener">📄 Print</a>
+        <a class="button button-small button-outline" href="{{ url_for('clinical.referral_pdf', case_id=case.id, ref_id=r.id) }}" target="_blank" rel="noopener">{{ icon('printer') }} Print</a>
         <form method="post" action="{{ url_for('clinical.delete_referral', ref_id=r.id) }}" data-confirm="Delete this referral?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="button button-secondary">Delete</button>

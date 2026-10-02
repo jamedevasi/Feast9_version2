@@ -10,11 +10,11 @@
   {# Actions on the current follow-up, in one row: Book Appointment is the main next step,
      Mark Done a secondary one, Clear the destructive one (right-aligned, red outline). #}
   <div class="followup-actions">
-    <a class="button" href="{{ url_for('appointments.new', clear_followup=case.id) }}">📅 Book Appointment</a>
+    <a class="button" href="{{ url_for('appointments.new', clear_followup=case.id) }}">{{ icon('calendar') }} Book Appointment</a>
     {% if case.follow_up_date %}
     <form method="post" action="{{ url_for('cases.complete_followup', case_id=case.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="button button-outline">✓ Mark Follow-up Done</button>
+      <button type="submit" class="button button-outline">{{ icon('check') }} Mark Follow-up Done</button>
     </form>
     <form method="post" action="{{ url_for('cases.update_followup', case_id=case.id) }}" class="followup-clear">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

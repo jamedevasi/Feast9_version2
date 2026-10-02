@@ -64,8 +64,10 @@ def test_followup_rows_carry_distinct_overdue_and_due_soon_indicators(logged_in_
     assert "Due today" in body
     assert "Due tomorrow" in body
     assert "Due in 3 days" in body
-    late_row = body[body.index("Late Case") - 400:body.index("Late Case")]
-    soon_row = body[body.index("Soon Case") - 400:body.index("Soon Case")]
+    def row_start(title):  # the table row that names this case, up to the name
+        return body[body.rindex("<tr", 0, body.index(title)):body.index(title)]
+
+    late_row, soon_row = row_start("Late Case"), row_start("Soon Case")
     assert "badge-overdue" in late_row and "badge-due-soon" not in late_row
     assert "badge-due-soon" in soon_row and "badge-overdue" not in soon_row
     # the summary tile breaks the count down the same way
