@@ -16,6 +16,14 @@
   <form method="post" action="{{ url_for('cases.add_visit_note', case_id=case.id) }}" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Visit Date<input type="date" name="visit_date" value="{{ today }}" max="{{ today }}"></label>
+    <label>Attended by
+      <select name="attended_by">
+        {% for d in note_doctors %}
+        <option value="{{ d.id }}"{% if d.id == note_doctor_default %} selected{% endif %}>{{ d.name }}{% if d.id == case.doctor_id %} (case doctor){% endif %}{% if not d.is_active %} (inactive){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <input type="hidden" name="attended_default" value="{{ note_doctor_default or '' }}">
     <label>Note<textarea name="note" required placeholder="What happened at this visit?"></textarea></label>
     <button type="submit">Add Visit Note</button>
   </form>

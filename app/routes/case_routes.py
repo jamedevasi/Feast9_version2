@@ -180,6 +180,8 @@ def detail(case_id):
         patient=patient,
         doctor=doctor,
         visit_notes=visit_notes,
+        note_doctors=db.list_doctors_for_choice([case.get("doctor_id")]),
+        note_doctor_default=db.get_visit_doctor_id(case_id, today_iso()),
         prescriptions=prescriptions,
         rx_form=rx_form,
         rx_doctors=rx_doctors,
@@ -258,7 +260,19 @@ def add_visit_note(case_id):
     note = request.form.get("note", "").strip()
     visit_date = normalize_date(request.form.get("visit_date", "")) or today_iso()
     if note:
-        completed = db.add_visit_note(case_id, case["patient_id"], note, visit_date, actor=current_actor())
+        # "Attended by" is prefilled (today's appointment doctor, else the case's doctor). Only
+        # a choice the user changed counts as explicit; an untouched one leaves the attending
+        # doctor to be read from the appointment on the note's own visit date.
+        attended = request.form.get("attended_by", "")
+        attended_id = int(attended) if attended.isdigit() else None
+        if attended == request.form.get("attended_default", "") or not attended_id or db.doctor_choice_error(
+            attended_id, case.get("doctor_id")
+        ):
+            attended_id = None
+        completed = db.add_visit_note(
+            case_id, case["patient_id"], note, visit_date, actor=current_actor(),
+            attended_by_doctor_id=attended_id,
+        )
         flash("Visit note added.", "success")
         if completed:
             flash(

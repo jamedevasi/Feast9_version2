@@ -1317,43 +1317,63 @@ _CASE_DEFAULTS = {"procedures_json": "[]", "custom_procedure": "", "doctor_id": 
 
 # ── Visit Notes (append-only clinical record — no edit/delete) ─────────────
 
-def add_visit_note(case_id, patient_id, note, visit_date, actor=None):
+def _visit_appointments(conn, case_id, patient_id, visit_date):
+    """(appointment a visit note on this date should complete, appointment that says who saw
+    the patient). The first is the patient's still-`Scheduled` appointment that day — the one
+    booked for this case wins, then this case's doctor, then the earliest; the second is that
+    one, or else the case's already-`Completed` appointment that day. Never future-dated."""
+    if visit_date > date.today().isoformat():
+        return None, None
+    appt = conn.execute(
+        """SELECT a.* FROM appointments a
+           WHERE a.patient_id = ? AND a.appt_date = ? AND a.status = 'Scheduled'
+             AND (a.case_id IS NULL OR a.case_id = ?)
+           ORDER BY (a.case_id IS NOT NULL) DESC,
+                    (a.doctor_id IS (SELECT doctor_id FROM cases WHERE id = ?)) DESC,
+                    a.start_time, a.id
+           LIMIT 1""",
+        (patient_id, visit_date, case_id, case_id),
+    ).fetchone()
+    seen_appt = appt or conn.execute(
+        """SELECT a.* FROM appointments a
+           WHERE a.case_id = ? AND a.appt_date = ? AND a.status = 'Completed'
+           ORDER BY a.start_time DESC, a.id DESC LIMIT 1""",
+        (case_id, visit_date),
+    ).fetchone()
+    return appt, seen_appt
+
+
+def get_visit_doctor_id(case_id, visit_date):
+    """Who a visit on this date is expected to be with: the doctor of that day's appointment
+    for the case, else the case's own doctor. Prefills "Attended by" on the visit-note form."""
+    conn = get_db()
+    case = conn.execute("SELECT patient_id, doctor_id FROM cases WHERE id = ?", (case_id,)).fetchone()
+    _appt, seen_appt = _visit_appointments(conn, case_id, case["patient_id"], visit_date)
+    conn.close()
+    return (seen_appt["doctor_id"] if seen_appt and seen_appt["doctor_id"] else None) or case["doctor_id"]
+
+
+def add_visit_note(case_id, patient_id, note, visit_date, actor=None, attended_by_doctor_id=None):
     """A visit note is the record that the patient was seen, so in the same transaction it
     marks the patient's still-`Scheduled` appointment on that visit date `Completed` (the
     dashboard's Today's Appointments otherwise stays "Scheduled" until someone edits the
     appointment by hand). Only one appointment, only a `Scheduled` one — a Cancelled/No-show
-    entry is a deliberate choice and is left alone — and never a future-dated one. With several
-    that day, the one booked for this case wins, then this case's doctor, then the earliest.
+    entry is a deliberate choice and is left alone (see _visit_appointments).
 
-    If that visit's appointment was with a doctor other than the case's own, the doctor's name
-    is appended to the note ("— Seen by Dr. X"): the case keeps its primary doctor (that only
-    changes by editing the case), and the note records who actually saw the patient. The same
-    applies when the case's appointment that day was already marked Completed by hand.
+    If the patient was attended by a doctor other than the case's own, the doctor's name is
+    appended to the note ("— Seen by Dr. X"): the case keeps its primary doctor (that only
+    changes by editing the case), and the note records who actually saw the patient. The
+    attending doctor is `attended_by_doctor_id` when the form's "Attended by" was chosen by
+    hand; otherwise it is taken from that day's appointment.
     Returns the appointment this note completed as a dict, or None."""
     conn = get_db()
-    appt = seen_appt = None
-    if visit_date <= date.today().isoformat():
-        appt = conn.execute(
-            """SELECT a.* FROM appointments a
-               WHERE a.patient_id = ? AND a.appt_date = ? AND a.status = 'Scheduled'
-                 AND (a.case_id IS NULL OR a.case_id = ?)
-               ORDER BY (a.case_id IS NOT NULL) DESC,
-                        (a.doctor_id IS (SELECT doctor_id FROM cases WHERE id = ?)) DESC,
-                        a.start_time, a.id
-               LIMIT 1""",
-            (patient_id, visit_date, case_id, case_id),
-        ).fetchone()
-        seen_appt = appt or conn.execute(
-            """SELECT a.* FROM appointments a
-               WHERE a.case_id = ? AND a.appt_date = ? AND a.status = 'Completed'
-               ORDER BY a.start_time DESC, a.id DESC LIMIT 1""",
-            (case_id, visit_date),
-        ).fetchone()
-    if seen_appt and seen_appt["doctor_id"]:
+    appt, seen_appt = _visit_appointments(conn, case_id, patient_id, visit_date)
+    attending = attended_by_doctor_id or (seen_appt["doctor_id"] if seen_appt else None)
+    if attending:
         seen_by = conn.execute(
             """SELECT d.name FROM doctors d
                WHERE d.id = ? AND d.id IS NOT (SELECT doctor_id FROM cases WHERE id = ?)""",
-            (seen_appt["doctor_id"], case_id),
+            (attending, case_id),
         ).fetchone()
         if seen_by:
             note = f"{note} — Seen by {seen_by['name']}"

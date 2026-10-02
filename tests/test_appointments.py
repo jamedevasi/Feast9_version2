@@ -517,3 +517,52 @@ def test_visit_note_names_the_other_doctor_when_appointment_was_already_complete
 def test_visit_note_without_an_appointment_that_day_is_untouched(logged_in_client, patient_id):
     case_id, case_url, _doctor, _today = _note_setup(logged_in_client, patient_id, "Dr. Covering")
     assert _post_note(logged_in_client, case_id, case_url, "2026-01-02") == "Scaling done"
+
+
+def _post_note_attended(client, case_id, case_url, attended_by, attended_default, visit_date="2026-01-02"):
+    client.post(f"/cases/{case_id}/visit-notes", data={
+        "note": "Walk-in, dressing changed", "visit_date": visit_date, "attended_by": str(attended_by),
+        "attended_default": str(attended_default), "csrf_token": get_csrf(client, case_url),
+    })
+    return db.list_visit_notes_for_case(case_id)[0]["note"]
+
+
+def test_attended_by_another_doctor_is_appended_even_without_an_appointment(logged_in_client, patient_id):
+    from tests.test_cases import _create_case
+    resp, case_doctor = _create_case(logged_in_client, patient_id)
+    case_url = resp.headers["Location"]
+    case_id = int(case_url.rstrip("/").rsplit("/", 1)[-1])
+    other = db.add_doctor("Dr. Walkin Cover")
+    page = logged_in_client.get(case_url).data.decode()
+    assert "Attended by" in page and "(case doctor)" in page and "Dr. Walkin Cover" in page
+
+    note = _post_note_attended(logged_in_client, case_id, case_url, other, case_doctor)
+    assert note == "Walk-in, dressing changed — Seen by Dr. Walkin Cover"
+    assert db.get_case(case_id)["doctor_id"] == case_doctor
+
+
+def test_attended_by_left_on_the_case_doctor_adds_nothing(logged_in_client, patient_id):
+    from tests.test_cases import _create_case
+    resp, case_doctor = _create_case(logged_in_client, patient_id)
+    case_url = resp.headers["Location"]
+    case_id = int(case_url.rstrip("/").rsplit("/", 1)[-1])
+    assert _post_note_attended(logged_in_client, case_id, case_url, case_doctor, case_doctor) == "Walk-in, dressing changed"
+
+
+def test_attended_by_is_prefilled_from_todays_appointment_and_can_be_switched_back(logged_in_client, patient_id):
+    case_id, case_url, case_doctor, today = _note_setup(logged_in_client, patient_id, "Dr. Covering")
+    covering = next(d["id"] for d in db.list_doctors() if d["name"] == "Dr. Covering")
+    assert db.get_visit_doctor_id(case_id, today) == covering
+    # the case doctor saw the patient after all: choosing them by hand overrides the appointment
+    note = _post_note_attended(logged_in_client, case_id, case_url, case_doctor, covering, visit_date=today)
+    assert note == "Walk-in, dressing changed"
+
+
+def test_attended_by_cannot_be_a_deactivated_doctor(logged_in_client, patient_id):
+    from tests.test_cases import _create_case
+    resp, case_doctor = _create_case(logged_in_client, patient_id)
+    case_url = resp.headers["Location"]
+    case_id = int(case_url.rstrip("/").rsplit("/", 1)[-1])
+    gone = db.add_doctor("Dr. Gone")
+    db.set_doctor_active(gone, False)
+    assert _post_note_attended(logged_in_client, case_id, case_url, gone, case_doctor) == "Walk-in, dressing changed"
