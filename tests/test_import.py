@@ -79,13 +79,16 @@ def test_import_valid_rows(logged_in_client):
         assert p["dpdp_notice_accepted"] == 1
 
 
-def test_dpdp_not_accepted_row_skipped(logged_in_client):
+def test_dpdp_not_accepted_row_is_imported_as_not_accepted(logged_in_client):
+    """The DPDP status is recorded as the sheet says: No stays No, and is shown on the patient."""
     content = _build_workbook([NO_CONSENT_ROW])
     resp = _upload(logged_in_client, content)
-    body = resp.data.decode()
-    assert "0</strong> patient(s) imported" in body
-    assert "DPDP Notice Accepted must be Yes" in body
-    assert db.list_patients() == []
+    assert "1</strong> patient(s) imported" in resp.data.decode()
+    patient = db.list_patients()[0]
+    assert patient["dpdp_notice_accepted"] == 0 and not patient["dpdp_notice_accepted_at"]
+    assert patient["comms_consent"] == 0
+    assert b"DPDP notice not accepted" in logged_in_client.get(f"/patients/{patient['id']}").data
+    assert b"DPDP pending" in logged_in_client.get("/patients/?view=all").data
 
 
 def test_invalid_sex_row_skipped(logged_in_client):
@@ -107,9 +110,8 @@ def test_mixed_valid_and_invalid_rows(logged_in_client):
     content = _build_workbook([VALID_ROW, NO_CONSENT_ROW, BAD_SEX_ROW])
     resp = _upload(logged_in_client, content)
     body = resp.data.decode()
-    assert "1</strong> patient(s) imported" in body
-    assert "2</strong> row(s) skipped" in body or "2" in body
-    assert len(db.list_patients()) == 1
+    assert "2</strong> patient(s) imported" in body  # the valid row and the not-accepted one
+    assert len(db.list_patients()) == 2
 
 
 def test_missing_required_columns_rejected(logged_in_client):

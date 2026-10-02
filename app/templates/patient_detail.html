@@ -2,7 +2,7 @@
 {% block title %}{{ patient.name }} — Feast9{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>{{ patient.name }}{% if patient.is_historic_import %} <span class="badge badge-closed" title="Bulk-imported historic record">Historic Import</span>{% endif %}</h1>
+  <h1>{{ patient.name }}{% if not patient.dpdp_notice_accepted and not patient.is_anonymized %} <span class="badge badge-due-soon" title="The data notice has not been accepted yet">DPDP notice not accepted</span>{% endif %}{% if patient.is_historic_import %} <span class="badge badge-closed" title="Bulk-imported historic record">Historic Import</span>{% endif %}</h1>
   <div class="case-actions">
     <a class="button" href="{{ url_for('dental.chart', patient_id=patient.id) }}">{{ icon('tooth') }} Dental Chart</a>
     <a class="button" href="{{ url_for('patients.summary_pdf', patient_id=patient.id) }}" target="_blank" rel="noopener">{{ icon('file-text') }} Patient Summary (PDF)</a>
@@ -88,6 +88,12 @@
   <h2>Contact Details &amp; DPDP Status</h2>
   {% if patient.is_anonymized %}
   <p class="allergy-alert">{{ icon('triangle-alert') }} This patient's contact details were erased on {{ patient.anonymized_at }} per a DPDP Erasure request. Clinical and financial records are preserved.</p>
+  {% endif %}
+  {% if not patient.dpdp_notice_accepted and not patient.is_anonymized %}
+  <p class="flash flash-warning">
+    This patient has not accepted the data notice yet. Give them the notice, and once they accept, record it:
+    <a class="button button-small button-outline" href="{{ url_for('patients.edit', patient_id=patient.id) }}">Record acceptance</a>
+  </p>
   {% endif %}
   <dl class="dl-two-col">
     <dt>Date of Birth</dt>

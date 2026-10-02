@@ -7,9 +7,12 @@ Plan-B sheet while the system is down — app/excel_export.py writes it — and 
 back once the system returns.
 
 Every row is validated against the same rules the manual forms enforce — patient: name,
-sex, DPDP notice acceptance, mobile format, guardian-for-minors (bulk import never skips
-DPDP consent just because it's bulk; the old export never recorded it, so it has to be
-filled in); case: title and a known doctor. Invalid rows are skipped and reported, never
+sex, mobile format, guardian-for-minors; case: title and a known doctor. The DPDP notice is
+the one difference from the manual form: it is recorded exactly as the sheet says (user
+decision, 2026-10-02). Yes imports the patient as having accepted; No or blank — the old
+export never recorded it — imports the patient as NOT accepted, which Feast9 then shows on
+the patient until acceptance is recorded. Import never turns a No into a Yes, and a patient
+who has not accepted the notice is never given communications consent. Invalid rows are skipped and reported, never
 partially written; all valid rows commit together (db.import_workbook).
 
 Rows for the same patient are grouped — by Patient Ref label, else by name + mobile — and
@@ -51,8 +54,8 @@ OLD_CASE_HEADERS = [
     "Case Title", "Status", "Doctor", "Procedures", "Total Cost (Rs.)", "Paid (Rs.)",
     "Balance (Rs.)", "Follow-up Date", "Next Action", "Case Opened", "Case Closed",
 ]
-# Fields this version records that the old export didn't. DPDP first: it's the one every
-# patient needs, so it sits right next to the pasted block.
+# Fields this version records that the old export didn't. DPDP first: it's the one worth
+# filling for every patient, so it sits right next to the pasted block.
 EXTRA_PATIENT_HEADERS = [
     "DPDP Notice Accepted", "DPDP Notice Accepted Date", "Date of Birth", "Communications Consent",
     "Is Pregnant", "Is Nursing", "Emergency Contact Relation",
@@ -79,7 +82,7 @@ _HEADER_ALIASES = {
     "emergency contact number": "EC Number",
 }
 
-REQUIRED_HEADERS = ("Patient Name", "Sex", "DPDP Notice Accepted")
+REQUIRED_HEADERS = ("Patient Name", "Sex")
 CONDITIONAL_HEADERS = ("Doctor", "Guardian Name", "Guardian Mobile")
 IGNORED_HEADERS = ("Balance (Rs.)",)
 
@@ -101,9 +104,9 @@ _HEADER_NOTES = {
     "Follow-up Date": "YYYY-MM-DD — shows as a reminder on the dashboard.",
     "Case Opened": "YYYY-MM-DD. Defaults to the import date.",
     "Case Closed": "YYYY-MM-DD, for a Closed case. Defaults to the import date.",
-    "DPDP Notice Accepted": "Required: Yes — only once the patient has accepted the data notice. "
-                            "A patient is never imported without it.",
-    "DPDP Notice Accepted Date": "YYYY-MM-DD. Defaults to the import date.",
+    "DPDP Notice Accepted": "Yes / No — recorded as entered. Yes only once the patient has accepted the "
+                            "data notice. No or blank: the patient is imported and shown as not yet accepted.",
+    "DPDP Notice Accepted Date": "YYYY-MM-DD, when Yes. Defaults to the import date.",
     "Date of Birth": "YYYY-MM-DD. If given, age is worked out from it.",
     "Communications Consent": "Yes / No — consent to reminders by SMS/WhatsApp.",
     "Guardian Name": "Required when the patient is under 18.",
@@ -196,8 +199,9 @@ _READ_ME = [
     ("Header colours", "RED = required on every row.  AMBER = required on some rows: Doctor when the row has a "
                        "case, Guardian Name and Mobile for a patient under 18.  GREEN = optional.  "
                        "GREY = ignored (worked out by Feast9). Hover over a header to see its rule."),
-    ("DPDP Notice Accepted", "Needed for every patient, and the old version didn't record it. Enter Yes only "
-                             "for patients who have accepted the clinic's data notice. Others are not imported."),
+    ("DPDP Notice Accepted", "The old version didn't record this. Enter Yes only for patients who have accepted "
+                             "the clinic's data notice. No or blank is imported too: the patient is shown in "
+                             "Feast9 as not yet accepted, until that is recorded on their page."),
     ("Dates", "Type dates as YYYY-MM-DD (e.g. 2026-09-30), or as normal Excel dates."),
     ("Doctors", "Must match a doctor in Settings > Doctors — 'Dr' and capital letters don't matter."),
     ("Procedures", "Names that match Settings > Case Types are linked; anything else is kept on the case as "
@@ -388,8 +392,9 @@ def _parse_patient(get):
     sex = get("Sex").capitalize()
     mobile = get("Mobile")
     dpdp_accepted = _yes(get("DPDP Notice Accepted"))
-    dpdp_date = _to_date(get("DPDP Notice Accepted Date")) or (today_iso() if dpdp_accepted else "")
-    comms_consent = _yes(get("Communications Consent"))
+    dpdp_date = (_to_date(get("DPDP Notice Accepted Date")) or today_iso()) if dpdp_accepted else ""
+    # No reminders consent without the data notice having been accepted first.
+    comms_consent = dpdp_accepted and _yes(get("Communications Consent"))
     guardian_name = get("Guardian Name")
     guardian_mobile = get("Guardian Mobile")
 
@@ -425,8 +430,6 @@ def _parse_patient(get):
         errors.append("Patient Name is required.")
     if sex not in SEX_OPTIONS:
         errors.append("Sex must be Male or Female.")
-    if not dpdp_accepted:
-        errors.append("DPDP Notice Accepted must be Yes to import this patient — bulk import never bypasses consent.")
     if mobile and not is_valid_mobile(mobile):
         errors.append("Mobile number looks invalid — enter a 10-digit Indian mobile number.")
     if age is not None and age < 18:
@@ -551,9 +554,7 @@ def import_patients(file_bytes, actor=None):
         if missing:
             result.header_error = (
                 f"Missing required column(s) on the '{sheet.title}' sheet: {', '.join(missing)}. "
-                "Download the template and use its exact column headers"
-                + (" — the older version's export has no DPDP Notice Accepted column; add it, with Yes "
-                   "for each patient who has accepted the data notice." if "DPDP Notice Accepted" in missing else ".")
+                "Download the template and use its exact column headers."
             )
             return result
 

@@ -80,12 +80,13 @@ def test_template_starts_with_the_old_export_columns_in_order(logged_in_client):
     assert ws.title == "Patients & Cases"
     headers = [c.value for c in ws[1]]
     assert headers[:22] == OLD_EXPORT_HEADERS == OLD_PATIENT_HEADERS + OLD_CASE_HEADERS
-    assert headers[22] == "DPDP Notice Accepted"  # the one always-required new field, right after the pasted block
+    assert headers[22] == "DPDP Notice Accepted"  # the one worth filling for everyone, right after the pasted block
     assert headers[-2:] == ["Patient Ref", "Case Ref"]
     assert ws.max_row == 1  # no example rows that could be imported by accident
 
     fills = {c.value: c.fill.fgColor.rgb[-6:] for c in ws[1]}
-    assert {fills["Patient Name"], fills["Sex"], fills["DPDP Notice Accepted"]} == {"F8D7DA"}  # red = required
+    assert {fills["Patient Name"], fills["Sex"]} == {"F8D7DA"}  # red = required
+    assert fills["DPDP Notice Accepted"] == "E2EFDA"  # recorded as entered; blank means not accepted
     assert {fills["Doctor"], fills["Guardian Name"], fills["Guardian Mobile"]} == {"FFF3CD"}  # amber = sometimes
     assert fills["Balance (Rs.)"] == "D9D9D9"  # grey = ignored
     assert fills["Email"] == "E2EFDA"
@@ -132,15 +133,28 @@ def test_old_export_rows_import_with_only_dpdp_added(logged_in_client):
     assert {"patients_bulk_imported", "cases_bulk_imported", "payment_added"} <= set(actions)
 
 
-def test_old_export_without_dpdp_column_is_explained(logged_in_client):
+def test_old_export_without_dpdp_column_imports_everyone_as_not_accepted(logged_in_client):
     wb = Workbook()
     wb.active.title = "Patients & Cases"
     wb.active.append(OLD_EXPORT_HEADERS)
+    row = {h: "" for h in OLD_EXPORT_HEADERS}
+    row.update({"Patient Name": "Straight From Old Export", "Sex": "Male", "Mobile": "9000000099"})
+    wb.active.append([row[h] for h in OLD_EXPORT_HEADERS])
     buf = io.BytesIO()
     wb.save(buf)
     _upload(logged_in_client, buf.getvalue())
-    body = logged_in_client.get("/backup/").data.decode()
-    assert "DPDP Notice Accepted" in body and "has no DPDP Notice Accepted column" in body
+    patient = db.list_patients()[0]
+    assert patient["name"] == "Straight From Old Export" and patient["dpdp_notice_accepted"] == 0
+
+
+def test_dpdp_no_never_gets_communications_consent(logged_in_client):
+    rows = [_row("Said No", "9000000041", dpdp="No", **{"Communications Consent": "Yes"}),
+            _row("Said Yes", "9000000042", dpdp="Yes", **{"Communications Consent": "Yes"})]
+    _upload(logged_in_client, _workbook(rows))
+    by_name = {p["name"]: p for p in db.list_patients()}
+    assert (by_name["Said No"]["dpdp_notice_accepted"], by_name["Said No"]["comms_consent"]) == (0, 0)
+    assert (by_name["Said Yes"]["dpdp_notice_accepted"], by_name["Said Yes"]["comms_consent"]) == (1, 1)
+    assert by_name["Said Yes"]["dpdp_notice_accepted_at"] and not by_name["Said No"]["dpdp_notice_accepted_at"]
 
 
 def test_patient_only_rows_and_no_cases_sheet(logged_in_client):
@@ -153,16 +167,15 @@ def test_patient_only_rows_and_no_cases_sheet(logged_in_client):
 def test_mandatory_fields_reported_and_dependent_rows_skipped(logged_in_client):
     db.add_doctor("Dr Test")
     rows = [
-        _row("No Consent", "9000000001", dpdp="", **_case()),
-        _row("No Consent", "9000000001", dpdp="", **_case("Second case")),
-        _row("No Sex", "9000000002", sex="", **_case()),
+        _row("No Sex", "9000000001", sex="", **_case()),
+        _row("No Sex", "9000000001", sex="", **_case("Second case")),
         _row("No Doctor", "9000000003", **_case(doctor="")),
         _row("Unknown Doctor", "9000000004", **_case(doctor="Dr Nobody")),
         _row("Minor", "9000000005", **{"Age": 12}),
         _row("Case Bits Without Title", "9000000006", **{"Doctor": "Dr Test", "Total Cost (Rs.)": 100}),
     ]
     body = _upload(logged_in_client, _workbook(rows)).data.decode()
-    for message in ("DPDP Notice Accepted must be Yes", "Its patient was skipped (see Patients &amp; Cases row 2)",
+    for message in ("Its patient was skipped (see Patients &amp; Cases row 2)",
                     "Sex must be Male or Female", "Doctor is required for a case",
                     "Doctor &#39;Dr Nobody&#39; isn&#39;t an active doctor", "Guardian name is required",
                     "Case Title is required when the row has case details"):
