@@ -6,3 +6,5 @@ data/
 .pytest_cache/
 *.log
 .pytest-regression.*.log
+.claude/
+.vscode/
