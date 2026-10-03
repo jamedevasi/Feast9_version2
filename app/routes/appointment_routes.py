@@ -227,6 +227,8 @@ def new():
     patient_id_arg = request.args.get("patient_id", "").strip()
     clear_followup = request.args.get("clear_followup", "")
     prefill_title = ""
+    prefill_doctor_id = None
+    doctors = db.list_doctors()
     if clear_followup.isdigit():
         case = db.get_case(int(clear_followup))
         if case:
@@ -235,6 +237,9 @@ def new():
             # Booking from a follow-up: carry its Next Action Note over as the appointment
             # title — still just a prefill, editable before saving.
             prefill_title = case["next_action_note"] or ""
+            # ...and its doctor, unless that doctor has since been deactivated.
+            if any(d["id"] == case["doctor_id"] for d in doctors):
+                prefill_doctor_id = case["doctor_id"]
 
     prefill_patient = db.get_patient(int(patient_id_arg)) if patient_id_arg.isdigit() else None
     prefill_date = normalize_date(request.args.get("date", "")) or today_iso()
@@ -242,7 +247,7 @@ def new():
     form_state = {
         "id": None,
         "patient_id": prefill_patient["id"] if prefill_patient else None,
-        "doctor_id": None,
+        "doctor_id": prefill_doctor_id,
         "appt_date": prefill_date,
         "start_time": "",
         "end_time": "",
@@ -263,7 +268,7 @@ def new():
     return render_template(
         "appointment_form.html",
         appt=form_state,
-        doctors=db.list_doctors(),
+        doctors=doctors,
         statuses=APPOINTMENT_STATUSES,
         recurrence_intervals=RECURRENCE_INTERVALS,
         prefill_date=prefill_date,

@@ -153,6 +153,18 @@ def test_new_appointment_form_prefills_title_from_followup_note(logged_in_client
     assert b'name="title" value="Crown fitting &amp; review"' in resp.data
 
 
+def test_new_appointment_form_prefills_doctor_from_followup_case(logged_in_client, patient_id):
+    case_id, _case_url = _case_for(logged_in_client, patient_id)
+    doctor_id = db.get_case(case_id)["doctor_id"]
+    resp = logged_in_client.get(f"/appointments/new?clear_followup={case_id}")
+    assert f'<option value="{doctor_id}" selected>'.encode() in resp.data
+
+    # A doctor deactivated since the case was opened isn't offered, so nothing is preselected.
+    db.set_doctor_active(doctor_id, False)
+    resp = logged_in_client.get(f"/appointments/new?clear_followup={case_id}")
+    assert b" selected>" not in resp.data.split(b'name="doctor_id"')[1].split(b"</select>")[0]
+
+
 def test_new_appointment_form_title_blank_without_followup(logged_in_client, patient_id):
     resp = logged_in_client.get(f"/appointments/new?patient_id={patient_id}")
     assert resp.status_code == 200

@@ -38,7 +38,14 @@
     // Enter in the search box must not submit the whole case form.
     search.addEventListener("keydown", function (e) {
       if (e.key === "Enter") e.preventDefault();
-      if (e.key === "Escape") { box.open = false; box.querySelector("summary").focus(); }
+    });
+    // Escape closes the list from anywhere inside it — the search box or a ticked checkbox.
+    box.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && box.open) {
+        e.preventDefault();
+        box.open = false;
+        box.querySelector("summary").focus();
+      }
     });
     box.addEventListener("change", refreshSummary);
     box.addEventListener("toggle", function () {

@@ -19,6 +19,10 @@
 
 * { box-sizing: border-box; }
 
+/* The top bar is sticky: anything the browser scrolls to (a required field it flags, an
+   in-page #link) must land below it with its label showing, not underneath it. */
+html { scroll-padding-top: calc(var(--topbar-h) + 2.5rem); }
+
 a { color: var(--brand); text-underline-offset: 2px; }
 a:hover { text-decoration-thickness: 2px; }
 
