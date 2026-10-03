@@ -2219,12 +2219,47 @@ def count_pending_data_requests():
     return row["c"]
 
 
+def erasure_blockers(patient_id, conn=None):
+    """What stops a patient being erased yet: {'balance': outstanding amount, 'active_cases': n}.
+    Once their details are anonymised nobody can tell who owes the money or contact them, so
+    the clinic keeps them until dues are settled and treatment is closed (retaining data for an
+    outstanding claim or ongoing care is a legitimate reason under the DPDP Act). The balance
+    is summed per case, MAX(cost - paid, 0), so an over-paid case can't hide another's debt."""
+    own = conn is None
+    conn = conn or get_db()
+    row = conn.execute(
+        """SELECT COALESCE(SUM(MAX(c.total_cost - COALESCE(
+                      (SELECT SUM(amount) FROM payments WHERE case_id = c.id), 0), 0)), 0) AS balance,
+                  COALESCE(SUM(c.status = 'Active'), 0) AS active_cases
+           FROM cases c WHERE c.patient_id = ?""",
+        (patient_id,),
+    ).fetchone()
+    if own:
+        conn.close()
+    return {"balance": float(row["balance"]), "active_cases": int(row["active_cases"])}
+
+
+def erasure_blocked_message(blockers):
+    """Plain-language reason an erasure can't be completed, or '' if nothing blocks it."""
+    reasons = []
+    if blockers["balance"] > 0:
+        reasons.append(f"Rs. {blockers['balance']:,.2f} is still outstanding")
+    if blockers["active_cases"]:
+        n = blockers["active_cases"]
+        reasons.append(f"{n} case{'s are' if n > 1 else ' is'} still active")
+    if not reasons:
+        return ""
+    return (f"This erasure can't be completed yet: {' and '.join(reasons)}. Settle the balance and "
+            f"close the patient's cases first, then complete the request.")
+
+
 def resolve_data_request(request_id, new_status, resolution_note, confirm_name="", actor=None):
     """Updates a request's status and, when completing it, applies the request type's
     real-world effect in the SAME transaction: Erasure soft-anonymises the patient (requires
     confirm_name to exactly match the patient's current name — the spec's confirmation
     safeguard for an irreversible action); Withdraw Consent clears comms consent. Raises
-    ValueError (no writes made) if an Erasure completion's confirm_name doesn't match."""
+    ValueError (no writes made) if an Erasure completion's confirm_name doesn't match, or while
+    the patient still owes money or has an active case (erasure_blockers)."""
     conn = get_db()
     request = conn.execute("SELECT * FROM data_requests WHERE id = ?", (request_id,)).fetchone()
     if not request:
@@ -2232,6 +2267,10 @@ def resolve_data_request(request_id, new_status, resolution_note, confirm_name="
         raise ValueError("No such data request.")
 
     if new_status == "Completed" and request["request_type"] == "Erasure":
+        blocked = erasure_blocked_message(erasure_blockers(request["patient_id"], conn))
+        if blocked:
+            conn.close()
+            raise ValueError(blocked)
         patient = conn.execute("SELECT name FROM patients WHERE id = ?", (request["patient_id"],)).fetchone()
         if not patient or confirm_name.strip() != patient["name"]:
             conn.close()

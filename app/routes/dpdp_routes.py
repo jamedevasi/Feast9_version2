@@ -1,7 +1,7 @@
 """DPDP Phase 2 — data-rights requests (feast9_v2_agents.md §5.11)."""
 import io
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
 
 from app import db, pdf_reports
 from app.auth import current_actor, login_required, logs_view, privacy_access_required, reauth_required, role_required
@@ -75,7 +75,13 @@ def list_view():
 def detail(request_id):
     entry = _get_request_or_404(request_id)
     patient = db.get_patient(entry["patient_id"])
-    return render_template("data_request_detail.html", entry=entry, patient=patient, statuses=DATA_REQUEST_STATUSES)
+    # Only those who can complete an erasure see what blocks it — it includes the balance owed.
+    erasure_blocked = ""
+    if (entry["request_type"] == "Erasure" and entry["status"] != "Completed"
+            and session.get("role") in ("admin", "doctor")):
+        erasure_blocked = db.erasure_blocked_message(db.erasure_blockers(entry["patient_id"]))
+    return render_template("data_request_detail.html", entry=entry, patient=patient, statuses=DATA_REQUEST_STATUSES,
+                           erasure_blocked=erasure_blocked)
 
 
 @bp.route("/data-requests/<int:request_id>/access.pdf")

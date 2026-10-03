@@ -161,6 +161,13 @@ def test_erasure_with_correct_name_anonymises_but_preserves_clinical_and_financi
         f"/cases/{case_id}/payments",
         data={"payment_date": "2026-01-10", "amount": "1000", "csrf_token": token},
     )
+    # Erasure waits until nothing is owed and treatment is closed.
+    token = get_csrf(logged_in_client, case_url)
+    logged_in_client.post(
+        f"/cases/{case_id}/payments",
+        data={"payment_date": "2026-01-20", "amount": "4000", "csrf_token": token},
+    )
+    db.close_case(case_id)
 
     _create_request(logged_in_client, patient_id, "Erasure", "Patient wants to be forgotten")
     entry = db.list_data_requests_for_patient(patient_id)[0]
@@ -189,8 +196,8 @@ def test_erasure_with_correct_name_anonymises_but_preserves_clinical_and_financi
     case = db.get_case(case_id)
     assert case["title"] == "Root Canal — Tooth 36"
     assert case["total_cost"] == 5000
-    assert db.get_case_balance(case_id) == 4000
-    assert len(db.list_payments_for_case(case_id)) == 1
+    assert db.get_case_balance(case_id) == 0
+    assert len(db.list_payments_for_case(case_id)) == 2
 
     updated_request = db.get_data_request(entry["id"])
     assert updated_request["status"] == "Completed"
@@ -290,3 +297,48 @@ def test_patient_form_records_consent_on_the_patients_behalf(logged_in_client):
     assert "Patient (or guardian, if under 18) has received and accepted the privacy notice" in page
     assert "has agreed to receive appointment reminders" in page
     assert "I have read and understood" not in page
+
+
+def _try_erasure(client, patient_id, name="Case Test Patient"):
+    _create_request(client, patient_id, "Erasure", "forget me")
+    entry = [r for r in db.list_data_requests_for_patient(patient_id) if r["request_type"] == "Erasure"][0]
+    token = get_csrf(client, f"/data-requests/{entry['id']}")
+    client.post(f"/data-requests/{entry['id']}/resolve",
+                data={"status": "Completed", "resolution_note": "done", "confirm_name": name, "csrf_token": token})
+    return entry["id"]
+
+
+def test_erasure_is_blocked_while_money_is_owed(logged_in_client, patient_id):
+    case_id, _ = _case_with_payment(logged_in_client, patient_id, total_cost="5000")
+    db.close_case(case_id)  # closed, but Rs. 5000 still unpaid
+    request_id = _try_erasure(logged_in_client, patient_id)
+    patient = db.get_patient(patient_id)
+    assert patient["is_anonymized"] == 0 and patient["name"] == "Case Test Patient"
+    assert db.get_data_request(request_id)["status"] == "Pending"
+    body = logged_in_client.get(f"/data-requests/{request_id}").data.decode()
+    assert "can&#39;t be completed yet: Rs. 5,000.00 is still outstanding" in body
+
+
+def test_erasure_is_blocked_while_a_case_is_active(logged_in_client, patient_id):
+    _create_case(logged_in_client, patient_id, total_cost="0")
+    request_id = _try_erasure(logged_in_client, patient_id)
+    assert db.get_patient(patient_id)["is_anonymized"] == 0
+    assert "1 case is still active" in logged_in_client.get(f"/data-requests/{request_id}").data.decode()
+
+
+def test_overpaid_case_does_not_hide_another_cases_debt(logged_in_client, patient_id):
+    paid_id, _ = _case_with_payment(logged_in_client, patient_id, total_cost="1000")
+    owing_id, _ = _case_with_payment(logged_in_client, patient_id, total_cost="2000")
+    db.add_payment(paid_id, patient_id, "2026-01-05", 3000, "Cash", "", "")
+    for c in (paid_id, owing_id):
+        db.close_case(c)
+    assert db.erasure_blockers(patient_id) == {"balance": 2000.0, "active_cases": 0}
+
+
+def test_erasure_blockers_are_not_shown_to_a_receptionist(logged_in_client, patient_id):
+    case_id, _ = _case_with_payment(logged_in_client, patient_id, total_cost="5000")
+    _create_request(logged_in_client, patient_id, "Erasure", "forget me")
+    request_id = db.list_data_requests_for_patient(patient_id)[0]["id"]
+    _make_receptionist(logged_in_client)
+    body = logged_in_client.get(f"/data-requests/{request_id}").data.decode()
+    assert "can&#39;t be completed yet" not in body and "5,000" not in body
