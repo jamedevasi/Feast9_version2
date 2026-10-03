@@ -1,9 +1,10 @@
 """Patients page: by default only patients with an active case (or, for roles allowed to see
 money, an outstanding balance); ?view=all shows everyone."""
+import re
 from datetime import date
 
 from app import db
-from tests.conftest import get_csrf, register_patient
+from tests.conftest import get_csrf, register_patient, search_patients
 from tests.test_cases import _create_case
 from tests.test_roles import _create_user, _login, _logout
 
@@ -92,19 +93,49 @@ def test_active_case_count_column(logged_in_client):
 def test_search_works_within_each_view(logged_in_client):
     _setup_four(logged_in_client)
     # Bravo has no case: invisible in the default view even when searched for by name...
-    default = logged_in_client.get("/patients/?q=Bravo").data.decode()
+    default = search_patients(logged_in_client, "Bravo")
     assert "Bravo NoCase" not in default
     assert "Show all patients" in default and "view=all" in default
     # ...and found once the full view is on
-    assert "Bravo NoCase" in logged_in_client.get("/patients/?view=all&q=Bravo").data.decode()
+    assert "Bravo NoCase" in search_patients(logged_in_client, "Bravo", view="all")
 
 
 def test_toggle_links_keep_the_search_text(logged_in_client):
     _setup_four(logged_in_client)
-    body = logged_in_client.get("/patients/?q=Alpha").data.decode()
-    assert "view=all" in body and "q=Alpha" in body
-    all_body = logged_in_client.get("/patients/?view=all&q=Alpha").data.decode()
+    search_patients(logged_in_client, "Alpha")
+    # The search is kept while switching views, without being written into any link.
+    all_body = logged_in_client.get("/patients/?view=all").data.decode()
+    assert 'name="q" value="Alpha"' in all_body and "Bravo NoCase" not in all_body
     assert 'name="view" value="all"' in all_body      # the search box stays in the full view
+
+
+def test_search_term_never_appears_in_an_address(logged_in_client):
+    _setup_four(logged_in_client)
+    token = get_csrf(logged_in_client, "/patients/")
+    resp = logged_in_client.post("/patients/search", data={"q": "Alpha", "view": "all", "csrf_token": token})
+    assert resp.status_code == 302 and "Alpha" not in resp.headers["Location"]
+    body = logged_in_client.get(resp.headers["Location"]).data.decode()
+    assert "Alpha" in body
+    assert not re.search(r'href="[^"]*Alpha', body) and 'method="get"' not in body
+    # An old-style ?q= address no longer searches.
+    search_patients(logged_in_client, "", view="all")
+    assert "Bravo NoCase" in logged_in_client.get("/patients/?view=all&q=Alpha").data.decode()
+
+
+def test_clear_search_and_logout_forget_the_search(logged_in_client):
+    _setup_four(logged_in_client)
+    search_patients(logged_in_client, "Alpha", view="all")
+    token = get_csrf(logged_in_client, "/patients/")
+    body = logged_in_client.post("/patients/search", data={"q": "Alpha", "clear": "1", "view": "all",
+                                                           "csrf_token": token}, follow_redirects=True).data.decode()
+    assert "Bravo NoCase" in body and "Clear search" not in body
+    search_patients(logged_in_client, "Alpha")
+    with logged_in_client.session_transaction() as sess:
+        assert sess["patient_search"] == "Alpha"
+    token = get_csrf(logged_in_client, "/patients/")
+    logged_in_client.post("/logout", data={"csrf_token": token})
+    with logged_in_client.session_transaction() as sess:
+        assert "patient_search" not in sess
 
 
 def test_default_view_with_nobody_active_explains_itself(logged_in_client):
@@ -246,7 +277,7 @@ def test_privacy_notice_pending_view_lists_only_patients_without_acceptance(logg
     assert "Erased Pending" not in body
     # The search box keeps the view.
     assert 'name="view" value="notice"' in body
-    assert "Pending Notice" in logged_in_client.get("/patients/?view=notice&q=Pending").data.decode()
+    assert "Pending Notice" in search_patients(logged_in_client, "Pending", view="notice")
 
 
 def test_privacy_notice_pending_view_empty_state(logged_in_client):

@@ -1,7 +1,7 @@
 import io
 import json
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
 
 from app import db, pdf_reports
 from app.auth import can_view_clinical_data, can_view_financial_data, can_view_privacy_requests, clinical_access_required, current_actor, login_required, logs_view
@@ -80,12 +80,32 @@ def _validate_patient(data):
     return errors
 
 
+_SEARCH_KEY = "patient_search"
+_VIEWS = ("all", "notice")
+
+
+@bp.route("/search", methods=["POST"])
+@login_required
+def search():
+    """The search box posts here and the term is kept in the signed-in session, so a patient's
+    name or mobile number never appears in the address — it would otherwise sit in the browser
+    history of a shared front-desk PC and in the server's request log. Logging out clears it."""
+    validate_csrf(request.form.get("csrf_token"))
+    term = request.form.get("q", "").strip()[:100]
+    if term and not request.form.get("clear"):
+        session[_SEARCH_KEY] = term
+    else:
+        session.pop(_SEARCH_KEY, None)
+    view = request.form.get("view", "")
+    return redirect(url_for("patients.list_view", view=view if view in _VIEWS else None))
+
+
 @bp.route("/")
 @login_required
 def list_view():
-    search = request.args.get("q", "").strip()
+    search = session.get(_SEARCH_KEY, "")
     view = request.args.get("view", "")
-    if view not in ("all", "notice"):
+    if view not in _VIEWS:
         view = ""
     show_all = view == "all"
     # Receptionists get no financial data — not even indirectly through who lands on the default

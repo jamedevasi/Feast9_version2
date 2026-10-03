@@ -34,6 +34,15 @@ def get_csrf(client, path):
     return match.group(1) if match else ""
 
 
+def search_patients(client, q, view=""):
+    """Searches the Patients list the way the page does (a POST, never ?q= in the address)
+    and returns the resulting page's HTML."""
+    token = get_csrf(client, "/patients/")
+    resp = client.post("/patients/search", data={"q": q, "view": view, "csrf_token": token},
+                       follow_redirects=True)
+    return resp.data.decode()
+
+
 @pytest.fixture()
 def setup_admin(client):
     token = get_csrf(client, "/setup")

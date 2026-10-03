@@ -1,6 +1,6 @@
 import re
 
-from tests.conftest import get_csrf
+from tests.conftest import get_csrf, search_patients
 
 
 def _register_patient(client, **overrides):
@@ -42,8 +42,7 @@ def test_register_patient_and_appears_in_list(logged_in_client):
 
 def test_patient_search_matches_mobile(logged_in_client):
     _register_patient(logged_in_client, name="Findable Patient", mobile="9998887776")
-    resp = logged_in_client.get("/patients/?view=all&q=9998887776")
-    assert b"Findable Patient" in resp.data
+    assert "Findable Patient" in search_patients(logged_in_client, "9998887776", view="all")
 
 
 def test_guardian_required_for_minor(logged_in_client):
@@ -78,10 +77,9 @@ def test_invalid_mobile_rejected(logged_in_client):
 
 def test_patient_detail_section_order(logged_in_client):
     _register_patient(logged_in_client, name="Order Patient")
-    list_resp = logged_in_client.get("/patients/?view=all&q=Order Patient")
-    match = re.search(rb'/patients/(\d+)"', list_resp.data)
+    match = re.search(r'/patients/(\d+)"', search_patients(logged_in_client, "Order Patient", view="all"))
     assert match
-    patient_id = match.group(1).decode()
+    patient_id = match.group(1)
 
     detail_resp = logged_in_client.get(f"/patients/{patient_id}")
     body = detail_resp.data.decode()

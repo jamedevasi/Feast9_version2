@@ -7,15 +7,18 @@
 </div>
 
 <div class="view-toggle">
-  <a class="button {% if not view %}button-active{% endif %}" href="{{ url_for('patients.list_view', q=search or None) }}">{{ 'Active cases & pending payments' if can_view_financial else 'Active cases' }}</a>
-  <a class="button {% if show_all %}button-active{% endif %}" href="{{ url_for('patients.list_view', q=search or None, view='all') }}">All patients</a>
-  <a class="button {% if view == 'notice' %}button-active{% endif %}" href="{{ url_for('patients.list_view', q=search or None, view='notice') }}">Privacy notice pending</a>
+  <a class="button {% if not view %}button-active{% endif %}" href="{{ url_for('patients.list_view') }}">{{ 'Active cases & pending payments' if can_view_financial else 'Active cases' }}</a>
+  <a class="button {% if show_all %}button-active{% endif %}" href="{{ url_for('patients.list_view', view='all') }}">All patients</a>
+  <a class="button {% if view == 'notice' %}button-active{% endif %}" href="{{ url_for('patients.list_view', view='notice') }}">Privacy notice pending</a>
 </div>
 
-<form method="get" class="search-form">
+{# Posted, not GET: the search term must never end up in the address (browser history, logs). #}
+<form method="post" action="{{ url_for('patients.search') }}" class="search-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if view %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
-  <input type="text" name="q" value="{{ search }}" placeholder="Search by name, mobile, email, or address">
+  <input type="text" name="q" value="{{ search }}" placeholder="Search by name, mobile, email, or address" autocomplete="off">
   <button type="submit">Search</button>
+  {% if search %}<button type="submit" name="clear" value="1" class="button button-outline">Clear search</button>{% endif %}
 </form>
 
 {% if view == 'notice' %}
@@ -25,7 +28,7 @@
 {% elif not view %}
 <div class="list-note">
   <span>Showing patients with an active case{% if can_view_financial %} or an outstanding balance{% endif %}.</span>
-  <a class="button button-outline button-small" href="{{ url_for('patients.list_view', q=search or None, view='all') }}">Show all patients</a>
+  <a class="button button-outline button-small" href="{{ url_for('patients.list_view', view='all') }}">Show all patients</a>
 </div>
 {% endif %}
 
