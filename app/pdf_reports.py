@@ -446,28 +446,52 @@ def _consent_signature_flowable(signature_bytes, max_width=2.5 * inch, max_heigh
     return Image(io.BytesIO(signature_bytes), width=native_width * scale, height=native_height * scale)
 
 
-def generate_consent_pdf(case, patient, signature_bytes=None):
-    """With embedded signature or 'Paper consent on file' (feast9_v2_agents.md §10)."""
-    story = _header("Consent Form", _patient_line(patient))
+CONSENT_STATEMENT = (
+    "I agree to the dental treatment listed above. The doctor has explained the treatment, "
+    "its expected benefits, possible risks and complications, the alternatives available, and "
+    "the likely cost. I have been able to ask questions and they have been answered. I "
+    "understand that I may withdraw my consent before any stage of the treatment."
+)
+
+
+def _consent_sign_block(label, name=""):
+    return [P("_" * 32, _RX_CELL), P(label, _RX_LABEL), P(name or "Name: " + "_" * 24, _RX_CELL),
+            Spacer(1, 4), P("Date: " + "_" * 16, _RX_CELL)]
+
+
+def generate_consent_pdf(case, patient, doctor=None, signature_bytes=None):
+    """A per-case consent form printed for the patient (or guardian, if under 18) to sign on
+    paper — consent is collected offline only (user decision, 2026-10-03). Once staff have
+    marked it recorded, the date and notes are printed underneath. `signature_bytes` is only
+    for cases recorded with the old on-screen signature pad, which has been removed."""
+    story = _header("Consent for Treatment", _patient_line(patient))
 
     story.append(P(f"Case: {case['title']}", BODY))
     story.append(P(f"Procedures: {_procedures_for(case)}", BODY))
+    if doctor and doctor.get("name"):
+        story.append(P(f"Doctor: {doctor['name']}", BODY))
     story.append(Spacer(1, 10))
+    story.append(P(CONSENT_STATEMENT, BODY))
+    story.append(Spacer(1, 6))
+    story.append(P("If the patient is under 18, a parent or guardian signs on their behalf.", MUTED))
+
+    story.append(Spacer(1, 40))
+    sig = Table([[
+        _consent_sign_block("Signature of patient / parent or guardian"),
+        _consent_sign_block("Signature of doctor", doctor.get("name") if doctor else ""),
+    ]], colWidths=[3.4 * inch, 3.4 * inch])
+    sig.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story.append(sig)
 
     if case.get("consent_recorded"):
-        story.append(Paragraph(f"Consent recorded on {case['consent_recorded_at']}.", BODY))
+        story.append(Spacer(1, 24))
+        story.append(P(f"Recorded in Feast9 on {case['consent_recorded_at']}.", MUTED))
         signature_flowable = _consent_signature_flowable(signature_bytes) if signature_bytes else None
         if signature_flowable is not None:
-            story.append(Spacer(1, 6))
-            story.append(Paragraph("Signature:", MUTED))
+            story.append(Paragraph("Signature captured on screen:", MUTED))
             story.append(signature_flowable)
-        else:
-            story.append(Paragraph("Paper consent on file.", MUTED))
         if case.get("consent_notes"):
-            story.append(Spacer(1, 6))
-            story.append(P(case["consent_notes"], BODY))
-    else:
-        story.append(Paragraph("No consent recorded for this case.", ALERT))
+            story.append(P(case["consent_notes"], MUTED))
 
     return _build(story)
 

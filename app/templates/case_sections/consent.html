@@ -6,16 +6,14 @@
   <p><img class="consent-signature-preview" src="{{ url_for('cases.consent_signature', case_id=case.id) }}" alt="Recorded signature"></p>
   {% endif %}
   {% if case.consent_notes %}<p>{{ case.consent_notes }}</p>{% endif %}
-  <p><a class="button" href="{{ url_for('cases.consent_pdf', case_id=case.id) }}" target="_blank" rel="noopener">{{ icon('file-text') }} Consent Form (PDF)</a></p>
+  <p><a class="button button-outline" href="{{ url_for('cases.consent_pdf', case_id=case.id) }}" target="_blank" rel="noopener">{{ icon('file-text') }} Print Consent Form</a></p>
   {% elif case.status == 'Active' %}
   <p><strong>{{ icon('triangle-alert') }} No consent recorded for this active case.</strong></p>
+  <p class="hint">Print the consent form, have the patient (or a parent or guardian, if under 18) and the doctor sign it, file the signed copy, then mark it recorded here.</p>
+  <p><a class="button button-outline" href="{{ url_for('cases.consent_pdf', case_id=case.id) }}" target="_blank" rel="noopener">{{ icon('file-text') }} Print Consent Form</a></p>
   <form method="post" action="{{ url_for('cases.record_consent', case_id=case.id) }}" class="inline-form" id="consent-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="signature_data" id="signature-data-input">
     <label>Notes<input type="text" name="consent_notes" placeholder="Paper consent on file"></label>
-    <label>Signature (optional — draw with mouse, finger, or stylus)</label>
-    <canvas id="signature-pad" class="signature-pad" width="400" height="150"></canvas>
-    <button type="button" id="signature-clear" class="button button-secondary">Clear Signature</button>
     <button type="submit">Mark Consent Recorded</button>
   </form>
   {% else %}

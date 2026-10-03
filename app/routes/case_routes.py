@@ -1,11 +1,8 @@
-import base64
 import io
 import json
 import pathlib
-import uuid
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
-from PIL import Image, UnidentifiedImageError
 
 from app import config as app_config
 from app import db, pdf_reports
@@ -15,43 +12,13 @@ from app.constants import (
     PRESCRIPTION_ROUTES,
 )
 from app.csrf import validate_csrf
-from app.validators import detect_image_upload_type, normalize_date, today_iso
+from app.validators import normalize_date, today_iso
 
 bp = Blueprint("cases", __name__)
 
 
 def _send_pdf(pdf_bytes, download_name):
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name=download_name)
-
-
-def _save_consent_signature(data_url):
-    """Decodes a canvas-drawn signature (data:image/png;base64,...) and stores it under
-    DATA_DIR/uploads/ (feast9_v2_agents.md's directory layout). Returns the filename, or
-    "" if there's nothing to save. Content is trusted by its bytes, never by the data:
-    URL's own claimed mime type: a magic-byte check (detect_image_upload_type) rejects
-    obvious junk cheaply, then PIL actually decodes it — a file with valid magic bytes
-    but a truncated/corrupt body would otherwise be accepted here and only fail later,
-    inside PDF generation (generate_consent_pdf embeds it via PIL too)."""
-    if not data_url or "," not in data_url:
-        return ""
-    try:
-        content = base64.b64decode(data_url.split(",", 1)[1])
-    except (ValueError, TypeError):
-        return ""
-    detected = detect_image_upload_type(content[:16])
-    if detected is None:
-        return ""
-    try:
-        with Image.open(io.BytesIO(content)) as img:
-            img.verify()
-    except (UnidentifiedImageError, OSError):
-        return ""
-    _mimetype, ext = detected
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    uploads_dir = pathlib.Path(app_config.uploads_dir())
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-    (uploads_dir / filename).write_bytes(content)
-    return filename
 
 
 def _collect_case_form(form):
@@ -503,11 +470,9 @@ def complete_followup(case_id):
 def record_consent(case_id):
     validate_csrf(request.form.get("csrf_token"))
     _get_case_or_404(case_id)
-    signature_filename = _save_consent_signature(request.form.get("signature_data", ""))
-    notes = request.form.get("consent_notes", "").strip()
-    if not notes and not signature_filename:
-        notes = "Paper consent on file"
-    db.record_case_consent(case_id, notes, signature_filename=signature_filename, actor=current_actor())
+    # Consent is signed on paper (the printed consent form) — this only records that it was.
+    notes = request.form.get("consent_notes", "").strip() or "Paper consent on file"
+    db.record_case_consent(case_id, notes, actor=current_actor())
     flash("Consent recorded.", "success")
     return redirect(url_for("cases.detail", case_id=case_id))
 
@@ -543,7 +508,8 @@ def consent_pdf(case_id):
         path = pathlib.Path(app_config.uploads_dir()) / filename
         if path.exists():
             signature_bytes = path.read_bytes()
-    pdf_bytes = pdf_reports.generate_consent_pdf(case, patient, signature_bytes=signature_bytes)
+    doctor = db.get_doctor(case["doctor_id"]) if case.get("doctor_id") else None
+    pdf_bytes = pdf_reports.generate_consent_pdf(case, patient, doctor=doctor, signature_bytes=signature_bytes)
     return _send_pdf(pdf_bytes, f"consent-{case_id}.pdf")
 
 
