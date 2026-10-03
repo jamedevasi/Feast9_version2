@@ -8,7 +8,7 @@ from flask import abort, flash, redirect, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import db
-from app.constants import NON_FINANCIAL_ROLES
+from app.constants import NON_CLINICAL_ROLES, NON_FINANCIAL_ROLES, NON_PRIVACY_ROLES
 
 PBKDF2_METHOD = "pbkdf2:sha256"
 MAX_FAILED_ATTEMPTS = 8          # per IP address, within LOCKOUT_WINDOW_MINUTES
@@ -33,7 +33,7 @@ sunshine123 princess123 monkey12345 dragon12345 master12345 superman123 trustno1
 # Roles that must have two-step sign-in when Settings > Sign-in Security requires it — the
 # accounts that can read and write clinical and financial records. The setting
 # (`require_two_factor`) is "0" (optional), "1" (these roles) or "all" (receptionists too).
-TWO_FACTOR_ROLES = ("admin", "doctor")
+TWO_FACTOR_ROLES = ("admin", "doctor", "guest_doctor")
 # Reachable without two-step sign-in while it's required but not yet set up: the setup
 # itself, logging out, and the idle-timer ping (which must never be answered by a redirect).
 _TWO_FACTOR_SETUP_ENDPOINTS = ("totp.setup", "totp.recovery_codes", "auth.logout", "auth.session_ping")
@@ -239,19 +239,39 @@ def role_required(*roles):
     return decorator
 
 
-def financial_access_required(view):
-    """Blocks the receptionist role from every payment/cost route — never UI-only."""
-    @functools.wraps(view)
-    def wrapped(*args, **kwargs):
-        if session.get("role") in NON_FINANCIAL_ROLES:
-            abort(403)
-        return view(*args, **kwargs)
+def _blocks_roles(blocked, doc):
+    def decorator(view):
+        @functools.wraps(view)
+        def wrapped(*args, **kwargs):
+            if session.get("role") in blocked:
+                abort(403)
+            return view(*args, **kwargs)
 
-    return wrapped
+        return wrapped
+
+    decorator.__doc__ = doc
+    return decorator
+
+
+# Each is applied after (below) @login_required — never UI-only.
+financial_access_required = _blocks_roles(
+    NON_FINANCIAL_ROLES, "Blocks receptionists and guest doctors from every payment/cost/report route.")
+clinical_access_required = _blocks_roles(
+    NON_CLINICAL_ROLES, "Blocks receptionists from medical records: cases, notes, chart, documents.")
+privacy_access_required = _blocks_roles(
+    NON_PRIVACY_ROLES, "Blocks guest doctors from Privacy Requests.")
 
 
 def can_view_financial_data():
     return session.get("role") not in NON_FINANCIAL_ROLES
+
+
+def can_view_clinical_data():
+    return session.get("role") not in NON_CLINICAL_ROLES
+
+
+def can_view_privacy_requests():
+    return session.get("role") not in NON_PRIVACY_ROLES
 
 
 def current_actor():

@@ -18,14 +18,17 @@
     {% set settings_bps = ('settings', 'users', 'audit', 'backup', 'doctors', 'procedure_types', 'import_data') %}
     <nav>
       <a href="{{ url_for('dashboard.index') }}" class="{{ 'nav-active' if current_bp == 'dashboard' }}">Dashboard</a>
-      <a href="{{ url_for('patients.list_view') }}" class="{{ 'nav-active' if current_bp in ('patients', 'cases', 'clinical', 'dental') }}">Patients</a>
+      <a href="{{ url_for('patients.list_view') }}" class="{{ 'nav-active' if current_bp in ('patients', 'cases', 'clinical', 'dental') and request.endpoint != 'clinical.lab_work' }}">Patients</a>
       <a href="{{ url_for('appointments.index') }}" class="{{ 'nav-active' if current_bp == 'appointments' }}">Appointments</a>
+      <a href="{{ url_for('clinical.lab_work') }}" class="{{ 'nav-active' if request.endpoint == 'clinical.lab_work' }}">Lab Work</a>
       {% if can_view_financial_nav %}
       <a href="{{ url_for('reports.view_reports') }}" class="{{ 'nav-active' if current_bp == 'reports' }}">Reports</a>
       <a href="{{ url_for('analytics.view_analytics') }}" class="{{ 'nav-active' if current_bp == 'analytics' }}">Analytics</a>
       <a href="{{ url_for('financial.index') }}" class="{{ 'nav-active' if current_bp == 'financial' }}">Financial Assessment</a>
       {% endif %}
+      {% if can_view_privacy %}
       <a href="{{ url_for('dpdp.list_view') }}" class="{{ 'nav-active' if current_bp == 'dpdp' }}">Privacy Requests{% if pending_data_requests_count %} ({{ pending_data_requests_count }}){% endif %}</a>
+      {% endif %}
       <a href="{{ url_for('account.index') }}" class="{{ 'nav-active' if current_bp in ('account', 'totp', 'google_auth') }}">My Account</a>
       {% if session.get('role') == 'admin' %}
       {# One link: the Settings page itself carries the cards for Doctors, Case Types, Backup & Data, Users and Audit Log. #}

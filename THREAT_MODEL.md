@@ -28,9 +28,12 @@ portal remains the standing trigger for the next full revision.
 
 - **Admin** — full access: all clinical/financial data, user management, audit log, TOTP resets.
 - **Doctor** — full clinical + financial access, no user management.
-- **Receptionist** — clinical/scheduling access only. **Zero access to financial data**,
-  enforced server-side (`app.auth.financial_access_required`, `can_view_financial_data`) —
-  not a UI-only restriction. See §3 below.
+- **Guest doctor** — a visiting doctor: clinical access like a doctor, but no Settings, Privacy
+  Requests or financial data, and cannot delete clinical documents.
+- **Receptionist** — scheduling/coordination only (contact details, appointments, follow-ups,
+  lab tracking). **Zero access to financial data and to medical records**, enforced server-side
+  (`app.auth.financial_access_required` / `clinical_access_required` and their `can_view_*`
+  helpers) — not a UI-only restriction. See §3 below.
 - **Unauthenticated attacker** — no valid session; the only reachable surface is `/`,
   `/setup` (only before the first account exists), `/login`, `/login/totp`.
 - **A former/deactivated user** — `is_active = 0` rows are excluded from
@@ -56,12 +59,13 @@ tamper with financial data it should never see, or to inflate/deflate a case's c
 - Case creation silently zeroes any `total_cost` a receptionist session posts, regardless of
   what the client sends — defends against a receptionist hand-crafting the POST body.
 - All of the above is exercised by `tests/test_roles.py`.
+- Since 2026-10-03 a receptionist also has no medical-record access: every case, clinical
+  document, dental-chart and patient-summary route returns 403, and medical history is removed
+  from the patient page before rendering (`tests/test_role_separation.py`).
 
-**Residual risk:** a receptionist can still see non-financial clinical detail (visit notes,
-attachments, prescriptions) for any patient — by design, since §14 only requires financial
-lockout, not a narrower clinical scope. If clinic policy later wants receptionists restricted
-to scheduling only (no clinical note content), that is a new, larger scope decision, not a bug
-in the current build.
+**Residual risk:** a receptionist still sees case titles, follow-up notes, appointment notes and
+lab work descriptions — the minimum needed to coordinate visits. Anything clinical written into
+those free-text fields is visible to them.
 
 ### 3.2 Export/PDF paths
 

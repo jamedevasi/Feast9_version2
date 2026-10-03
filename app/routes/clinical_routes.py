@@ -3,12 +3,12 @@ import io
 import os
 import uuid
 
-from flask import Blueprint, abort, flash, redirect, request, send_file, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from werkzeug.utils import secure_filename
 
 from app import config as app_config
 from app import db, pdf_reports
-from app.auth import current_actor, login_required, reauth_required, role_required, logs_view
+from app.auth import clinical_access_required, current_actor, login_required, logs_view, reauth_required, role_required
 from app.constants import ATTACHMENT_TYPES, LAB_REQ_STATUSES
 from app.csrf import validate_csrf
 from app.validators import detect_upload_type, normalize_date, today_iso
@@ -33,6 +33,7 @@ def _uploads_dir():
 
 @bp.route("/cases/<int:case_id>/attachments", methods=["POST"])
 @login_required
+@clinical_access_required
 def upload_attachment(case_id):
     validate_csrf(request.form.get("csrf_token"))
     _get_case_or_404(case_id)
@@ -66,6 +67,7 @@ def upload_attachment(case_id):
 
 @bp.route("/attachments/<int:attachment_id>/file")
 @login_required
+@clinical_access_required
 def serve_attachment(attachment_id):
     attachment = db.get_attachment(attachment_id)
     if not attachment:
@@ -131,6 +133,7 @@ def clear_attachments(case_id):
 
 @bp.route("/cases/<int:case_id>/lab-reqs", methods=["POST"])
 @login_required
+@clinical_access_required
 def add_lab_req(case_id):
     validate_csrf(request.form.get("csrf_token"))
     case = _get_case_or_404(case_id)
@@ -163,14 +166,32 @@ def update_lab_req(req_id):
         status = "Sent"
     received_date = normalize_date(request.form.get("received_date", ""))
     notes = request.form.get("notes", "").strip()
+    # Only the Lab Work page sends expected_return; the case page's form leaves it as it was.
+    expected_return = (normalize_date(request.form.get("expected_return", ""))
+                       if "expected_return" in request.form else None)
 
-    db.update_lab_req(req_id, status, received_date, notes)
+    db.update_lab_req(req_id, status, received_date, notes, expected_return)
     flash("Lab requisition updated.", "success")
+    if request.form.get("next") == "lab_work":
+        return redirect(url_for("clinical.lab_work", view=request.form.get("view") or None))
     return redirect(url_for("cases.detail", case_id=lab_req["case_id"]))
+
+
+@bp.route("/lab-work")
+@login_required
+def lab_work():
+    """Lab tracking across all patients — the receptionist's view of lab requisitions (they
+    can't open a case). Doctors raise and delete requisitions on the case page."""
+    show_all = request.args.get("view") == "all"
+    return render_template(
+        "lab_work.html", lab_reqs=db.list_lab_work(open_only=not show_all), show_all=show_all,
+        lab_req_statuses=LAB_REQ_STATUSES, today=today_iso(),
+    )
 
 
 @bp.route("/lab-reqs/<int:req_id>/delete", methods=["POST"])
 @login_required
+@clinical_access_required
 def delete_lab_req(req_id):
     validate_csrf(request.form.get("csrf_token"))
     lab_req = db.get_lab_req(req_id)
@@ -183,6 +204,7 @@ def delete_lab_req(req_id):
 
 @bp.route("/cases/<int:case_id>/referrals", methods=["POST"])
 @login_required
+@clinical_access_required
 def add_referral(case_id):
     validate_csrf(request.form.get("csrf_token"))
     case = _get_case_or_404(case_id)
@@ -204,6 +226,7 @@ def add_referral(case_id):
 
 @bp.route("/cases/<int:case_id>/referral/<int:ref_id>/print")
 @login_required
+@clinical_access_required
 @logs_view("referral_pdf_viewed", "referral", "ref_id")
 def referral_pdf(case_id, ref_id):
     case = _get_case_or_404(case_id)
@@ -219,6 +242,7 @@ def referral_pdf(case_id, ref_id):
 
 @bp.route("/referrals/<int:ref_id>/delete", methods=["POST"])
 @login_required
+@clinical_access_required
 def delete_referral(ref_id):
     validate_csrf(request.form.get("csrf_token"))
     referral = db.get_referral(ref_id)

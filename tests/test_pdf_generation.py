@@ -67,14 +67,23 @@ def test_case_summary_pdf_downloads(logged_in_client, patient_id):
     _assert_pdf(resp)
 
 
-def test_case_summary_pdf_available_but_redacted_for_receptionist(logged_in_client, patient_id):
+def test_case_summary_pdf_available_but_redacted_for_guest_doctor(logged_in_client, patient_id):
+    case_id, case_url, _ = _case_for(logged_in_client, patient_id, total_cost="1000")
+    _create_user(logged_in_client, "pdfguest", "guest_doctor")
+    _logout(logged_in_client)
+    _login(logged_in_client, "pdfguest")
+
+    resp = logged_in_client.get(f"/cases/{case_id}/summary.pdf")
+    _assert_pdf(resp)
+
+
+def test_case_summary_pdf_blocked_for_receptionist(logged_in_client, patient_id):
     case_id, case_url, _ = _case_for(logged_in_client, patient_id, total_cost="1000")
     _create_user(logged_in_client, "pdfrecep", "receptionist")
     _logout(logged_in_client)
     _login(logged_in_client, "pdfrecep")
 
-    resp = logged_in_client.get(f"/cases/{case_id}/summary.pdf")
-    _assert_pdf(resp)
+    assert logged_in_client.get(f"/cases/{case_id}/summary.pdf").status_code == 403
 
 
 def test_consent_pdf_downloads(logged_in_client, patient_id):

@@ -1772,14 +1772,40 @@ def get_lab_req(req_id):
     return dict(row) if row else None
 
 
-def update_lab_req(req_id, status, received_date, notes):
+def update_lab_req(req_id, status, received_date, notes, expected_return=None):
+    """expected_return=None leaves it unchanged (the case page's form doesn't send it)."""
     conn = get_db()
     conn.execute(
         "UPDATE lab_requisitions SET status = ?, received_date = ?, notes = ? WHERE id = ?",
         (status, received_date, notes, req_id),
     )
+    if expected_return is not None:
+        conn.execute("UPDATE lab_requisitions SET expected_return = ? WHERE id = ?", (expected_return, req_id))
     conn.commit()
     conn.close()
+
+
+def list_lab_work(open_only=True):
+    """Every lab requisition across all patients, for the Lab Work tracking page — open ones
+    (not yet Received) by default. Adds patient name, case title and the patient's next
+    Scheduled appointment from today, so work that's due before a visit stands out."""
+    today = date.today().isoformat()
+    where = "WHERE lr.status != 'Received'" if open_only else ""
+    conn = get_db()
+    rows = conn.execute(
+        f"""SELECT lr.*, p.name AS patient_name, c.title AS case_title,
+                   (SELECT MIN(a.appt_date) FROM appointments a
+                     WHERE a.patient_id = lr.patient_id AND a.status = 'Scheduled' AND a.appt_date >= ?)
+                       AS next_appt_date
+            FROM lab_requisitions lr
+            JOIN patients p ON p.id = lr.patient_id
+            JOIN cases c ON c.id = lr.case_id
+            {where}
+            ORDER BY (lr.status = 'Received'), COALESCE(NULLIF(lr.expected_return, ''), '9999'), lr.sent_date, lr.id""",
+        (today,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def delete_lab_req(req_id, actor=None):

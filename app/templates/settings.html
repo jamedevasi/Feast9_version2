@@ -83,7 +83,7 @@
   <form method="post" action="{{ url_for('settings.index') }}" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="signin_security">
-    <label class="checkbox"><input type="checkbox" name="require_two_factor" {% if require_two_factor != '0' %}checked{% endif %}> Require two-step sign-in for admins and doctors</label>
+    <label class="checkbox"><input type="checkbox" name="require_two_factor" {% if require_two_factor != '0' %}checked{% endif %}> Require two-step sign-in for admins, doctors and guest doctors</label>
     <label class="checkbox"><input type="checkbox" name="require_two_factor_all" {% if require_two_factor == 'all' %}checked{% endif %}> Also require it for receptionists</label>
     <button type="submit">Save</button>
   </form>

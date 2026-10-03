@@ -4,7 +4,7 @@ import json
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 
 from app import db, pdf_reports
-from app.auth import can_view_financial_data, current_actor, login_required, logs_view
+from app.auth import can_view_clinical_data, can_view_financial_data, can_view_privacy_requests, clinical_access_required, current_actor, login_required, logs_view
 from app.constants import ALLERGY_DRUGS, MEDICAL_CONDITIONS, SEX_OPTIONS
 from app.csrf import validate_csrf
 from app.validators import compute_age, is_valid_mobile, normalize_date, now_iso, today_iso
@@ -43,6 +43,21 @@ def _collect_form(form):
         "guardian_relation": form.get("guardian_relation", "").strip(),
         "guardian_mobile": form.get("guardian_mobile", "").strip(),
     }
+
+
+# Medical history fields — receptionists neither see nor set them; their saves leave them as they were.
+_MEDICAL_FIELDS = (
+    "medical_conditions", "medical_conditions_json", "medical_conditions_other",
+    "is_pregnant", "is_nursing", "allergies", "allergies_json", "allergies_other",
+)
+
+
+def _collect_allowed_form(form):
+    data = _collect_form(form)
+    if not can_view_clinical_data():
+        for key in _MEDICAL_FIELDS:
+            data.pop(key)
+    return data
 
 
 def _validate_patient(data):
@@ -94,7 +109,7 @@ def new():
 
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
-        data = _collect_form(request.form)
+        data = _collect_allowed_form(request.form)
         form_state = data
         errors = _validate_patient(data)
         if not errors:
@@ -126,9 +141,18 @@ def detail(patient_id):
     patient = db.get_patient(patient_id)
     if not patient:
         abort(404)
-    patient["medical_conditions"] = json.loads(patient.get("medical_conditions_json") or "[]")
-    patient["allergies"] = json.loads(patient.get("allergies_json") or "[]")
+    can_view_clinical = can_view_clinical_data()
+    if can_view_clinical:
+        patient["medical_conditions"] = json.loads(patient.get("medical_conditions_json") or "[]")
+        patient["allergies"] = json.loads(patient.get("allergies_json") or "[]")
+    else:
+        # Receptionist: medical history never reaches the template, not just hidden in it.
+        for key in _MEDICAL_FIELDS:
+            patient.pop(key, None)
     cases = db.list_cases_for_patient(patient_id)
+    if not can_view_clinical:
+        for c in cases:  # case titles/status/doctor only — no visit note text
+            c["latest_visit_note"] = ""
     # Flag exactly the cases the dashboard's follow-up table lists for this patient, so arriving
     # here from a dashboard row shows which case the follow-up belongs to.
     overdue, upcoming = db.get_followup_alerts(patient_id)
@@ -137,7 +161,7 @@ def detail(patient_id):
         c["followup_alert"] = followups.get(c["id"])
     cases.sort(key=lambda c: (c["created_at"] or "", c["id"]), reverse=True)  # newest opened first
     appointments = db.list_appointments_for_patient(patient_id)
-    data_requests = db.list_data_requests_for_patient(patient_id)
+    data_requests = db.list_data_requests_for_patient(patient_id) if can_view_privacy_requests() else []
     return render_template(
         "patient_detail.html", patient=patient, cases=cases, appointments=appointments,
         data_requests=data_requests,
@@ -146,6 +170,7 @@ def detail(patient_id):
 
 @bp.route("/<int:patient_id>/summary.pdf")
 @login_required
+@clinical_access_required
 @logs_view("patient_summary_pdf_viewed", "patient", "patient_id")
 def summary_pdf(patient_id):
     patient = db.get_patient(patient_id)
@@ -173,7 +198,7 @@ def edit(patient_id):
     errors = []
     if request.method == "POST":
         validate_csrf(request.form.get("csrf_token"))
-        data = _collect_form(request.form)
+        data = _collect_allowed_form(request.form)
         errors = _validate_patient(data)
         if not errors:
             now = now_iso()

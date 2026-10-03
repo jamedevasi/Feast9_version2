@@ -43,6 +43,7 @@
     <label>Guardian Mobile<input type="text" name="guardian_mobile" value="{{ patient.guardian_mobile or '' }}"></label>
   </fieldset>
 
+  {% if can_view_clinical %}
   <fieldset>
     <legend>Medical History</legend>
     <div class="checklist">
@@ -64,6 +65,9 @@
     </div>
     <label>Other allergies<input type="text" name="allergies_other" value="{{ patient.allergies_other or '' }}"></label>
   </fieldset>
+  {% else %}
+  <p class="hint">Medical history and allergies are recorded by the doctor.</p>
+  {% endif %}
 
   <fieldset>
     <legend>Emergency Contact</legend>

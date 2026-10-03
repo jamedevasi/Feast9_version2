@@ -97,13 +97,18 @@ def _register_context_processors(app):
         # feast9_v2_agents.md §5.11: "count_pending_data_requests() injected into every page"
         from flask import session
 
-        from app.auth import can_view_financial_data
+        from app.auth import can_view_clinical_data, can_view_financial_data, can_view_privacy_requests
         from app.auth import idle_timeout_minutes
+        from app.constants import ROLE_LABELS
         if not session.get("admin_id"):
             return {}
+        can_view_privacy = can_view_privacy_requests()
         return {
-            "pending_data_requests_count": db_module.count_pending_data_requests(),
+            "pending_data_requests_count": db_module.count_pending_data_requests() if can_view_privacy else 0,
             "can_view_financial_nav": can_view_financial_data(),
+            "can_view_clinical": can_view_clinical_data(),
+            "can_view_privacy": can_view_privacy,
+            "role_labels": ROLE_LABELS,
             # Read by ui_actions.js's idle timer (base.html's logout form).
             "idle_timeout_seconds": idle_timeout_minutes() * 60,
         }

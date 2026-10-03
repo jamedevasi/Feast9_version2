@@ -15,7 +15,7 @@
     {% for u in users %}
     <tr>
       <td>{{ u.username }}</td>
-      <td>{{ u.role|capitalize }}</td>
+      <td>{{ role_labels.get(u.role, u.role|capitalize) }}</td>
       <td>{{ 'Active' if u.is_active else 'Deactivated' }}{% if u.is_locked %} <span class="badge badge-due-soon" title="Too many wrong passwords — unlocks by itself at {{ u.locked_until[11:16] }}">Locked</span>{% endif %}</td>
       <td>{{ 'Enabled' if u.totp_enabled else 'Off' }}</td>
       <td>{{ u.google_email if u.google_email else 'Not linked' }}</td>

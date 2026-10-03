@@ -78,11 +78,16 @@ STANDARD_PROCEDURE_TYPES = [
 # Bulk patient import (§2/§3 excel_import.py — "Bulk 8,000-row xlsx import").
 MAX_IMPORT_ROWS = 8000
 
-# Admin: full access. Doctor: full clinical + financial access. Receptionist:
-# zero access to financial data (payments, costs/balances) — enforced server-side,
-# see app/auth.py:financial_access_required.
-ROLES = ["admin", "doctor", "receptionist"]
-NON_FINANCIAL_ROLES = ["receptionist"]
+# Admin: full access. Doctor: full clinical + financial access. Guest doctor: a visiting
+# doctor — patients, cases and appointments like a doctor, but no Settings, privacy requests,
+# financial data, Reports or Analytics, and can't delete clinical documents. Receptionist:
+# coordination only — patients' contact details, appointments, follow-ups, lab tracking — with
+# no medical records and no financial data. All enforced server-side (app/auth.py).
+ROLES = ["admin", "doctor", "guest_doctor", "receptionist"]
+ROLE_LABELS = {"admin": "Admin", "doctor": "Doctor", "guest_doctor": "Guest doctor", "receptionist": "Receptionist"}
+NON_FINANCIAL_ROLES = ["receptionist", "guest_doctor"]
+NON_CLINICAL_ROLES = ["receptionist"]          # no medical history, cases, notes, chart, documents
+NON_PRIVACY_ROLES = ["guest_doctor"]           # no Privacy Requests
 
 # DPDP Phase 2 (feast9_v2_agents.md §5.11) — data-rights requests.
 DATA_REQUEST_TYPES = ["Access", "Correction", "Erasure", "Withdraw Consent"]

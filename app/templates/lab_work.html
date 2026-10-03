@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Lab Work — Feast9{% endblock %}
+{% block content %}
+<h1>Lab Work</h1>
+
+<p class="view-toggle">
+  <a href="{{ url_for('clinical.lab_work') }}" class="button {{ 'button-active' if not show_all }}">Not yet received</a>
+  <a href="{{ url_for('clinical.lab_work', view='all') }}" class="button {{ 'button-active' if show_all }}">All</a>
+</p>
+<p class="hint">Doctors add lab work from the patient's case. Update the status here as work comes back from the lab.</p>
+
+{% if lab_reqs %}
+<table class="data-table stack-mobile lab-work-table">
+  <thead>
+    <tr><th>Patient</th><th>Case</th><th>Work</th><th>Sent</th><th>Next Visit</th><th>Expected</th><th>Status</th><th>Received</th><th>Notes</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for r in lab_reqs %}
+    {% set form_id = 'lab-req-' ~ r.id %}
+    <tr>
+      <td><a href="{{ url_for('patients.detail', patient_id=r.patient_id) }}">{{ r.patient_name }}</a></td>
+      <td>{% if can_view_clinical %}<a href="{{ url_for('cases.detail', case_id=r.case_id) }}">{{ r.case_title }}</a>{% else %}{{ r.case_title }}{% endif %}</td>
+      <td>{{ r.work_description }}{% if r.lab_name %} <span class="hint">— {{ r.lab_name }}</span>{% endif %}</td>
+      <td>{{ r.sent_date }}</td>
+      <td>
+        {% if r.next_appt_date %}
+        {{ r.next_appt_date }}
+        {% if r.status != 'Received' and (not r.expected_return or r.expected_return >= r.next_appt_date) %}
+        <span class="badge badge-lab-delayed" title="Not received yet, and not expected before this visit">{{ icon('triangle-alert') }} Before visit</span>
+        {% endif %}
+        {% else %}—{% endif %}
+      </td>
+      <td><input type="date" name="expected_return" value="{{ r.expected_return }}" form="{{ form_id }}" aria-label="Expected return"></td>
+      <td>
+        <select name="status" form="{{ form_id }}" aria-label="Status">
+          {% for s in lab_req_statuses %}
+          <option value="{{ s }}" {% if r.status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td><input type="date" name="received_date" value="{{ r.received_date }}" max="{{ today }}" form="{{ form_id }}" aria-label="Received date"></td>
+      <td><input type="text" name="notes" value="{{ r.notes }}" form="{{ form_id }}" aria-label="Notes"></td>
+      <td>
+        <form method="post" action="{{ url_for('clinical.update_lab_req', req_id=r.id) }}" id="{{ form_id }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="lab_work">
+          {% if show_all %}<input type="hidden" name="view" value="all">{% endif %}
+          <button type="submit" class="button button-small">Save</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">{% if show_all %}No lab work recorded yet.{% else %}Nothing waiting on the lab.{% endif %}</p>
+{% endif %}
+{% endblock %}

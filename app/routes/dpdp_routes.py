@@ -4,7 +4,7 @@ import io
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 
 from app import db, pdf_reports
-from app.auth import current_actor, login_required, logs_view, reauth_required, role_required
+from app.auth import current_actor, login_required, logs_view, privacy_access_required, reauth_required, role_required
 from app.constants import DATA_REQUEST_STATUSES, DATA_REQUEST_TYPES
 from app.csrf import validate_csrf
 from app.validators import today_iso
@@ -28,6 +28,7 @@ def _get_request_or_404(request_id):
 
 @bp.route("/patients/<int:patient_id>/data-requests/new", methods=["GET", "POST"])
 @login_required
+@privacy_access_required
 def new_data_request(patient_id):
     patient = _get_patient_or_404(patient_id)
     errors = []
@@ -57,6 +58,7 @@ def new_data_request(patient_id):
 
 @bp.route("/data-requests")
 @login_required
+@privacy_access_required
 def list_view():
     status = request.args.get("status", "")
     entries = db.list_data_requests(status=status or None)
@@ -68,6 +70,7 @@ def list_view():
 
 @bp.route("/data-requests/<int:request_id>")
 @login_required
+@privacy_access_required
 @logs_view("data_request_viewed", "data_request", "request_id")
 def detail(request_id):
     entry = _get_request_or_404(request_id)
@@ -77,6 +80,7 @@ def detail(request_id):
 
 @bp.route("/data-requests/<int:request_id>/access.pdf")
 @login_required
+@privacy_access_required
 @role_required("admin", "doctor")
 def access_pdf(request_id):
     """DPDP Phase 2 right-to-access export (feast9_v2_agents.md §10) — only meaningful
@@ -106,6 +110,7 @@ def access_pdf(request_id):
 
 @bp.route("/data-requests/<int:request_id>/resolve", methods=["POST"])
 @login_required
+@privacy_access_required
 @role_required("admin", "doctor")
 @reauth_required
 def resolve(request_id):

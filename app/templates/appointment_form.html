@@ -87,11 +87,11 @@
   {% if linked_case %}
   <p>This appointment is for the case <strong>{{ linked_case.title }}</strong>
     <span class="badge badge-{{ 'active' if linked_case.status == 'Active' else 'closed' }}">{{ linked_case.status }}</span></p>
-  <a class="button" href="{{ url_for('cases.detail', case_id=linked_case.id) }}">Open Case</a>
+  {% if can_view_clinical %}<a class="button" href="{{ url_for('cases.detail', case_id=linked_case.id) }}">Open Case</a>{% endif %}
   {% else %}
   <p>This appointment was booked for the patient and is not linked to a case yet.</p>
   <div class="followup-actions">
-    <a class="button" href="{{ url_for('cases.new', patient_id=appt.patient_id, appointment_id=appt.id) }}">+ New Case for this Appointment</a>
+    {% if can_view_clinical %}<a class="button" href="{{ url_for('cases.new', patient_id=appt.patient_id, appointment_id=appt.id) }}">+ New Case for this Appointment</a>{% endif %}
     {% if patient_cases %}
     <form method="post" action="{{ url_for('appointments.link_case', appt_id=appt.id) }}" class="link-case-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

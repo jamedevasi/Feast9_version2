@@ -17,10 +17,13 @@
     <select name="role" required>
       <option value="">Select…</option>
       {% for r in roles %}
-      <option value="{{ r }}" {% if user.role == r %}selected{% endif %}>{{ r|capitalize }}</option>
+      <option value="{{ r }}" {% if user.role == r %}selected{% endif %}>{{ role_labels.get(r, r) }}</option>
       {% endfor %}
     </select>
   </label>
+  <p class="hint">Doctor: everything except Settings. Guest doctor: patients, cases, appointments and lab work — no
+    Settings, privacy requests, payments, reports or analytics, and can't delete clinical documents. Receptionist:
+    patients' contact details, appointments, follow-ups and lab work — no medical records and no payments.</p>
   <label>Password<input type="password" name="password" required minlength="10"></label>
   <label>Confirm Password<input type="password" name="confirm" required minlength="10"></label>
   <label>Security Question<input type="text" name="security_question" placeholder="e.g. What street did you grow up on?" required></label>

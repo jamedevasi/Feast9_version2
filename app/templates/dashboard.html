@@ -48,7 +48,7 @@
       <tr class="followup-row-overdue">
         <td><span class="badge badge-overdue">{{ icon('circle-alert') }} Overdue · {{ f.days_overdue }} day{{ '' if f.days_overdue == 1 else 's' }}</span></td>
         <td><a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
-        <td><a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a></td>
+        <td>{% if can_view_clinical %}<a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a>{% else %}{{ f.case_title }}{% endif %}</td>
         <td>{{ f.follow_up_date }}</td>
         <td>{{ f.next_action_note }}</td>
         <td>
@@ -64,7 +64,7 @@
       <tr class="followup-row-upcoming">
         <td><span class="badge badge-due-soon">{{ icon('clock') }} {% if f.days_until == 0 %}Due today{% elif f.days_until == 1 %}Due tomorrow{% else %}Due in {{ f.days_until }} days{% endif %}</span></td>
         <td><a href="{{ url_for('patients.detail', patient_id=f.patient_id) }}">{{ f.patient_name }}</a></td>
-        <td><a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a></td>
+        <td>{% if can_view_clinical %}<a href="{{ url_for('cases.detail', case_id=f.case_id) }}">{{ f.case_title }}</a>{% else %}{{ f.case_title }}{% endif %}</td>
         <td>{{ f.follow_up_date }}</td>
         <td>{{ f.next_action_note }}</td>
         <td>
@@ -97,7 +97,7 @@
         <td>{{ a.start_time }}</td>
         <td><a href="{{ url_for('patients.detail', patient_id=a.patient_id) }}">{{ a.patient_name }}</a></td>
         <td>
-          {% if a.case_id %}<a href="{{ url_for('cases.detail', case_id=a.case_id) }}">{{ a.case_title }}</a>
+          {% if a.case_id %}{% if can_view_clinical %}<a href="{{ url_for('cases.detail', case_id=a.case_id) }}">{{ a.case_title }}</a>{% else %}{{ a.case_title }}{% endif %}
           {% else %}<a class="button button-small button-outline" href="{{ url_for('appointments.edit', appt_id=a.id) }}#appointment-case">Choose case</a>{% endif %}
         </td>
         <td>{{ a.doctor_name or '—' }}</td>
@@ -122,7 +122,7 @@
       {% for r in open_lab_reqs_due %}
       <tr class="lab-req-row-alert">
         <td><a href="{{ url_for('patients.detail', patient_id=r.patient_id) }}">{{ r.patient_name }}</a></td>
-        <td><a href="{{ url_for('cases.detail', case_id=r.case_id) }}">{{ r.work_description }}</a>{% if r.lab_name %} — {{ r.lab_name }}{% endif %}</td>
+        <td>{% if can_view_clinical %}<a href="{{ url_for('cases.detail', case_id=r.case_id) }}">{{ r.work_description }}</a>{% else %}<a href="{{ url_for('clinical.lab_work') }}">{{ r.work_description }}</a>{% endif %}{% if r.lab_name %} — {{ r.lab_name }}{% endif %}</td>
         <td><span class="badge badge-lab-{{ r.status|lower }}">{{ r.status }}</span></td>
         <td>{{ r.next_appt_date }}</td>
       </tr>

@@ -6,7 +6,7 @@ from collections import defaultdict
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from app import db
-from app.auth import current_actor, login_required, logs_view
+from app.auth import clinical_access_required, current_actor, login_required, logs_view
 from app.constants import (
     ALL_TEETH,
     CHART_FINDINGS,
@@ -35,6 +35,7 @@ def _get_patient_or_404(patient_id):
 
 @bp.route("/patients/<int:patient_id>/dental-chart", methods=["GET", "POST"])
 @login_required
+@clinical_access_required
 @logs_view("dental_chart_viewed", "patient", "patient_id")
 def chart(patient_id):
     patient = _get_patient_or_404(patient_id)

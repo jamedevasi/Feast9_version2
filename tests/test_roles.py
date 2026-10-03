@@ -1,3 +1,5 @@
+import pytest
+
 from app import db
 from tests.conftest import get_csrf
 from tests.test_cases import _create_case
@@ -94,16 +96,16 @@ def test_non_admin_cannot_manage_users(logged_in_client):
     assert logged_in_client.get("/users/new").status_code == 403
 
 
-def test_receptionist_blocked_from_payment_and_cost_routes(logged_in_client, patient_id):
+@pytest.mark.parametrize("role", ["receptionist", "guest_doctor"])
+def test_non_financial_roles_blocked_from_payment_and_cost_routes(logged_in_client, patient_id, role):
     resp, _ = _create_case(logged_in_client, patient_id, total_cost="5000")
     case_id = int(resp.headers["Location"].rstrip("/").rsplit("/", 1)[-1])
-    case_url = resp.headers["Location"]
 
-    _create_user(logged_in_client, "recep4", "receptionist")
+    _create_user(logged_in_client, "recep4", role)
     _logout(logged_in_client)
     _login(logged_in_client, "recep4")
 
-    token = get_csrf(logged_in_client, case_url)
+    token = get_csrf(logged_in_client, "/dashboard")
     resp = logged_in_client.post(
         f"/cases/{case_id}/payments",
         data={"payment_date": "2026-01-10", "amount": "100", "csrf_token": token},
@@ -120,11 +122,11 @@ def test_receptionist_blocked_from_payment_and_cost_routes(logged_in_client, pat
     assert db.list_payments_for_case(case_id) == []
 
 
-def test_receptionist_case_detail_hides_financial_data(logged_in_client, patient_id):
+def test_guest_doctor_case_detail_hides_financial_data(logged_in_client, patient_id):
     resp, _ = _create_case(logged_in_client, patient_id, total_cost="5000")
     case_url = resp.headers["Location"]
 
-    _create_user(logged_in_client, "recep5", "receptionist")
+    _create_user(logged_in_client, "recep5", "guest_doctor")
     _logout(logged_in_client)
     _login(logged_in_client, "recep5")
 
@@ -157,8 +159,8 @@ def test_doctor_retains_financial_access(logged_in_client, patient_id):
     assert db.get_case_balance(case_id) == 4000
 
 
-def test_receptionist_case_creation_ignores_spoofed_total_cost(logged_in_client, patient_id):
-    _create_user(logged_in_client, "recep6", "receptionist")
+def test_guest_doctor_case_creation_ignores_spoofed_total_cost(logged_in_client, patient_id):
+    _create_user(logged_in_client, "recep6", "guest_doctor")
     _logout(logged_in_client)
     _login(logged_in_client, "recep6")
 
