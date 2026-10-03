@@ -320,3 +320,34 @@ def test_case_type_rename_is_admin_only(logged_in_client):
     _login(logged_in_client, "recep_type_edit")
     assert logged_in_client.get(f"/procedure-types/{type_id}/edit").status_code == 403
     assert db.get_procedure_type(type_id)["name"] == "Scaling"
+
+
+def test_add_doctor_form_offers_a_colour_unlike_the_existing_doctors(logged_in_client):
+    db.add_doctor("Dr. Blue", "#1c7ed6")
+    db.add_doctor("Dr. Green", "#2f9e44")
+    body = logged_in_client.get("/doctors/").data.decode()
+    offered = body.split('name="color" value="')[1].split('"')[0]
+    assert offered not in ("#1c7ed6", "#2f9e44", "#2b6cb0")
+    from app.doctor_colors import TOO_SIMILAR, distance
+    assert min(distance(offered, "#1c7ed6"), distance(offered, "#2f9e44")) >= TOO_SIMILAR
+
+
+def test_saving_a_colour_close_to_another_doctors_warns_but_still_saves(logged_in_client):
+    db.add_doctor("Dr. Vivek Menon", "#1c7ed6")
+    _add_doctor(logged_in_client, "Dr. Look Alike", "#2b6cb0")
+    assert any(d["name"] == "Dr. Look Alike" for d in db.list_doctors())
+    body = logged_in_client.get("/doctors/").data.decode()
+    assert "Dr. Look Alike&#39;s calendar colour looks very like Dr. Vivek Menon&#39;s" in body
+
+    # Editing a doctor and keeping their own colour doesn't compare them with themselves.
+    doctor_id = next(d["id"] for d in db.list_doctors() if d["name"] == "Dr. Vivek Menon")
+    token = get_csrf(logged_in_client, f"/doctors/{doctor_id}/edit")
+    logged_in_client.post(f"/doctors/{doctor_id}/edit", data={
+        "name": "Dr. Vivek Menon", "color": "#1c7ed6", "csrf_token": token})
+    assert "looks very like Dr. Vivek Menon" not in logged_in_client.get("/doctors/").data.decode()
+
+
+def test_a_distinct_colour_gives_no_warning(logged_in_client):
+    db.add_doctor("Dr. Vivek Menon", "#1c7ed6")
+    _add_doctor(logged_in_client, "Dr. Orange", "#e8590c")
+    assert "looks very like" not in logged_in_client.get("/doctors/").data.decode()

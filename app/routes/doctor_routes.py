@@ -1,6 +1,6 @@
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
-from app import db
+from app import db, doctor_colors
 from app.auth import current_actor, login_required, role_required
 from app.csrf import validate_csrf
 
@@ -18,7 +18,16 @@ def _collect_doctor_form(form):
 @login_required
 @role_required("admin")
 def list_view():
-    return render_template("doctors_list.html", doctors=db.list_doctors(active_only=False))
+    return render_template("doctors_list.html", doctors=db.list_doctors(active_only=False),
+                           suggested_color=doctor_colors.suggest(db.list_doctors()))
+
+
+def _warn_if_color_clashes(name, color, doctor_id=None):
+    """Saved either way — but say so when the colour is hard to tell from another doctor's."""
+    clashes = doctor_colors.similar_to(color, db.list_doctors(), exclude_id=doctor_id)
+    if clashes:
+        flash(f"{name}'s calendar colour looks very like {', '.join(clashes)}'s, so their appointments "
+              f"will be hard to tell apart. Choose a different colour with Edit.", "warning")
 
 
 @bp.route("/new", methods=["POST"])
@@ -30,12 +39,13 @@ def new():
     if not data["name"]:
         flash("Doctor name is required.", "warning")
         return redirect(url_for("doctors.list_view"))
-    db.add_doctor(
+    doctor_id = db.add_doctor(
         data["name"], data["color"], actor=current_actor(),
         qualifications=data["qualifications"], registration_number=data["registration_number"],
         registration_council=data["registration_council"],
     )
     flash(f"Doctor '{data['name']}' added.", "success")
+    _warn_if_color_clashes(data["name"], data["color"], doctor_id)
     return redirect(url_for("doctors.list_view"))
 
 
@@ -52,6 +62,7 @@ def edit(doctor_id):
         if data["name"]:
             db.update_doctor(doctor_id, data, actor=current_actor())
             flash(f"Doctor '{data['name']}' updated.", "success")
+            _warn_if_color_clashes(data["name"], data["color"], doctor_id)
             return redirect(url_for("doctors.list_view"))
         flash("Doctor name is required.", "warning")
         doctor = {**doctor, **data}

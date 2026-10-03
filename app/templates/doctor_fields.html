@@ -2,4 +2,4 @@
 <label>Qualifications<input type="text" name="qualifications" value="{{ doctor.qualifications or '' }}" placeholder="e.g. BDS, MDS (Endodontics)"></label>
 <label>Registration number<input type="text" name="registration_number" value="{{ doctor.registration_number or '' }}" placeholder="As on the registration certificate"></label>
 <label>Registered with<input type="text" name="registration_council" value="{{ doctor.registration_council or 'Dental Council of Kerala' }}"></label>
-<label>Calendar Colour<input type="color" name="color" value="{{ doctor.color or '#2b6cb0' }}"></label>
+<label>Calendar Colour<input type="color" name="color" value="{{ doctor.color or suggested_color or '#1c7ed6' }}"></label>
