@@ -33,12 +33,35 @@ def test_case_page_offers_the_printable_form_and_no_signature_pad(logged_in_clie
 
 def test_unsigned_consent_form_prints_statement_and_signature_lines(logged_in_client, patient_id):
     case_id, _ = _case_for(logged_in_client, patient_id)
-    text = _pdf_text(logged_in_client.get(f"/cases/{case_id}/consent.pdf").data)
-    assert "Consent for Treatment" in text
-    assert "I agree to the dental treatment" in text
-    assert "Signature of patient / parent or guardian" in text
-    assert "Signature of doctor" in text
+    resp = logged_in_client.get(f"/cases/{case_id}/consent.pdf")
+    text = _pdf_text(resp.data)
+    assert "CONSENT FOR DENTAL TREATMENT" in text
+    assert f"Case reference: #{case_id}" in text and f"Patient ID: {patient_id}" in text
+    assert "What the treatment involves" in text and "initial each line" in text
+    for column in ("Patient", "Guardian (if under 18)", "Doctor", "Witness", "Relationship:"):
+        assert column in text, column
+    assert "Office use" in text
     assert "Recorded in Feast9" not in text
+    assert len(PdfReader(io.BytesIO(resp.data)).pages) == 1
+
+
+def test_consent_form_stays_on_one_sheet_with_long_details(logged_in_client, patient_id):
+    db.update_patient(patient_id, {"name": "Long Name " * 8})
+    db.set_setting("clinic_name", "A Very Long Clinic Name Dental Care and Implant Centre")
+    db.set_setting("clinic_address", "Building 12, Second Floor, Long Street Name, Some Nagar, Kochi, Kerala 682001")
+    db.set_setting("clinic_phone", "0484-1234567")
+    case_id, _ = _case_for(logged_in_client, patient_id, title="Full mouth rehabilitation " * 4,
+                           custom_procedure="Custom procedure with a long description " * 4)
+    db.record_case_consent(case_id, "Signed form filed in the blue folder, drawer 3 " * 3)
+    page = PdfReader(io.BytesIO(logged_in_client.get(f"/cases/{case_id}/consent.pdf").data)).pages
+    assert len(page) == 1
+
+
+def test_consent_form_never_shows_the_cost(logged_in_client, patient_id):
+    case_id, _ = _case_for(logged_in_client, patient_id, total_cost="45678")
+    text = _pdf_text(logged_in_client.get(f"/cases/{case_id}/consent.pdf").data)
+    assert "45678" not in text and "45,678" not in text
+    assert "Estimated cost" in text
 
 
 def test_each_case_has_its_own_consent(logged_in_client, patient_id):

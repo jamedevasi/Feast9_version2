@@ -6,14 +6,14 @@ from xml.sax.saxutils import escape as _esc
 
 from PIL import Image as PILImage
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import HRFlowable, Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app import db
 from app.constants import DEFAULT_CLINIC_NAME
-from app.validators import patient_age
+from app.validators import patient_age, today_iso
 
 _styles = getSampleStyleSheet()
 TITLE = ParagraphStyle("Feast9Title", parent=_styles["Title"], fontSize=16, spaceAfter=2, alignment=0)
@@ -49,12 +49,12 @@ def P(text, style=BODY):
     return Paragraph(_esc(str(text)), style)
 
 
-def _build(story):
+def _build(story, pagesize=letter, margin=0.75 * inch):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
-        buf, pagesize=letter,
-        topMargin=0.75 * inch, bottomMargin=0.75 * inch,
-        leftMargin=0.75 * inch, rightMargin=0.75 * inch,
+        buf, pagesize=pagesize,
+        topMargin=margin, bottomMargin=margin,
+        leftMargin=margin, rightMargin=margin,
         title="Feast9",
     )
     doc.build(story)
@@ -446,54 +446,151 @@ def _consent_signature_flowable(signature_bytes, max_width=2.5 * inch, max_heigh
     return Image(io.BytesIO(signature_bytes), width=native_width * scale, height=native_height * scale)
 
 
-CONSENT_STATEMENT = (
-    "I agree to the dental treatment listed above. The doctor has explained the treatment, "
-    "its expected benefits, possible risks and complications, the alternatives available, and "
-    "the likely cost. I have been able to ask questions and they have been answered. I "
-    "understand that I may withdraw my consent before any stage of the treatment."
+# The consent form's wording — the treating doctors should review it before use.
+CONSENT_EXPLAINED = [
+    "What the treatment involves and why it is recommended",
+    "The expected benefits",
+    "Possible risks and complications, including: " + "_" * 44,
+    "Other options, including no treatment, and their risks",
+    "Local anaesthesia may be used (numbness; rarely, an allergic reaction)",
+    "X-rays and clinical photographs may be taken and kept in my record",
+    "Results cannot be guaranteed; further treatment may be needed",
+    "I must follow post-treatment instructions and attend follow-up visits",
+]
+CONSENT_DECLARATION = (
+    "I have read this form, or it has been read to me in a language I understand "
+    "(language: ____________). My questions have been answered. I agree to the treatment above, "
+    "and I may withdraw consent at any stage before it is carried out. The medical history and "
+    "allergies I declared are true to my knowledge: Yes / No"
 )
 
+_C_BODY = ParagraphStyle("Feast9ConsentBody", parent=BODY, fontSize=10, leading=13)
+_C_BOLD = ParagraphStyle("Feast9ConsentBold", parent=_C_BODY, fontName="Helvetica-Bold")
+_C_HEAD = ParagraphStyle("Feast9ConsentHead", parent=_C_BODY, fontName="Helvetica-Bold", fontSize=11,
+                         spaceBefore=10, spaceAfter=4)
+_C_SMALL = ParagraphStyle("Feast9ConsentSmall", parent=_C_BODY, fontSize=8.5, leading=10.5,
+                          textColor=colors.HexColor("#5b6672"))
+_C_TITLE = ParagraphStyle("Feast9ConsentTitle", parent=TITLE, fontSize=15, spaceBefore=6)
+_C_LINE = colors.HexColor("#c9d1d9")
+_C_GRID = TableStyle([
+    ("GRID", (0, 0), (-1, -1), 0.5, _C_LINE),
+    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+])
+_BLANK = "_" * 22
 
-def _consent_sign_block(label, name=""):
-    return [P("_" * 32, _RX_CELL), P(label, _RX_LABEL), P(name or "Name: " + "_" * 24, _RX_CELL),
-            Spacer(1, 4), P("Date: " + "_" * 16, _RX_CELL)]
+
+def _consent_field(label, value):
+    """'Label: value' with the label bold and the value escaped (it's user-typed)."""
+    return Paragraph(f"<b>{_esc(label)}:</b> {_esc(str(value))}", _C_BODY)
 
 
 def generate_consent_pdf(case, patient, doctor=None, signature_bytes=None):
-    """A per-case consent form printed for the patient (or guardian, if under 18) to sign on
-    paper — consent is collected offline only (user decision, 2026-10-03). Once staff have
-    marked it recorded, the date and notes are printed underneath. `signature_bytes` is only
-    for cases recorded with the old on-screen signature pad, which has been removed."""
-    story = _header("Consent for Treatment", _patient_line(patient))
+    """One A4 sheet per case, printed for the patient (or guardian, if under 18), the doctor
+    and a witness to sign on paper — consent is collected offline only. Feast9 fills in what
+    it knows; everything else is completed by hand. The estimated cost is deliberately blank:
+    guest doctors can print this form but must not see costs. `signature_bytes` is only for
+    cases recorded with the old on-screen signature pad."""
+    doctor = doctor or {}
+    width = A4[0] - inch  # 0.5in margins
+    clinic_name, clinic_contact = _clinic_letterhead()
+    story = [P(clinic_name, _C_BOLD)]
+    if clinic_contact:
+        story.append(P(clinic_contact, _C_SMALL))
+    story.append(Paragraph("CONSENT FOR DENTAL TREATMENT", _C_TITLE))
+    story.append(P(f"Case reference: #{case['id']} · Date printed: {today_iso()}", _C_SMALL))
+    story.append(HRFlowable(width="100%", color=colors.HexColor("#d8dee4"), thickness=1, spaceBefore=3))
 
-    story.append(P(f"Case: {case['title']}", BODY))
-    story.append(P(f"Procedures: {_procedures_for(case)}", BODY))
-    if doctor and doctor.get("name"):
-        story.append(P(f"Doctor: {doctor['name']}", BODY))
-    story.append(Spacer(1, 10))
-    story.append(P(CONSENT_STATEMENT, BODY))
-    story.append(Spacer(1, 6))
-    story.append(P("If the patient is under 18, a parent or guardian signs on their behalf.", MUTED))
+    age = patient_age(patient)
+    age_sex = " / ".join(x for x in (f"{age}y" if age is not None else "", patient.get("sex") or "") if x) or "—"
+    story.append(P("Patient", _C_HEAD))
+    t = Table([[_consent_field("Name", patient["name"]), _consent_field("Age / Sex", age_sex)],
+               [_consent_field("Mobile", patient.get("mobile") or "—"), _consent_field("Patient ID", patient["id"])]],
+              colWidths=[width * 0.6, width * 0.4])
+    t.setStyle(_C_GRID)
+    story.append(t)
 
-    story.append(Spacer(1, 40))
-    sig = Table([[
-        _consent_sign_block("Signature of patient / parent or guardian"),
-        _consent_sign_block("Signature of doctor", doctor.get("name") if doctor else ""),
-    ]], colWidths=[3.4 * inch, 3.4 * inch])
-    sig.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    story.append(sig)
+    doctor_bits = [doctor.get("name") or "—"]
+    if doctor.get("qualifications"):
+        doctor_bits.append(doctor["qualifications"])
+    if doctor.get("registration_number"):
+        doctor_bits.append(f"Reg. No. {doctor['registration_number']}")
+    story.append(P("Treatment proposed", _C_HEAD))
+    t = Table([
+        [_consent_field("Case", case["title"]), _consent_field("Tooth / area", _BLANK)],
+        [_consent_field("Procedure(s)", _procedures_for(case)), _consent_field("Estimated visits", "______")],
+        [_consent_field("Treating doctor", ", ".join(doctor_bits)),
+         Paragraph("<b>Estimated cost:</b> Rs. ________ <font size=8>(estimate)</font>", _C_BODY)],
+    ], colWidths=[width * 0.6, width * 0.4])
+    t.setStyle(_C_GRID)
+    story.append(t)
 
+    story.append(P("The doctor has explained to me (initial each line)", _C_HEAD))
+    t = Table([["______", P(line, _C_BODY)] for line in CONSENT_EXPLAINED],
+              colWidths=[0.75 * inch, width - 0.75 * inch])
+    t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("FONTSIZE", (0, 0), (0, -1), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(t)
+
+    story.append(P("Declaration", _C_HEAD))
+    story.append(P(CONSENT_DECLARATION, _C_BODY))
+
+    story.append(P("Signatures", _C_HEAD))
+    rows = [
+        [P(h, _C_BOLD) for h in ("Patient", "Guardian (if under 18)", "Doctor", "Witness")],
+        [P("Signature:", _C_SMALL)] * 4,
+        [Spacer(1, 40)] * 4,
+        [P(f"Name: {patient['name']}", _C_BODY), P("Name:", _C_BODY),
+         P(f"Name: {doctor.get('name') or ''}", _C_BODY), P("Name:", _C_BODY)],
+        [P("", _C_BODY), P("Relationship:", _C_BODY),
+         P(f"Reg. No.: {doctor.get('registration_number') or ''}", _C_BODY), P("", _C_BODY)],
+        [P("Date:", _C_BODY)] * 4,
+    ]
+    t = Table(rows, colWidths=[width / 4] * 4)
+    t.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, _C_LINE),
+        ("LINEAFTER", (0, 0), (-2, -1), 0.5, _C_LINE),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.5, _C_LINE),
+        ("LINEBELOW", (0, 2), (-1, 2), 0.5, _C_LINE),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f7f8fa")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+    ]))
+    story.append(t)
+
+    story.append(Spacer(1, 8))
+    office = [Paragraph("<b>Office use</b> — Consent recorded in Feast9 by: ____________   "
+                        "Date: __________   Filed in: ______________", _C_BODY)]
     if case.get("consent_recorded"):
-        story.append(Spacer(1, 24))
-        story.append(P(f"Recorded in Feast9 on {case['consent_recorded_at']}.", MUTED))
-        signature_flowable = _consent_signature_flowable(signature_bytes) if signature_bytes else None
-        if signature_flowable is not None:
-            story.append(Paragraph("Signature captured on screen:", MUTED))
-            story.append(signature_flowable)
+        recorded = f"Recorded in Feast9 on {case['consent_recorded_at']}"
         if case.get("consent_notes"):
-            story.append(P(case["consent_notes"], MUTED))
+            recorded += f" — {case['consent_notes']}"
+        office.append(P(recorded, _C_SMALL))
+        signature_flowable = (
+            _consent_signature_flowable(signature_bytes, max_width=1.8 * inch, max_height=0.5 * inch)
+            if signature_bytes else None
+        )
+        if signature_flowable is not None:
+            office.append(P("Signature captured on screen:", _C_SMALL))
+            office.append(signature_flowable)
+    t = Table([[office]], colWidths=[width])
+    t.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, _C_LINE),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f7f8fa")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(t)
 
-    return _build(story)
+    # Always one sheet: unusually long names, titles or procedure lists shrink the whole form
+    # slightly instead of spilling onto a second page (normal forms are left at full size).
+    frame_padding = 12  # SimpleDocTemplate's frame pads 6pt on each side
+    one_sheet = KeepInFrame(width - frame_padding, A4[1] - inch - frame_padding, story, mode="shrink")
+    return _build([one_sheet], pagesize=A4, margin=0.5 * inch)
 
 
 # ── generate_data_access_pdf ────────────────────────────────────────────────
