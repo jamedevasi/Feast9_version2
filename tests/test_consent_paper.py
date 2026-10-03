@@ -37,7 +37,7 @@ def test_unsigned_consent_form_prints_statement_and_signature_lines(logged_in_cl
     text = _pdf_text(resp.data)
     assert "CONSENT FOR DENTAL TREATMENT" in text
     assert f"Case reference: #{case_id}" in text and f"Patient ID: {patient_id}" in text
-    assert "What the treatment involves" in text and "initial each line" in text
+    assert "What the treatment involves" in text and "tick each box" in text
     for column in ("Patient", "Guardian (if under 18)", "Doctor", "Witness", "Relationship:"):
         assert column in text, column
     assert "Office use" in text

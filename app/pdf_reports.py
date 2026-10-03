@@ -9,7 +9,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import HRFlowable, Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Flowable, HRFlowable, Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app import db
 from app.constants import DEFAULT_CLINIC_NAME
@@ -481,6 +481,19 @@ _C_GRID = TableStyle([
 _BLANK = "_" * 22
 
 
+class _TickBox(Flowable):
+    """An empty square to tick by hand (base-14 Helvetica has no ☐ character)."""
+    size = 9
+
+    def wrap(self, avail_width, avail_height):
+        return self.size, self.size
+
+    def draw(self):
+        self.canv.setStrokeColor(colors.HexColor("#1f2933"))
+        self.canv.setLineWidth(0.8)
+        self.canv.rect(0, 0, self.size, self.size)
+
+
 def _consent_field(label, value):
     """'Label: value' with the label bold and the value escaped (it's user-typed)."""
     return Paragraph(f"<b>{_esc(label)}:</b> {_esc(str(value))}", _C_BODY)
@@ -526,11 +539,11 @@ def generate_consent_pdf(case, patient, doctor=None, signature_bytes=None):
     t.setStyle(_C_GRID)
     story.append(t)
 
-    story.append(P("The doctor has explained to me (initial each line)", _C_HEAD))
-    t = Table([["______", P(line, _C_BODY)] for line in CONSENT_EXPLAINED],
-              colWidths=[0.75 * inch, width - 0.75 * inch])
+    story.append(P("The doctor has explained to me (tick each box)", _C_HEAD))
+    t = Table([[_TickBox(), P(line, _C_BODY)] for line in CONSENT_EXPLAINED],
+              colWidths=[0.3 * inch, width - 0.3 * inch])
     t.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("FONTSIZE", (0, 0), (0, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
