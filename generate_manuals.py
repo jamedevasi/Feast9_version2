@@ -1013,6 +1013,12 @@ def draw_wrapped(c, text, x, y, font, size, max_width, color, leading=None, alig
     return y
 
 
+def card_height(c, w, items, item_font=7.6):
+    """The height section_card needs for these items: header strip, wrapped lines, padding."""
+    lines = sum(len(wrap_text(c, it, "Helvetica", item_font, w - 0.40 * inch)) for it in items)
+    return 0.55 * inch + lines * (item_font + 4.2) + (len(items) - 1) * 5.5 + 0.10 * inch
+
+
 def section_card(c, x, y, w, h, accent, title, badge_letter, items, item_font=7.6):
     rounded_box(c, x, y, w, h, radius=8, fill=WHITE, stroke=BORDER, stroke_width=0.75)
     # accent header strip
@@ -1066,7 +1072,7 @@ def build_qrc(path):
     # ── Daily workflow strip ──
     wf_h = 0.62 * inch
     rounded_box(c, 0.4 * inch, top - wf_h, W - 0.8 * inch, wf_h, radius=8, fill=WHITE)
-    steps = ["1  Register\nPatient", "2  Open/Create\nCase", "3  Record\nConsent",
+    steps = ["1  Register\nPatient", "2  Open\nCase", "3  Print & Record\nConsent",
              "4  Book\nAppointment", "5  Log Visit/\nRx/Payment", "6  Set\nFollow-up"]
     step_colors = [BRAND, TEAL, PURPLE, HexColor("#c2410c"), SUCCESS, HexColor("#b45309")]
     n = len(steps)
@@ -1077,94 +1083,108 @@ def build_qrc(path):
         if i > 0:
             c.setFillColor(BORDER)
             c.line(cx, top - wf_h + 6, cx, top - 6)
-        badge_dot(c, cx + 0.24 * inch, top - wf_h / 2 + 0.03 * inch, 0.13 * inch,
-                  col, str(i + 1))
+        cy = top - wf_h / 2
+        badge_dot(c, cx + 0.24 * inch, cy, 0.13 * inch, col, str(i + 1))
         text_lines = steps[i].split("\n")
         c.setFillColor(INK)
         c.setFont("Helvetica-Bold", 7.3)
-        yy = top - wf_h / 2 + 0.12 * inch
-        for ln in [text_lines[0].split(" ", 1)[1], text_lines[1] if len(text_lines) > 1 else ""]:
-            if ln:
-                c.drawString(cx + 0.44 * inch, yy, ln)
-                yy -= 9.5
+        # Lines 9.5pt apart, centred on the circle (a baseline sits ~0.36 em below a line's middle).
+        lines = [ln for ln in (text_lines[0].split(" ", 1)[1], text_lines[1] if len(text_lines) > 1 else "") if ln]
+        yy = cy + (len(lines) - 1) * 9.5 / 2 - 7.3 * 0.36
+        for ln in lines:
+            c.drawString(cx + 0.44 * inch, yy, ln)
+            yy -= 9.5
     top -= wf_h + 0.18 * inch
 
     # ── 3-column grid of section cards ──
     gap = 0.14 * inch
     col_w = (W - 0.8 * inch - 2 * gap) / 3
-    row_h = 1.92 * inch
     x0 = 0.4 * inch
 
-    section_card(c, x0, top - row_h, col_w, row_h, BRAND, "PATIENTS", "P", [
-        "New Patient: privacy notice tick is mandatory",
-        "DOB auto-fills age",
-        "Guardian required if under 18",
-        "Search matches name/mobile/notes",
-        "Red/amber dot on the list = follow-up due",
-    ])
-    section_card(c, x0 + col_w + gap, top - row_h, col_w, row_h, TEAL, "CASES (9 SECTIONS)", "C", [
-        "Consent -> Visit Notes -> Rx -> Files",
-        "-> Lab Req -> Referral -> Payments",
-        "-> Follow-up -> Cost History",
-        "Notes/Rx/Payments: add-only, never edited",
-        "Balance = Total Cost - Payments (live)",
-    ])
-    section_card(c, x0 + 2 * (col_w + gap), top - row_h, col_w, row_h, PURPLE, "APPOINTMENTS", "A", [
-        "Calendar colour = doctor",
-        "Recurring: edit ONE or WHOLE series",
-        "No-show auto-sets next-day follow-up",
-        "Click reminder text to copy for SMS/WhatsApp",
-        "Booking clears the case's follow-up",
-    ])
-    top -= row_h + gap
-
-    section_card(c, x0, top - row_h, col_w, row_h, HexColor("#c2410c"), "DASHBOARD", "D", [
-        "Red = overdue follow-up",
-        "Amber = due within 3 days",
-        "Balance tile hidden for Receptionists",
-        "Lab reqs due before a visit flagged here",
-        "Homepage after every login",
-    ])
-    section_card(c, x0 + col_w + gap, top - row_h, col_w, row_h, SUCCESS, "FINANCE (DR/ADMIN)", "$", [
-        "Reports, Analytics, Financial Assessment",
-        "Profit = Billed - Lab - Consultant -",
-        "Consumables - Misc Expense",
-        "Monthly Eval: Short vs Long Term (deprec.)",
-        "Capital Investments: deactivate, don't edit",
-    ])
-    section_card(c, x0 + 2 * (col_w + gap), top - row_h, col_w, row_h, HexColor("#b45309"), "PRIVACY REQUESTS", "!", [
-        "Anyone logs a request; 90-day deadline auto-set",
-        "Only Doctor/Admin resolve",
-        "Erasure needs exact name typed to confirm",
-        "Access -> hand patient the PDF export",
-        "Pending count badge in top nav",
-    ])
-    top -= row_h + 0.18 * inch
+    rows_of_cards = [
+        [(BRAND, "PATIENTS", "P", [
+            "New Patient: privacy notice tick required",
+            "Guardian required if under 18",
+            "Search: name, mobile, email or address",
+            "List = active cases; 'All patients' for everyone",
+            "'Privacy notice pending' list for older records",
+        ]),
+         (TEAL, "CASES (NOT RECEPTION)", "C", [
+            "Consent: print, sign on paper, mark recorded",
+            "Visit note completes today's appointment",
+            "Rx by generic name; allergy check warns",
+            "Notes/Rx/Payments: add-only, never edited",
+            "Balance = Total Cost - Payments (live)",
+        ]),
+         (PURPLE, "APPOINTMENTS", "A", [
+            "Dot colour = doctor; badge colour = status",
+            "Recurring: edit ONE or WHOLE series",
+            "No-show auto-sets next-day follow-up",
+            "Reminder text to copy, if patient agreed",
+            "Booking from a follow-up clears it",
+        ])],
+        [(HexColor("#c2410c"), "DASHBOARD", "D", [
+            "Red = overdue follow-up",
+            "Amber = due within 3 days",
+            "Book Appointment or Done on a follow-up",
+            "Lab work due before a visit flagged here",
+            "Balance tile: doctors and admins only",
+        ]),
+         (SUCCESS, "FINANCE (DR/ADMIN)", "$", [
+            "Reports, Analytics, Financial Assessment",
+            "Profit = Billed - (Lab + Consultant + Consumables + Misc)",
+            "Monthly Eval: Short vs Long Term (deprec.)",
+            "Clone overheads into future months",
+        ]),
+         (HexColor("#b45309"), "PRIVACY REQUESTS", "!", [
+            "Front desk, doctors, admins log them",
+            "90-day deadline set automatically",
+            "Only Doctor/Admin complete a request",
+            "Erasure: exact name typed; blocked while money is owed or a case is active",
+            "Access -> hand the patient the PDF export",
+        ])],
+    ]
+    for r, cards in enumerate(rows_of_cards):
+        row_h = max(card_height(c, col_w, items) for _a, _t, _b, items in cards)
+        for i, (accent, title, letter_, items) in enumerate(cards):
+            section_card(c, x0 + i * (col_w + gap), top - row_h, col_w, row_h, accent, title, letter_, items)
+        top -= row_h + (gap if r == 0 else 0.18 * inch)
 
     # ── Role matrix ──
-    matrix_h = 1.15 * inch
+    rows = [
+        ("Receptionist", "Patients' contact details / Appointments / Follow-ups / Lab Work / Privacy",
+         DANGER, "No medical or money"),
+        ("Doctor", "All clinical records + Payments / Reports / Financial / Privacy", SUCCESS,
+         "Clinical + financial"),
+        ("Guest doctor", "All clinical records, but no money, Settings or Privacy Requests", PURPLE,
+         "Clinical only"),
+        ("Administrator", "Everything a Doctor can + Settings / Users / Backups / Audit Log", BRAND,
+         "Full control"),
+    ]
+    row_gap = 0.25 * inch
+    matrix_h = 0.50 * inch + (len(rows) - 1) * row_gap + 0.20 * inch
     rounded_box(c, 0.4 * inch, top - matrix_h, W - 0.8 * inch, matrix_h, radius=8, fill=WHITE)
     c.setFillColor(INK)
     c.setFont("Helvetica-Bold", 10.5)
     c.drawString(0.55 * inch, top - 0.26 * inch, "WHO CAN DO WHAT")
-    rows = [
-        ("Receptionist", "Patients / Appointments / Cases (non-financial)", DANGER, "NO financial access"),
-        ("Doctor", "Everything Receptionist can + Payments / Reports / Financial / Dental Chart", SUCCESS, "Full clinical + financial"),
-        ("Administrator", "Everything Doctor can + Users / Settings / Backups / Audit Log", BRAND, "Full system control"),
-    ]
-    ry = top - 0.53 * inch
+    ry = top - 0.50 * inch
     for name, desc, col, tag in rows:
         badge_dot(c, 0.65 * inch, ry, 0.09 * inch, col)
         c.setFillColor(INK)
         c.setFont("Helvetica-Bold", 8.6)
         c.drawString(0.84 * inch, ry - 0.035 * inch, name)
-        c.setFont("Helvetica", 8.1)
-        c.setFillColor(MUTED)
-        c.drawString(1.85 * inch, ry - 0.035 * inch, desc)
         c.setFillColor(col)
         c.setFont("Helvetica-Bold", 8.1)
         c.drawRightString(W - 0.55 * inch, ry - 0.035 * inch, tag)
-        ry -= 0.28 * inch
+        # The description shrinks a little rather than run into the tag on the right.
+        room = W - 0.55 * inch - c.stringWidth(tag, "Helvetica-Bold", 8.1) - 0.2 * inch - 1.85 * inch
+        desc_size = 8.1
+        while c.stringWidth(desc, "Helvetica", desc_size) > room and desc_size > 6.5:
+            desc_size -= 0.1
+        c.setFont("Helvetica", desc_size)
+        c.setFillColor(MUTED)
+        c.drawString(1.85 * inch, ry - 0.035 * inch, desc)
+        ry -= row_gap
     top -= matrix_h + 0.16 * inch
 
     # ── footer: legend + nav + security, fills whatever space remains ──
@@ -1193,14 +1213,14 @@ def build_qrc(path):
         [("No-show", DANGER), ("Completed", SUCCESS)],
     ]
     ly = fy_top - 0.36 * inch
+    legend_col_w = 1.05 * inch  # fixed column, so the second dot lines up on every row
     for row in legend_rows:
-        lx = col_x[0]
-        for label, col in row:
+        for k, (label, col) in enumerate(row):
+            lx = col_x[0] + k * legend_col_w
             badge_dot(c, lx + 0.07 * inch, ly + 0.025 * inch, 0.075 * inch, col)
             c.setFillColor(WHITE)
             c.setFont("Helvetica", 8.6)
             c.drawString(lx + 0.20 * inch, ly - 0.02 * inch, label)
-            lx += 0.20 * inch + c.stringWidth(label, "Helvetica", 8.6) + 0.30 * inch
         ly -= 0.32 * inch
     ly -= 0.14 * inch
     c.setFillColor(HexColor("#9ca3af"))
@@ -1214,41 +1234,41 @@ def build_qrc(path):
     c.setFillColor(WHITE)
     c.setFont("Helvetica-Bold", 10.2)
     c.drawString(col_x[1], fy_top, "TOP NAVIGATION")
-    nav_items = ["Dashboard", "Patients", "Appointments", "Reports*", "Analytics*",
-                 "Financial Assessment*", "Privacy Requests", "2FA / My Account",
-                 "Users / Settings†"]
+    nav_items = ["Dashboard", "Patients", "Appointments", "Lab Work", "Reports*", "Analytics*",
+                 "Financial Assessment*", "Privacy Requests‡", "My Account (password, 2FA)",
+                 "Settings†"]
     ny = fy_top - 0.34 * inch
     for item in nav_items:
         c.setFillColor(HexColor("#93c5fd"))
         c.setFont("Helvetica", 8.2)
         c.drawString(col_x[1], ny, "•  " + item)
-        ny -= 0.205 * inch
+        ny -= 0.19 * inch
     ny -= 0.06 * inch
     c.setFillColor(HexColor("#9ca3af"))
     c.setFont("Helvetica-Oblique", 7.4)
-    c.drawString(col_x[1], ny, "*Doctor/Admin only    †Admin only")
+    c.drawString(col_x[1], ny, "*Doctor/Admin   †Admin   ‡Not guest doctors")
 
     # Column 3 — security reminders
     c.setFillColor(HexColor("#fca5a5"))
     c.setFont("Helvetica-Bold", 10.2)
     c.drawString(col_x[2], fy_top, "SECURITY REMINDERS")
     tips = [
-        ("Never share your password, 2FA code, or QR", False),
-        ("Lock or log out on shared front-desk devices", False),
-        ("Keep 2FA recovery codes private & offline", False),
-        ("Report a lost device to your Administrator", False),
-        ("“403 Access Denied” = your role doesn't", False),
-        ("include that action — it isn't a bug", True),
-        ("Verified backups run nightly — ask an", False),
-        ("Admin if you see a stale-backup banner", True),
+        "Never share passwords or 2FA codes",
+        "Log out on shared front-desk PCs",
+        "Keep recovery codes private, offline",
+        "Lost phone? Tell the Administrator",
+        "Missing button = not in your role",
+        "Locked out? Wait 15 min or ask Admin",
+        "Backup warning? Tell the Admin",
     ]
     ty = fy_top - 0.34 * inch
-    for tp, is_continuation in tips:
-        c.setFillColor(WHITE)
-        c.setFont("Helvetica", 8.0)
-        prefix = "   " if is_continuation else "-  "
-        c.drawString(col_x[2], ty, prefix + tp)
-        ty -= 0.205 * inch
+    indent = 0.13 * inch
+    tip_width = col_end[2] - col_x[2] - indent - 0.05 * inch
+    for tp in tips:
+        c.setFillColor(HexColor("#fca5a5"))
+        c.circle(col_x[2] + 0.04 * inch, ty + 2.6, 1.7, fill=1, stroke=0)
+        ty = draw_wrapped(c, tp, col_x[2] + indent, ty, "Helvetica", 8.0, tip_width, WHITE, leading=10.5)
+        ty -= 4.5
 
     c.setStrokeColor(HexColor("#374151"))
     for divider_x in (col_end[0] - 0.05 * inch, col_end[1] - 0.05 * inch):
