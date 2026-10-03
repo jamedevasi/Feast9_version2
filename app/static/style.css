@@ -1140,6 +1140,10 @@ details[open] summary { margin-bottom: 0.75rem; }
   .stack-mobile tr { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
   .stack-mobile tr:last-child { border-bottom: none; }
   .stack-mobile td { padding: 0.15rem 0; border: none; }
+  /* A cell whose meaning isn't obvious once the header row is gone carries its own label. */
+  .stack-mobile td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 0.75rem; color: var(--muted, #6b7280);
+  }
 }
 
 .done-form { margin: 0; }
