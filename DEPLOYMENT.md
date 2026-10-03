@@ -130,7 +130,7 @@ Open `http://127.0.0.1:8000` on the server: the first visit shows **Setup** (sec
 ```powershell
 nssm install Feast9 C:\Feast9\venv\Scripts\waitress-serve.exe "--host=127.0.0.1 --port=8000 --threads=8 wsgi:app"
 nssm set Feast9 AppDirectory C:\Feast9
-nssm set Feast9 AppEnvironmentExtra DATA_DIR=D:\Feast9Data SESSION_COOKIE_SECURE=1 FLASK_DEBUG=0 BACKUP_KEY_FILE=D:\Feast9Keys\backup.key
+nssm set Feast9 AppEnvironmentExtra DATA_DIR=D:\Feast9Data SESSION_COOKIE_SECURE=1 TRUSTED_PROXY_COUNT=1 FLASK_DEBUG=0 BACKUP_KEY_FILE=D:\Feast9Keys\backup.key
 nssm set Feast9 ObjectName .\feast9svc <password>
 nssm set Feast9 AppStdout D:\Feast9Logs\feast9.log
 nssm set Feast9 AppStderr D:\Feast9Logs\feast9.log
@@ -167,6 +167,7 @@ Group=feast9
 WorkingDirectory=/opt/feast9/app
 Environment=DATA_DIR=/var/lib/feast9
 Environment=SESSION_COOKIE_SECURE=1
+Environment=TRUSTED_PROXY_COUNT=1
 Environment=FLASK_DEBUG=0
 Environment=BACKUP_KEY_FILE=/etc/feast9/backup.key
 ExecStart=/opt/feast9/app/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 --timeout 120 wsgi:app
@@ -190,6 +191,7 @@ Don't go much higher; more workers do not help with a single SQLite file.
 |---|---|---|
 | `DATA_DIR` | **Yes** | Absolute path of the data directory (section 7). Defaults to `./data` — never rely on the default in production. |
 | `SESSION_COOKIE_SECURE` | **Yes** behind HTTPS | `1` — the login cookie is only sent over HTTPS. Leave unset only for topology A. |
+| `TRUSTED_PROXY_COUNT` | **Yes** behind a proxy | `1` when one reverse proxy (Caddy/nginx/IIS) sits in front, so Feast9 takes the user's real address and `https` from the proxy's `X-Forwarded-*` headers (section 5.2). Leave unset for topology A — never set it when Feast9 is reachable without the proxy. |
 | `FLASK_DEBUG` | Yes | `0` (or unset). Never `1` in production. |
 | `SECRET_KEY` | No | Leave unset. Feast9 generates a random key on first start in `DATA_DIR/secret_key`. If you manage it yourself, use 32+ random bytes; changing it logs everyone out. |
 | `BACKUP_KEY_FILE` | Recommended | Where the backup encryption key is written by **Set Up Backups**. Default is `~/.feast9/backup.key` *of the account running Feast9* — for a service account set it explicitly, outside `DATA_DIR`. |
@@ -226,23 +228,32 @@ feast9.clinic.lan {
 nginx/IIS equivalents work the same way: terminate TLS, forward to `127.0.0.1:8000`, allow
 16 MB request bodies, add HSTS.
 
-### 5.2 Known limitation: client IP behind a proxy
+### 5.2 Telling Feast9 about the proxy: `TRUSTED_PROXY_COUNT=1`
 
-Feast9 currently reads the client address from the direct connection and does **not** trust
-`X-Forwarded-For`. Behind a proxy every request therefore appears to come from `127.0.0.1`:
+Behind a proxy every connection reaches Feast9 from the proxy itself (`127.0.0.1`). With
+`TRUSTED_PROXY_COUNT=1`, Feast9 uses the `X-Forwarded-For`, `-Proto` and `-Host` headers the
+proxy adds instead, so that:
 
-- The **per-IP** sign-in rate limit applies to all users together — several failed sign-ins
-  by anyone can briefly block sign-in for everyone. (The per-account lockout is unaffected.)
-- The **audit log** records the proxy's address instead of the user's device.
+- the **per-IP** sign-in limit counts each device separately (otherwise a few failed
+  sign-ins by anyone briefly block sign-in for the whole clinic);
+- the **audit log** records each user's device address;
+- links Feast9 builds, such as the Google sign-in return address, use `https://` and the
+  clinic's host name.
 
-Mitigation until the application handles this: keep the clinic informed; an administrator
-can see failed sign-ins in the Audit Log. Raise it with the development team to add trusted
-proxy handling (Werkzeug `ProxyFix`, limited to one hop).
+Caddy sends these headers by default; nginx needs `proxy_set_header` lines for
+`X-Forwarded-For` (`$proxy_add_x_forwarded_for`), `X-Forwarded-Proto` and `X-Forwarded-Host`;
+IIS ARR sends `X-Forwarded-For` and needs the other two added. Set the value to the number of
+proxies in the chain — normally 1.
+
+Only set it when **every** connection goes through the proxy (Feast9 bound to `127.0.0.1`).
+If Feast9 were reachable directly, anyone could send these headers and pose as another
+address. Without the variable the headers are ignored.
 
 ### 5.3 Google sign-in (optional)
 
-Only enable if the clinic wants it. It also needs the trusted-proxy fix above, because the
-OAuth return address must be built as `https://…`; until then leave the Google variables unset.
+Only enable if the clinic wants it. It requires `TRUSTED_PROXY_COUNT` (section 5.2) so the
+return address is built as `https://…`, and the clinic's Google Cloud OAuth client must list
+`https://<feast9-host>/login/google/callback` as an authorised redirect URI.
 
 ---
 
@@ -319,7 +330,7 @@ Full details are in `BACKUP.md`. The essentials for the support firm:
 
 - [ ] Disk encryption (BitLocker/LUKS) on the server and on any machine/drive holding backups
       or Excel copies.
-- [ ] HTTPS via the reverse proxy; `SESSION_COOKIE_SECURE=1`; HSTS at the proxy.
+- [ ] HTTPS via the reverse proxy; `SESSION_COOKIE_SECURE=1`; `TRUSTED_PROXY_COUNT=1`; HSTS at the proxy.
 - [ ] Feast9 bound to `127.0.0.1` only; firewall allows only 443 from the clinic LAN (and
       nothing from the internet unless topology C with VPN/allow-list).
 - [ ] `FLASK_DEBUG` off; service runs as a dedicated non-admin account.
@@ -383,7 +394,7 @@ Optionally run the test suite on a staging copy before upgrading production:
 | Lost phone (two-step sign-in) | Administrator: **Users → Reset 2FA**; the user sets it up again. |
 | Staff member leaves | Administrator: **Users → Deactivate** (ends their sessions immediately). |
 | "Everyone was logged out" | Expected after `SECRET_KEY` / `secret_key` changes, or after the service restarts with a different key. |
-| Sign-ins blocked for everyone for a few minutes | Per-IP limit behind the proxy (section 5.2). |
+| Sign-ins blocked for everyone for a few minutes | `TRUSTED_PROXY_COUNT` is not set behind the proxy (section 5.2). |
 | "Database is locked" errors | Check antivirus/backup software holding `feast9.db`; make sure only one Feast9 service uses the `DATA_DIR`. |
 | Backup tile red | Check the key file is present (`BACKUP_KEY_FILE`), disk space, and the copy folder path; then **Back Up Now**. |
 | Server lost | New server → install (section 4) → restore latest backup → place the backup key → start. |

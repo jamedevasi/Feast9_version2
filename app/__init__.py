@@ -1,6 +1,7 @@
 import os
 
 from flask import Flask, render_template, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.icons import icon
 from app import config as app_config
@@ -23,6 +24,14 @@ def create_app():
     db_module.init_db()
 
     app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024  # 15 MB — clinical attachments are small files
+
+    # Behind an HTTPS reverse proxy every request would otherwise come from the proxy's own
+    # address — one shared per-IP sign-in limit for the whole clinic, the proxy's IP in the
+    # audit log, and http:// links for Google sign-in. Only enabled when configured (see
+    # app_config.trusted_proxy_count) so a direct connection can't fake these headers.
+    proxies = app_config.trusted_proxy_count()
+    if proxies:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=proxies, x_proto=proxies, x_host=proxies, x_port=proxies)
 
     from app.routes.account_routes import bp as account_bp
     from app.routes.analytics_routes import bp as analytics_bp

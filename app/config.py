@@ -80,6 +80,19 @@ GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 
 
+def trusted_proxy_count():
+    """How many reverse proxies (Caddy, nginx, IIS…) sit in front of Feast9, from
+    TRUSTED_PROXY_COUNT. 0 (the default) means none: X-Forwarded-For/-Proto/-Host are ignored,
+    because without a proxy anyone could send them to fake their address and slip past the
+    per-IP sign-in limit. Set it to 1 behind a single proxy so the client's real address
+    reaches the sign-in limit and the audit log, and Google sign-in builds https:// links.
+    Read fresh, like the other settings here."""
+    raw = os.environ.get("TRUSTED_PROXY_COUNT", "").strip()
+    if not raw.isdigit():
+        return 0
+    return min(int(raw), 5)
+
+
 def google_signin_enabled():
     """A function, not a module-level constant, for the same DATA_DIR-staleness reason
     as backups_dir() — read fresh so tests can monkeypatch it after import."""
