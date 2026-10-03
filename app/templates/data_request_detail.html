@@ -24,7 +24,8 @@
   <h2>Resolve</h2>
   {% if entry.request_type == 'Erasure' %}
   <p class="allergy-alert">{{ icon('triangle-alert') }} Marking this Completed will permanently soft-anonymise this patient's contact details
-    (name, DOB, mobile, email, address, emergency/guardian contacts). Clinical and financial records are preserved.
+    (name, DOB, mobile, email, address, emergency/guardian contacts), and clear the titles and notes of their
+    appointments and the descriptions on their privacy requests (this request's resolution note is kept). Clinical and financial records are preserved.
     This cannot be undone.</p>
   {% endif %}
   <form method="post" action="{{ url_for('dpdp.resolve', request_id=entry.id) }}"

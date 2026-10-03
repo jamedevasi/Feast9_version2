@@ -2075,7 +2075,7 @@ _LAST_VISIT_SQL = """NULLIF(MAX(
     COALESCE(p.last_visited_date, '')), '')"""
 
 
-def list_patients_directory(search="", only_active=False, include_balance=False, limit=200):
+def list_patients_directory(search="", only_active=False, include_balance=False, notice_pending=False, limit=200):
     """The Patients page's list. Adds `active_case_count`, `computed_age` (validators.patient_age,
     same helper as the patient-detail page — from date_of_birth, else the age recorded at
     registration/import aged forward, never the raw stored `age`, which goes stale),
@@ -2087,7 +2087,10 @@ def list_patients_directory(search="", only_active=False, include_balance=False,
     only_active narrows to patients who have an Active case; with include_balance it also
     keeps anyone who still owes money (a closed case with an unpaid balance is still a case
     to chase). include_balance is False for the receptionist role: the list's *membership*
-    would otherwise reveal who owes money, so their filter never looks at payments at all."""
+    would otherwise reveal who owes money, so their filter never looks at payments at all.
+
+    notice_pending narrows to patients who haven't accepted the privacy notice yet (erased
+    patients excluded) — staff work through it as patients come in."""
     balance_sql = """,
                (SELECT COALESCE(SUM(MAX(c.total_cost - COALESCE(
                     (SELECT SUM(pay.amount) FROM payments pay WHERE pay.case_id = c.id), 0), 0)), 0)
@@ -2099,6 +2102,8 @@ def list_patients_directory(search="", only_active=False, include_balance=False,
         params += [like, like, like, like]
     if only_active:
         clauses.append("(active_case_count > 0 OR balance_due > 0)" if include_balance else "active_case_count > 0")
+    if notice_pending:
+        clauses.append("(dpdp_notice_accepted = 0 AND is_anonymized = 0)")
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     conn = get_db()
     rows = conn.execute(
@@ -2223,7 +2228,23 @@ def resolve_data_request(request_id, new_status, resolution_note, confirm_name="
                     anonymized_at = ?, comms_consent = 0, updated_at = ? WHERE id = ?""",
                 (*_ANONYMIZE_FIELDS.values(), f"Erased Patient #{request['patient_id']}", now, now, request["patient_id"]),
             )
-            _write_audit(conn, actor, "patient_anonymized", "patient", request["patient_id"])
+            # Free text outside the clinical record that can name or describe the patient:
+            # appointment titles/notes, and what was written on their privacy requests (this
+            # request's own resolution note, just entered by staff, is kept).
+            appts = conn.execute(
+                "UPDATE appointments SET title = '', notes = '', updated_at = ? WHERE patient_id = ?",
+                (now, request["patient_id"]),
+            ).rowcount
+            conn.execute(
+                """UPDATE data_requests SET description = '',
+                       resolution_note = CASE WHEN id = ? THEN resolution_note ELSE '' END
+                   WHERE patient_id = ?""",
+                (request_id, request["patient_id"]),
+            )
+            _write_audit(
+                conn, actor, "patient_anonymized", "patient", request["patient_id"],
+                after_summary=f"appointment_texts_cleared={appts}",
+            )
         elif request["request_type"] == "Withdraw Consent":
             conn.execute(
                 "UPDATE patients SET comms_consent = 0, comms_consent_at = '', updated_at = ? WHERE id = ?",

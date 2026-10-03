@@ -28,7 +28,7 @@ def test_pages_return_200_after_login(logged_in_client):
 def test_dpdp_notice_required(logged_in_client):
     resp = _register_patient(logged_in_client, dpdp_notice_accepted="")
     assert resp.status_code == 200
-    assert b"Data Processing Notice must be accepted" in resp.data
+    assert b"accepted the privacy notice" in resp.data
 
 
 def test_register_patient_and_appears_in_list(logged_in_client):

@@ -226,3 +226,67 @@ def test_audit_entries_written_for_create_resolve_and_anonymize(logged_in_client
     assert "dpdp_request_created" in actions
     assert "dpdp_request_status_changed" in actions
     assert "patient_anonymized" in actions
+
+
+def test_erasure_clears_appointment_text_and_privacy_request_descriptions(logged_in_client, patient_id):
+    from tests.test_appointments import _book_appointment
+    _book_appointment(logged_in_client, patient_id, title="Case Test Patient - crown fit",
+                      notes="Call Case Test Patient on 9876543210")
+    _create_request(logged_in_client, patient_id, "Access", "Case Test Patient asked for records")
+    _create_request(logged_in_client, patient_id, "Erasure", "Case Test Patient wants to be forgotten")
+    earlier = [r for r in db.list_data_requests_for_patient(patient_id) if r["request_type"] == "Access"][0]
+    db.resolve_data_request(earlier["id"], "Completed", "PDF handed to Case Test Patient")
+
+    erasure_id = [r for r in db.list_data_requests_for_patient(patient_id) if r["request_type"] == "Erasure"][0]["id"]
+    entry = db.get_data_request(erasure_id)
+    token = get_csrf(logged_in_client, f"/data-requests/{erasure_id}")
+    logged_in_client.post(
+        f"/data-requests/{erasure_id}/resolve",
+        data={"status": "Completed", "resolution_note": "Erased per request",
+              "confirm_name": "Case Test Patient", "csrf_token": token},
+    )
+    assert entry["status"] == "Pending"
+
+    for appt in db.list_appointments_for_patient(patient_id):
+        assert appt["title"] == "" and appt["notes"] == ""
+        assert appt["appt_date"] == "2026-10-01"  # the booking itself is kept
+    requests_ = {r["id"]: r for r in db.list_data_requests_for_patient(patient_id)}
+    assert all(r["description"] == "" for r in requests_.values())
+    assert requests_[earlier["id"]]["resolution_note"] == ""
+    assert requests_[erasure_id]["resolution_note"] == "Erased per request"
+
+
+def test_reminder_text_only_for_patients_who_agreed_to_reminders(logged_in_client):
+    from tests.test_appointments import _book_appointment
+    opted_out = register_patient(logged_in_client, name="No Reminders")
+    opted_in = register_patient(logged_in_client, name="Wants Reminders", mobile="9876500009", comms_consent="on")
+    _book_appointment(logged_in_client, opted_out)
+    _book_appointment(logged_in_client, opted_in)
+
+    out_appt = db.list_appointments_for_patient(opted_out)[0]["id"]
+    in_appt = db.list_appointments_for_patient(opted_in)[0]["id"]
+    out_page = logged_in_client.get(f"/appointments/{out_appt}/edit").data.decode()
+    in_page = logged_in_client.get(f"/appointments/{in_appt}/edit").data.decode()
+
+    assert "Dear No Reminders" not in out_page and "reminder-opted-out" in out_page
+    assert "Dear Wants Reminders" in in_page and "reminder-opted-out" not in in_page
+
+
+def test_withdrawing_consent_hides_the_reminder_text(logged_in_client):
+    from tests.test_appointments import _book_appointment
+    pid = register_patient(logged_in_client, name="Changed Mind", comms_consent="on")
+    _book_appointment(logged_in_client, pid)
+    _create_request(logged_in_client, pid, "Withdraw Consent", "No more messages")
+    entry = db.list_data_requests_for_patient(pid)[0]
+    db.resolve_data_request(entry["id"], "Completed", "done")
+
+    appt = db.list_appointments_for_patient(pid)[0]["id"]
+    page = logged_in_client.get(f"/appointments/{appt}/edit").data.decode()
+    assert "Dear Changed Mind" not in page
+
+
+def test_patient_form_records_consent_on_the_patients_behalf(logged_in_client):
+    page = logged_in_client.get("/patients/new").data.decode()
+    assert "Patient (or guardian, if under 18) has received and accepted the privacy notice" in page
+    assert "has agreed to receive appointment reminders" in page
+    assert "I have read and understood" not in page

@@ -7,17 +7,22 @@
 </div>
 
 <div class="view-toggle">
-  <a class="button {% if not show_all %}button-active{% endif %}" href="{{ url_for('patients.list_view', q=search or None) }}">{{ 'Active cases & pending payments' if can_view_financial else 'Active cases' }}</a>
+  <a class="button {% if not view %}button-active{% endif %}" href="{{ url_for('patients.list_view', q=search or None) }}">{{ 'Active cases & pending payments' if can_view_financial else 'Active cases' }}</a>
   <a class="button {% if show_all %}button-active{% endif %}" href="{{ url_for('patients.list_view', q=search or None, view='all') }}">All patients</a>
+  <a class="button {% if view == 'notice' %}button-active{% endif %}" href="{{ url_for('patients.list_view', q=search or None, view='notice') }}">Privacy notice pending</a>
 </div>
 
 <form method="get" class="search-form">
-  {% if show_all %}<input type="hidden" name="view" value="all">{% endif %}
+  {% if view %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
   <input type="text" name="q" value="{{ search }}" placeholder="Search by name, mobile, email, or address">
   <button type="submit">Search</button>
 </form>
 
-{% if not show_all %}
+{% if view == 'notice' %}
+<div class="list-note">
+  <span>Patients who haven't accepted the privacy notice yet. Give them the notice when they next come in, then record it on their page.</span>
+</div>
+{% elif not view %}
 <div class="list-note">
   <span>Showing patients with an active case{% if can_view_financial %} or an outstanding balance{% endif %}.</span>
   <a class="button button-outline button-small" href="{{ url_for('patients.list_view', q=search or None, view='all') }}">Show all patients</a>
@@ -48,6 +53,8 @@
     {% endfor %}
   </tbody>
 </table>
+{% elif view == 'notice' %}
+<p class="empty-state">{% if search %}No patients waiting for the privacy notice match "{{ search }}".{% else %}Every patient has accepted the privacy notice.{% endif %}</p>
 {% elif show_all %}
 <p class="empty-state">No patients found{% if search %} for "{{ search }}"{% endif %}.</p>
 {% else %}

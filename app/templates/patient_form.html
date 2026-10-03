@@ -83,11 +83,11 @@
     </div>
     <label class="checkbox">
       <input type="checkbox" name="dpdp_notice_accepted" {% if patient.dpdp_notice_accepted %}checked{% endif %}>
-      I have read and understood the Data Processing Notice
+      Patient (or guardian, if under 18) has received and accepted the privacy notice
     </label>
     <label class="checkbox">
       <input type="checkbox" name="comms_consent" {% if patient.comms_consent %}checked{% endif %}>
-      I consent to receive appointment reminders and communications from the clinic
+      Patient (or guardian, if under 18) has agreed to receive appointment reminders and messages from the clinic
     </label>
   </fieldset>
 

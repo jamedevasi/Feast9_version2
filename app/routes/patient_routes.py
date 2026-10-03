@@ -52,7 +52,7 @@ def _validate_patient(data):
     if data["sex"] not in SEX_OPTIONS:
         errors.append("Sex must be Male or Female.")
     if not data["dpdp_notice_accepted"]:
-        errors.append("The Data Processing Notice must be accepted to register a patient.")
+        errors.append("Record that the patient (or guardian) has accepted the privacy notice — a patient can't be registered without it.")
     if data["mobile"] and not is_valid_mobile(data["mobile"]):
         errors.append("Mobile number looks invalid — enter a 10-digit Indian mobile number.")
 
@@ -69,15 +69,19 @@ def _validate_patient(data):
 @login_required
 def list_view():
     search = request.args.get("q", "").strip()
-    show_all = request.args.get("view") == "all"
+    view = request.args.get("view", "")
+    if view not in ("all", "notice"):
+        view = ""
+    show_all = view == "all"
     # Receptionists get no financial data — not even indirectly through who lands on the default
     # list — so their "active" filter never looks at payments, and no balance is fetched for them.
     can_view_financial = can_view_financial_data()
     patients = db.list_patients_directory(
-        search=search, only_active=not show_all, include_balance=can_view_financial,
+        search=search, only_active=not view, include_balance=can_view_financial,
+        notice_pending=view == "notice",
     )
     return render_template(
-        "patients_list.html", patients=patients, search=search, show_all=show_all,
+        "patients_list.html", patients=patients, search=search, view=view, show_all=show_all,
         can_view_financial=can_view_financial,
     )
 

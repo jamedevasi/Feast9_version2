@@ -87,7 +87,7 @@
 <section class="card">
   <h2>Contact Details &amp; Privacy Status</h2>
   {% if patient.is_anonymized %}
-  <p class="allergy-alert">{{ icon('triangle-alert') }} This patient's contact details were erased on {{ patient.anonymized_at }} per an Erasure privacy request. Clinical and financial records are preserved.</p>
+  <p class="allergy-alert">{{ icon('triangle-alert') }} This patient's contact details were erased on {{ patient.anonymized_at }} per an Erasure privacy request, and their appointment notes were cleared. Clinical and financial records are preserved.</p>
   {% endif %}
   {% if not patient.dpdp_notice_accepted and not patient.is_anonymized %}
   <p class="flash flash-warning">

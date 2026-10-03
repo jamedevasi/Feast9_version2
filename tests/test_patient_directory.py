@@ -219,3 +219,37 @@ def test_import_reads_an_age_written_with_a_unit():
         parsed = row(text)
         data = parsed[0] if isinstance(parsed, tuple) else parsed
         assert data["age"] == expected, text
+
+
+def _mark_notice_not_accepted(patient_id):
+    conn = db.get_db()
+    conn.execute("UPDATE patients SET dpdp_notice_accepted = 0, dpdp_notice_accepted_at = '' WHERE id = ?",
+                 (patient_id,))
+    conn.commit()
+    conn.close()
+
+
+def test_privacy_notice_pending_view_lists_only_patients_without_acceptance(logged_in_client):
+    pending = _patient(logged_in_client, "Pending Notice", "9876500011")   # no case — still listed
+    _patient(logged_in_client, "Accepted Notice", "9876500012")
+    erased = _patient(logged_in_client, "Erased Pending", "9876500013")
+    _mark_notice_not_accepted(pending)
+    _mark_notice_not_accepted(erased)
+    conn = db.get_db()
+    conn.execute("UPDATE patients SET is_anonymized = 1 WHERE id = ?", (erased,))
+    conn.commit()
+    conn.close()
+
+    body = logged_in_client.get("/patients/?view=notice").data.decode()
+    assert "Pending Notice" in body
+    assert "Accepted Notice" not in body
+    assert "Erased Pending" not in body
+    # The search box keeps the view.
+    assert 'name="view" value="notice"' in body
+    assert "Pending Notice" in logged_in_client.get("/patients/?view=notice&q=Pending").data.decode()
+
+
+def test_privacy_notice_pending_view_empty_state(logged_in_client):
+    _patient(logged_in_client, "Accepted Notice", "9876500012")
+    body = logged_in_client.get("/patients/?view=notice").data.decode()
+    assert "Every patient has accepted the privacy notice." in body
