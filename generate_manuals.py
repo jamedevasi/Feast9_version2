@@ -2,6 +2,7 @@
 Standalone generator for Feast9's end-user documentation:
   - Feast9_User_Manual.pdf            (multi-page reference, ReportLab Platypus)
   - Feast9_Quick_Reference_Card.pdf   (single-page, colourful cheat sheet, ReportLab canvas)
+  - Feast9_User_Journeys.pdf          (one landscape journey map per role)
 
 Not part of the running app (no Flask/db import) so it can be run standalone against
 a checkout without a live DATA_DIR. Re-run any time the feature set changes.
@@ -195,6 +196,39 @@ def manual_later_pages(c, doc):
     c.restoreState()
 
 
+def _role_table(rows):
+    head = ParagraphStyle("RH", parent=BODY, textColor=WHITE, fontName="Helvetica-Bold")
+    t = Table([[Paragraph("Role", head), Paragraph("What they use Feast9 for", head)]]
+              + [[Paragraph(f"<b>{r}</b>", BODY), Paragraph(d, BODY)] for r, d in rows],
+              colWidths=[1.3 * inch, 5.2 * inch])
+    t.setStyle(TABLE_STYLE)
+    return t
+
+
+def steps(items):
+    """Numbered steps for a task."""
+    return [Paragraph(f"<b>{n}.</b>&nbsp;&nbsp;{t}", BULLET) for n, t in enumerate(items, start=1)]
+
+
+MANUAL_CONTENTS = [
+    "Who can do what",
+    "Signing in and keeping your account safe",
+    "Finding your way around",
+    "Patients",
+    "Treatment cases",
+    "Dental chart",
+    "Appointments",
+    "Lab Work",
+    "Reports and Analytics",
+    "Financial Assessment",
+    "Privacy Requests",
+    "Settings (administrators)",
+    "Backup & Data (administrators)",
+    "Good habits",
+    "Common questions",
+]
+
+
 def build_user_manual(path):
     doc = SimpleDocTemplate(
         path, pagesize=letter,
@@ -213,431 +247,736 @@ def build_user_manual(path):
     story.append(Paragraph("USER MANUAL", ParagraphStyle(
         "CoverBand", parent=COVER_TITLE, fontSize=20, leading=24)))
     story.append(Spacer(1, 2.6 * inch))
-    story.append(Paragraph(f"For Receptionists · Doctors · Administrators", COVER_FOOT))
+    story.append(Paragraph("For Receptionists · Doctors · Guest Doctors · Administrators", COVER_FOOT))
     story.append(Paragraph(f"Version dated {TODAY}", COVER_FOOT))
     story.append(PageBreak())
 
-    # ── Table of contents ──
+    # ── Contents ──
     story.append(Paragraph("Contents", H1))
     story.append(HRFlowable(width="100%", color=BRAND, thickness=2, spaceAfter=10))
-    toc = [
-        "1. Welcome & Roles",
-        "2. Signing In & Securing Your Account",
-        "3. Patients",
-        "4. Treatment Cases",
-        "5. Dental Chart",
-        "6. Appointments & the Calendar",
-        "7. The Dashboard",
-        "8. Reports & Analytics",
-        "9. Financial Assessment",
-        "10. Privacy Requests",
-        "11. Settings & Administration",
-        "12. Security Do's and Don'ts",
-        "13. Troubleshooting & FAQ",
-    ]
-    for entry in toc:
-        story.append(Paragraph(entry, TOC_ENTRY))
-    story.append(PageBreak())
-
-    # ── 1. Welcome & Roles ──
-    story += section("1", "Welcome & Roles", (
-        "Feast9 covers the full patient journey for a single-practitioner dental clinic: "
-        "registration, treatment cases, clinical records, billing, appointments, reports, "
-        "and India's DPDP Act 2023 data-protection requirements. Every staff member signs "
-        "in with their own account, and what you can see and do depends on your assigned role."
-    ), [[
-        Table(
-            [[Paragraph("Role", ParagraphStyle("RH", parent=BODY, textColor=WHITE, fontName="Helvetica-Bold")),
-              Paragraph("Can do", ParagraphStyle("RH2", parent=BODY, textColor=WHITE, fontName="Helvetica-Bold"))],
-             [Paragraph("Receptionist", BODY), Paragraph(
-              "Register/search patients, book appointments, add clinical notes, log privacy "
-              "requests, use the calendar. No access to payments, costs, balances, reports, "
-              "analytics, financial exports, or backups — this is enforced by the system, "
-              "not just hidden from view.", BODY)],
-             [Paragraph("Doctor", BODY), Paragraph(
-              "Everything a Receptionist can do, plus full financial access (payments, cost "
-              "revisions, Reports, Analytics, Financial Assessment), dental charting, consent "
-              "recording, clinical-attachment deletion, and resolving privacy requests.", BODY)],
-             [Paragraph("Administrator", BODY), Paragraph(
-              "Everything a Doctor can do, plus user management, Doctors/Case Types setup, "
-              "Clinic Details, Login Screen branding, backups, and the audit log.", BODY)]],
-            colWidths=[1.3 * inch, 5.2 * inch],
-        ),
-    ]])
-    story[-1].setStyle(TABLE_STYLE)
+    for n, entry in enumerate(MANUAL_CONTENTS, start=1):
+        story.append(Paragraph(f"{n}. {entry}", TOC_ENTRY))
+    story.append(Spacer(1, 10))
     story.append(Paragraph(
-        "If a screen or button you expect isn't there, it is almost always because your "
-        "role doesn't include it — this is by design, not a bug.", NOTE))
-
+        "<b>How to use this manual:</b> you don't need to read it all. Find the task you want to "
+        "do in the contents and follow the steps. Words in <b>bold</b> are the names of buttons, "
+        "menu items and boxes exactly as they appear on screen.", TIP))
     story.append(PageBreak())
 
-    # ── 2. Signing In ──
-    story += section("2", "Signing In & Securing Your Account", "", [
-        [Paragraph("First-time setup", H2)],
-        bullets([
-            "The very first person to open Feast9 sees a one-time Setup page and creates the "
-            "founding Administrator account, including a security question for password recovery.",
-            "Every account after that is created by an Administrator from <b>Users</b>.",
+    # ── 1. Who can do what ──
+    story += section("1", "Who can do what", (
+        "Everyone signs in with their own username. What you see depends on your role, which "
+        "the administrator sets when creating your account."
+    ), [[
+        _role_table([
+            ("Receptionist",
+             "Patients' contact details, appointments, follow-up reminders on the Dashboard, the "
+             "Lab Work list, and Privacy Requests. <b>No</b> medical history, treatment cases, "
+             "notes, prescriptions, dental chart or clinical files, and <b>no</b> money figures "
+             "(costs, payments, balances, reports)."),
+            ("Doctor",
+             "Everything clinical (cases, notes, prescriptions, dental chart, files), payments and "
+             "costs, Reports, Analytics, Financial Assessment, and completing Privacy Requests."),
+            ("Guest doctor",
+             "A visiting doctor. The same clinical work as a doctor, but <b>no</b> money figures, "
+             "<b>no</b> Privacy Requests, <b>no</b> Settings, and cannot delete clinical files."),
+            ("Administrator",
+             "Everything a doctor can do, plus Settings: staff accounts, doctors, case types, "
+             "clinic details, backups and the activity log."),
         ]),
-        [Paragraph("Logging in", H2)],
-        bullets([
-            "Enter your username and password on the login page.",
-            "If your account has Two-Factor Authentication (2FA) turned on, you'll be asked for "
-            "a 6-digit code from your authenticator app (or a one-time recovery code) on a "
-            "second screen before you're let in.",
-            "Forgotten your password? If you use Two-Factor Authentication, use <b>Forgot "
-            "Password</b> on the login page: answer your security question and enter a code "
-            "from your authenticator app (or a recovery code) to set a new one. If you don't, "
-            "ask an Administrator to set a new password for you from <b>Users</b>.",
+    ], [Paragraph(
+        "If a button or page you expect isn't there, your role doesn't include it. That is "
+        "deliberate, not a fault. Ask the administrator if you think your role is wrong.", NOTE)]])
+    story.append(PageBreak())
+
+    # ── 2. Signing in ──
+    story += section("2", "Signing in and keeping your account safe", "", [
+        [Paragraph("Signing in", H2)],
+        steps([
+            "Open Feast9 in the browser and type your <b>username</b> and <b>password</b>.",
+            "If you use two-step sign-in, type the 6-digit code from the authenticator app on "
+            "your phone (or one of your recovery codes).",
+            "You arrive on the <b>Dashboard</b>.",
         ]),
-        [Paragraph("Turning on Two-Factor Authentication (recommended for everyone)", H2)],
+        [Paragraph("Passwords", H2)],
         bullets([
-            "Go to <b>2FA</b> in the top navigation bar.",
-            "Scan the QR code with an authenticator app (Google Authenticator, Authy, etc.) or "
-            "type the key in manually.",
-            "Enter the 6-digit code it shows you to confirm setup.",
-            "You will then see a set of one-time <b>recovery codes</b> — write these down and "
-            "store them somewhere safe. Each one can be used once if you ever lose your phone. "
-            "They are shown only this one time.",
+            "A password must be at least 10 characters and not a common or easy-to-guess one. "
+            "A short sentence you can remember works well, e.g. <i>blue kettle on Tuesday</i>.",
+            "Change your own password from <b>My Account &gt; Change Password</b>.",
+            "<b>Forgot your password?</b> If you use two-step sign-in, click <b>Forgot "
+            "Password</b> on the sign-in page: answer your security question and enter a code "
+            "from your phone. If you don't use two-step sign-in, ask the administrator to set a "
+            "new password for you.",
+        ]),
+        [Paragraph("Two-step sign-in (2FA)", H2)],
+        [Paragraph(
+            "Two-step sign-in asks for a code from your phone as well as your password, so a "
+            "stolen password alone isn't enough. Your clinic may make it compulsory.", BODY)],
+        steps([
+            "Install an authenticator app on your phone (Google Authenticator, Microsoft "
+            "Authenticator, Authy or similar).",
+            "In Feast9 go to <b>My Account &gt; Set Up 2FA</b> and scan the square code with the app.",
+            "Type the 6-digit code the app shows to confirm.",
+            "Write down the <b>recovery codes</b> shown next and keep them somewhere safe, away "
+            "from your phone. Each works once if you lose your phone. They are shown only once.",
+        ]),
+        [Paragraph("Things Feast9 does to protect you", H2)],
+        bullets([
+            "<b>Automatic logout:</b> if Feast9 is left untouched for a while (30 minutes unless "
+            "your clinic changed it) you are signed out, and everyone is signed out 12 hours "
+            "after signing in. Typing counts as activity, so a long note won't be cut off.",
+            "<b>Account lock:</b> after 5 wrong passwords in a row your account locks for 15 "
+            "minutes, even for the right password. The administrator can unlock it sooner.",
+            "<b>\"Confirm your password\":</b> before a sensitive action (adding staff, "
+            "deleting a clinical file, running a backup, completing a privacy request…) Feast9 "
+            "asks for your password again if you signed in more than 10 minutes ago.",
         ]),
         [Paragraph(
-            "Lost your phone and your recovery codes? Only an Administrator can reset your 2FA "
-            "from the Users page. Don't share recovery codes with anyone, and never photograph "
-            "the QR code for someone else's phone.", LOCK)],
-        [Paragraph("Signing in with Google (if enabled by your clinic)", H2)],
-        bullets([
-            "Go to <b>My Account</b> and choose <b>Link Google Account</b> while already signed "
-            "in — this is a one-time step that ties your Google identity to your existing Feast9 "
-            "account.",
-            "Google sign-in can never create a brand-new account and never bypasses your "
-            "clinic's normal password/2FA setup on its own — it is only an alternate way in "
-            "for an account you have already linked.",
-        ]),
-        [Paragraph("\"Please sign in again\" prompts", H2)],
-        [Paragraph(
-            "A handful of sensitive actions — creating or deactivating a user, resetting someone's "
-            "2FA, deleting a clinical document, running or downloading a backup — ask you to "
-            "confirm your password again if it has been more than 10 minutes since you last "
-            "authenticated. This is intentional: it stops someone from misusing a screen you "
-            "left open and unattended.", BODY)],
+            "Lost your phone and your recovery codes? The administrator can reset your two-step "
+            "sign-in from <b>Users</b>, and you set it up again.", LOCK)],
     ])
     story.append(PageBreak())
 
-    # ── 3. Patients ──
-    story += section("3", "Patients", "", [
-        [Paragraph("Registering a new patient", H2)],
+    # ── 3. Finding your way around ──
+    story += section("3", "Finding your way around", (
+        "The menu along the top of every page takes you to each part of Feast9. You only see "
+        "the items your role can use."
+    ), [
         bullets([
-            "Go to <b>Patients -&gt; New Patient</b>.",
-            "Name and Sex (Male/Female) are required; enter Date of Birth and the age field "
-            "fills in automatically.",
-            "Record any medical conditions, allergies, and — for a patient under 18 — a "
-            "guardian's name, relation, and a valid mobile number (mandatory for minors).",
-            "You must tick the <b>Data Processing Notice</b> checkbox after reading it — "
-            "registration cannot be completed without it. This is a legal requirement under "
-            "India's DPDP Act and cannot be skipped for any patient.",
-            "Communications consent (for reminder messages) is a separate, optional tick-box, "
-            "off by default.",
+            "<b>Dashboard</b> — your starting page (see below).",
+            "<b>Patients</b> — find, register and open patients.",
+            "<b>Appointments</b> — the monthly calendar.",
+            "<b>Lab Work</b> — every job sent to an outside lab.",
+            "<b>Reports</b>, <b>Analytics</b>, <b>Financial Assessment</b> — money and practice "
+            "figures (doctors and administrators).",
+            "<b>Privacy Requests</b> — patients' requests about their data; the number in "
+            "brackets is how many are waiting.",
+            "<b>My Account</b> — your password, security question and two-step sign-in.",
+            "<b>Settings</b> — clinic setup (administrators).",
+            "<b>Logout</b> — always sign out when you leave a shared computer.",
+        ]),
+        [Paragraph("The Dashboard", H2)],
+        bullets([
+            "<b>Four tiles</b> at the top: follow-ups needing attention, total outstanding "
+            "balance (shows <i>Restricted</i> for roles that can't see money), active cases, "
+            "and today's appointments.",
+            "<b>Follow-ups Needing Attention</b> — red rows are overdue, amber rows are due in "
+            "the next 3 days. Click <b>Book Appointment</b> to book the visit, or <b>Done</b> "
+            "once the patient has been contacted.",
+            "<b>Today's Appointments</b> — the day's list, with the case each visit is for.",
+            "<b>Lab Requisitions Due Before Visit</b> — lab work that hasn't come back for a "
+            "patient who is booked in the next 3 days.",
+        ]),
+    ])
+    story.append(PageBreak())
+
+    # ── 4. Patients ──
+    story += section("4", "Patients", "", [
+        [Paragraph("Registering a new patient", H2)],
+        steps([
+            "Go to <b>Patients &gt; + New Patient</b>.",
+            "Fill in the name, sex, date of birth (or age) and mobile number. For a patient "
+            "under 18, a guardian's name and mobile number are required.",
+            "Doctors also fill in medical history and allergies here. (Receptionists don't see "
+            "these boxes; a doctor adds them later.)",
+            "Give the patient the privacy notice, then tick <b>Patient (or guardian, if under "
+            "18) has received and accepted the privacy notice</b>. Registration can't be saved "
+            "without it.",
+            "Tick the reminders box only if the patient agrees to receive appointment reminders.",
+            "Click <b>Register Patient</b>. The patient's page opens.",
         ]),
         [Paragraph("Finding a patient", H2)],
         bullets([
-            "The search box on the Patients page matches name, mobile number, email, address, "
-            "and even text inside past visit notes and prescriptions — so you can find a patient "
-            "by symptom or medicine name too.",
-            "A <b>Historic Import</b> badge marks patients that were bulk-loaded from an old "
-            "spreadsheet rather than registered through the app.",
+            "The Patients page normally lists only patients with an active case (or money "
+            "owing). Use the buttons above the list to switch to <b>All patients</b>, or to "
+            "<b>Privacy notice pending</b> to see who still needs to be given the notice.",
+            "Type a name, mobile number, email or address in the search box and click "
+            "<b>Search</b>. Click <b>Clear search</b> to see the full list again.",
+            "A newly registered patient with no case yet appears under <b>All patients</b>.",
         ]),
-        [Paragraph("Reading the patient list's colour dots", H2)],
+        [Paragraph("The patient's page", H2)],
         bullets([
-            '<font color="#b91c1c"><b>Red dot</b></font> — this patient has an overdue follow-up.',
-            '<font color="#92400e"><b>Amber dot</b></font> — a follow-up is due within the next 3 days.',
-            "No dot — nothing needs attention right now.",
+            "<b>Medical Alerts</b> — allergies and conditions at a glance (doctors only).",
+            "<b>Active Treatment Cases</b> — red or amber badges mean a follow-up is overdue or "
+            "due soon. Click a case to open it (not available to receptionists).",
+            "<b>Appointments</b> — past and upcoming, with <b>+ New Appointment</b>.",
+            "<b>Contact Details &amp; Privacy Status</b> — contact details, whether the privacy "
+            "notice was accepted, reminder consent, and any privacy requests.",
+            "Buttons at the top: <b>Edit</b>, <b>Dental Chart</b> and <b>Patient Summary "
+            "(PDF)</b>.",
         ]),
-        [Paragraph("The patient detail page", H2)],
         [Paragraph(
-            "Always shown in this order: <b>Medical Alerts</b> (allergies/conditions at a "
-            "glance), <b>Active Treatment Cases</b>, <b>Appointments</b>, and "
-            "<b>Contact Details &amp; Privacy Status</b> (which also lists any privacy requests "
-            "for this patient). Prescriptions are recorded and viewed on each treatment case "
-            "itself, not on this page.",
-            BODY)],
-        [Paragraph(
-            "If a patient's record shows an \"Erased\" banner, an Erasure request has been "
-            "completed for them — their personal details are anonymised, but their clinical "
-            "and billing history is preserved exactly as required by law.", NOTE)],
+            "An amber <b>Privacy notice not accepted</b> badge means the patient hasn't been "
+            "given the notice yet (common for patients brought over from the old system). Give "
+            "it to them at their next visit, then tick it on the <b>Edit</b> form.", NOTE)],
     ])
     story.append(PageBreak())
 
-    # ── 4. Treatment Cases ──
-    story += section("4", "Treatment Cases", (
-        "A Case is one course of treatment for a patient (e.g. \"Root Canal — upper left "
-        "molar\"). Open one from the patient's page with <b>New Case</b>. Every case page "
-        "always shows the same nine sections, in the same order, so the layout never surprises you:"
+    # ── 5. Treatment cases ──
+    story += section("5", "Treatment cases", (
+        "A case is one course of treatment, for example <i>Root canal and crown, upper right</i>. "
+        "A patient can have several. Everything about that treatment is recorded on the case's page."
+    ), [
+        role_pill("Doctors, guest doctors and administrators. Receptionists cannot open cases."),
+        [Paragraph("Opening a new case", H2)],
+        steps([
+            "On the patient's page click <b>+ New Case</b>.",
+            "Enter a short title, choose the doctor, and tick the procedures from the "
+            "<b>Procedures</b> list (type in its search box to find one quickly). Use "
+            "<b>Other procedure</b> for anything not listed.",
+            "Enter the estimated cost (doctors and administrators) and click <b>Create Case</b>.",
+        ]),
+        [Paragraph("Consent (on paper)", H2)],
+        steps([
+            "On the case page, click <b>Print Consent Form</b>. It prints on one sheet, filled "
+            "in with the patient, case, procedures and doctor.",
+            "Fill in the blanks by hand (tooth, estimated cost and visits, specific risks), tick "
+            "each box as you explain it, and have the patient (or guardian), the doctor and a "
+            "witness sign.",
+            "File the signed form (or scan it into <b>Clinical Attachments</b>), then click "
+            "<b>Mark Consent Recorded</b>, adding where it is filed. The red warning border "
+            "disappears.",
+        ]),
+        [Paragraph("Visit notes", H2)],
+        bullets([
+            "Write what happened at the visit and click <b>Add Visit Note</b>. <b>Attended by</b> "
+            "shows which doctor saw the patient; change it if someone else did.",
+            "Adding a note marks the patient's appointment for that day as Completed.",
+            "Notes can't be changed or deleted afterwards. To correct one, add a new note "
+            "explaining the correction.",
+        ]),
+        [Paragraph("Prescriptions", H2)],
+        steps([
+            "Choose the prescribing doctor and type the diagnosis.",
+            "For each medicine enter the <b>generic name</b> (the brand is optional), strength, "
+            "dosage, how often, and how it is taken. Use <b>+ Add another medicine</b> for more.",
+            "Click <b>Add Prescription</b>, then <b>Print</b> to hand it to the patient.",
+        ]),
+        [Paragraph(
+            "<b>Allergy check:</b> if a medicine may clash with an allergy recorded for the "
+            "patient (for example amoxicillin for a penicillin allergy), Feast9 stops and shows "
+            "a red warning. Change the medicine, or — only if you have checked and it is safe — "
+            "tick <b>I have checked the patient's allergy</b> and save again. The check can miss "
+            "a drug, so always read the allergy alert at the top too.", LOCK)],
+        [Paragraph("The other sections of a case", H2)],
+        bullets([
+            "<b>Clinical Attachments</b> — upload X-rays, photos and lab reports (JPG, PNG or "
+            "PDF). Only doctors and administrators can delete a file, and must give a reason.",
+            "<b>Lab Requisitions</b> — record work sent to a lab and update it when it comes "
+            "back.",
+            "<b>Referral Notes</b> — write a referral to a specialist and print it as a letter.",
+            "<b>Payment Log</b> — record each payment received; the balance updates "
+            "automatically (doctors and administrators).",
+            "<b>Follow-up &amp; Next Action</b> — set a reminder date and note. It appears on "
+            "the Dashboard on that date. <b>Book Appointment</b> turns it into a booking; "
+            "<b>Mark Follow-up Done</b> clears it once dealt with.",
+            "<b>Cost History &amp; Revisions</b> — every change to the case's cost, with the "
+            "reason.",
+        ]),
+        [Paragraph(
+            "Click <b>Close Case</b> when the treatment is finished. A closed case stays on "
+            "record and can still be viewed.", TIP)],
+    ])
+    story.append(PageBreak())
+
+    # ── 6. Dental chart ──
+    story += section("6", "Dental chart", (
+        "Open it from the patient's page with <b>Dental Chart</b>. Teeth use the standard "
+        "international (FDI) numbers. Use <b>Adult (Permanent)</b> or <b>Mixed / "
+        "Paediatric</b> to choose which teeth are shown."
+    ), [
+        role_pill("Doctors, guest doctors and administrators."),
+        steps([
+            "Click a tooth on the chart.",
+            "Choose the surface, the finding (Sound, Caries, Restoration, Crown, Root Canal, "
+            "Implant, Missing/Extracted, Fracture or Other) and its status: <b>Existing</b> "
+            "(already there), <b>Planned</b>, <b>Ongoing</b> or <b>Completed</b>.",
+            "For planned work you can give a target date and set it as the case's follow-up.",
+            "Save. The tooth's colour updates and the entry is added to its history.",
+        ]),
+        bullets([
+            "Colours: <font color=\"#b91c1c\"><b>red</b></font> needs attention, "
+            "<font color=\"#1c7ed6\"><b>blue</b></font> scheduled or in progress, "
+            "<font color=\"#2f9e44\"><b>green</b></font> stable.",
+            "Nothing is ever overwritten: a correction is simply a new entry, and the full "
+            "history stays below the chart.",
+        ]),
+    ])
+    story.append(PageBreak())
+
+    # ── 7. Appointments ──
+    story += section("7", "Appointments", (
+        "<b>Appointments</b> shows the month. Each appointment shows a coloured dot for the "
+        "doctor and a coloured badge for its status (blue Scheduled, green Completed, grey "
+        "Cancelled, red No-show)."
+    ), [
+        [Paragraph("Booking", H2)],
+        steps([
+            "Click <b>+ New Appointment</b>, or the <b>+</b> on a day.",
+            "Choose the patient and doctor, then the date, start and end time, and a short title.",
+            "Click <b>Book Appointment</b>.",
+        ]),
+        bullets([
+            "<b>Repeating visits</b> (e.g. braces adjustments): tick <b>Repeat this "
+            "appointment</b>, choose how often and until when. Each visit gets its own entry. "
+            "When editing one you choose <b>this occurrence only</b> or <b>the whole series</b>.",
+            "<b>From a follow-up:</b> <b>Book Appointment</b> on the Dashboard or a case fills "
+            "in the patient, doctor and title for you, and clears the follow-up once booked.",
+        ]),
+        [Paragraph("On the day", H2)],
+        bullets([
+            "A visit note added on the day marks the appointment <b>Completed</b> "
+            "automatically. You can also change the status on the appointment itself.",
+            "Mark a missed visit <b>No-show</b>. Feast9 adds a follow-up for the next day so "
+            "someone calls the patient to rebook.",
+            "If the patient agreed to reminders, the appointment page has a ready-made "
+            "reminder message: click it to copy, then paste into WhatsApp or SMS.",
+        ]),
+    ])
+    story.append(PageBreak())
+
+    # ── 8. Lab Work ──
+    story += section("8", "Lab Work", (
+        "<b>Lab Work</b> lists every job sent to an outside lab, for all patients, so nothing is "
+        "forgotten. It shows jobs not yet received unless you choose <b>All</b>."
     ), [
         bullets([
-            "<b>1. Consent Forms</b> — record that the patient consented to treatment. A red "
-            "border appears around this section on an Active case until consent is recorded. "
-            "You can type notes, or capture a hand-drawn signature directly on screen.",
-            "<b>2. Visit Notes</b> — a running, permanent log of what happened at each visit. "
-            "Notes can only be added, never edited or deleted — if something needs correcting, "
-            "add a new note explaining the correction. This protects the clinical record.",
-            "<b>3. Prescriptions</b> — same append-only rule as visit notes. An allergy banner "
-            "appears automatically if the patient has any recorded allergy.",
-            "<b>4. Clinical Attachments</b> — X-rays, photos, and lab reports. Only a Doctor or "
-            "Administrator can delete a file (with a reason), and a bulk \"clear all\" option "
-            "for a case that no longer needs its files requires a reason too. Receptionists "
-            "cannot delete clinical files, by design.",
-            "<b>5. Lab Requisitions</b> — track work sent to an external lab (Sent / Received / "
-            "Delayed). If the patient has an appointment coming up in the next 3 days and a "
-            "requisition is still open, it's flagged here so nothing gets missed.",
-            "<b>6. Referral Notes</b> — collapsed by default; click to expand. A printable "
-            "referral letter is available from here.",
-            "<b>7. Payment Log</b> — every payment received against this case (financial data — "
-            "see §1 for who can see this).",
-            "<b>8. Follow-up &amp; Next Action</b> — a reminder note and date for the practice, "
-            "shown on the Dashboard and the patient list. This is <i>not</i> the same as an "
-            "appointment (see §6) — booking an appointment from here automatically clears the "
-            "reminder.",
-            "<b>9. Cost History &amp; Revisions</b> — every time the case's total cost is "
-            "changed, the old and new amounts are recorded here automatically, with a reason.",
-        ]),
-        [Paragraph(
-            "A case's balance (total cost minus payments received) is always calculated live — "
-            "it is never something you edit directly.", BODY)],
-        [Paragraph(
-            "Close a case only when treatment is genuinely finished, using the "
-            "<b>Mark as Closed</b> action — this timestamps the closure for reporting and cannot "
-            "be triggered automatically.", TIP)],
-    ])
-    story.append(PageBreak())
-
-    # ── 5. Dental Chart ──
-    story += section("5", "Dental Chart", (
-        "A visual, whole-mouth chart reachable from a patient's page via <b>Dental Chart</b>. "
-        "It uses standard international (FDI) tooth numbering. An <b>Adult (Permanent) / "
-        "Mixed &amp; Paediatric</b> toggle switches between showing only the permanent teeth "
-        "or both dentitions together for a patient with a mix of adult and baby teeth — it "
-        "just changes what's displayed, any tooth can always be charted either way."
-    ), [
-        bullets([
-            "Click any tooth in the diagram to add a new finding for it — Sound, Caries, "
-            "Restoration, Crown, Root Canal, Implant, Missing/Extracted, Fracture, or Other — "
-            "and mark its status: <b>Existing</b> for a historic finding (e.g. work done at "
-            "another clinic, or whatever was already there), <b>Planned</b> for future "
-            "treatment, <b>Ongoing</b> for a multi-visit treatment currently underway (logged "
-            "as Completed once it's finished), or <b>Completed</b>.",
-            "A Planned entry can be given a <b>Planned By</b> target date, and optionally "
-            "linked to a Related Case's dashboard follow-up reminder for that same date — "
-            "exactly like booking a follow-up any other way, it replaces whatever follow-up "
-            "the case already had. A Planned entry whose date passes without being updated "
-            "shows up as Needs Attention automatically.",
-            "A summary strip at the top counts every tooth by <b>severity</b>, with a colour "
-            "legend: red <b>Needs Attention</b> (an untreated problem — Caries, Fracture or "
-            "Other — regardless of its exact status), blue <b>Scheduled / In Progress</b> (a "
-            "non-problem finding that's Planned or Ongoing, e.g. an elective crown), or green "
-            "<b>Stable</b> (Completed treatment, or an Existing finding that isn't a problem). "
-            "Severity, not the raw status, is what colours the Chart History list below.",
-            "The chart always shows the <i>current</i> state per tooth. Every entry you add is "
-            "kept permanently in the tooth's history underneath — nothing is ever overwritten "
-            "or deleted. A correction is simply a new entry.",
-            "Marking a tooth Missing/Extracted replaces its display with that single fact, since "
-            "a missing tooth has no surface left to chart findings on.",
+            "Each row shows the patient, the work, the lab, when it was sent, and the patient's "
+            "next visit. A <b>Before visit</b> badge warns that the patient is coming in before "
+            "the work is due back.",
+            "Update the expected date, status (Sent, Received, Delayed), received date or notes "
+            "on the row and click <b>Save</b>.",
+            "Doctors add new lab work and delete entries from the case page. Receptionists can "
+            "view and update this list.",
         ]),
     ])
     story.append(PageBreak())
 
-    # ── 6. Appointments ──
-    story += section("6", "Appointments & the Calendar", "", [
-        bullets([
-            "The Calendar (top navigation) shows a month view colour-coded by doctor.",
-            "Click any day, or <b>New Appointment</b>, to book — choose patient, doctor, date, "
-            "time, and an optional title/notes.",
-            "<b>Recurring appointments</b>: choose a recurrence pattern (Weekly / Biweekly / "
-            "Monthly) and Feast9 creates every occurrence up front (up to 52), marked with a "
-            "small recurring-series badge on the calendar. When editing one, you choose "
-            "<b>this occurrence only</b> "
-            "or <b>the whole series</b> — a series-wide edit never touches an occurrence that's "
-            "already Completed, Cancelled, or a No-show, so its history is never rewritten.",
-            "Marking a visit <b>No-show</b> automatically creates a follow-up reminder for the "
-            "next day on that patient's active case, so it doesn't get forgotten.",
-            "The appointment edit page has ready-made reminder text you can click to copy "
-            "straight into WhatsApp or an SMS.",
-        ]),
-        [Paragraph(
-            "Booking an appointment from a case's Follow-up section (the "
-            "\"Book Appointment\" link) automatically clears that follow-up reminder — you "
-            "never have to clear it by hand.", TIP)],
-    ])
-    story.append(PageBreak())
-
-    # ── 7. Dashboard ──
-    story += section("7", "The Dashboard", (
-        "Your homepage after login. Four tiles summarise the practice at a glance:"
-    ), [
-        bullets([
-            '<b>Follow-ups Needing Attention</b> — <font color="#b91c1c">overdue</font> shown '
-            'before <font color="#92400e">upcoming</font>; a green celebration message when '
-            "there's nothing to chase.",
-            "<b>Total Outstanding Balance</b> — hidden from Receptionists (shows \"Restricted\" "
-            "instead), since it's financial data.",
-            "<b>Active Cases</b> and <b>Today's Appointments</b> — with status colour coding "
-            "matching the calendar.",
-        ]),
-        [Paragraph(
-            "A fifth section lists any open lab requisitions for patients with a visit coming "
-            "up in the next 3 days, so a delayed lab job doesn't surprise anyone at chairside.",
-            BODY)],
-    ])
-    story.append(PageBreak())
-
-    # ── 8. Reports & Analytics ──
-    story += section("8", "Reports & Analytics", "", [
-        role_pill("Doctor, Administrator only — Receptionists cannot open these pages."),
+    # ── 9. Reports and Analytics ──
+    story += section("9", "Reports and Analytics", "", [
+        role_pill("Doctors and administrators."),
         [Paragraph("Reports", H2)],
         bullets([
-            "Set a date range and see revenue collected, cases closed, new cases, and new "
-            "patients for that period, alongside pending balances by patient, doctor-wise "
-            "revenue, and a patient-retention check.",
-            "Download the pending-payments list as an Excel file, or print the whole report "
-            "as a PDF.",
+            "Choose a period with the quick buttons (this month, last month, this year, this "
+            "financial year…) or pick your own dates.",
+            "The page shows revenue collected, cases opened and closed, new patients, revenue "
+            "by doctor, and patients who haven't visited in a while.",
+            "The <b>Cases / Payments</b> table can be filtered and grouped (by patient, doctor, "
+            "month…). <b>Download (Excel)</b> saves exactly what is shown; <b>Print Report "
+            "(PDF)</b> prints the report.",
         ]),
         [Paragraph("Analytics", H2)],
         [Paragraph(
-            "A separate tab with a year selector and 8 charts — monthly revenue, new patients, "
-            "case and appointment status breakdowns, doctor-wise revenue share, and the "
-            "clinic's most-performed procedures.", BODY)],
+            "Charts for a chosen year: revenue, patients, cases and appointments month by month, "
+            "busiest days, patient mix, and the most common procedures. Tick <b>Compare with</b> "
+            "the previous year to see the change.", BODY)],
     ])
     story.append(PageBreak())
 
-    # ── 9. Financial Assessment ──
-    story += section("9", "Financial Assessment", "", [
-        role_pill("Doctor, Administrator only."),
+    # ── 10. Financial Assessment ──
+    story += section("10", "Financial Assessment", "", [
+        role_pill("Doctors and administrators."),
         bullets([
-            "A per-case profitability table: enter each case's Lab Amount, Consultant Fee, "
-            "Consumables, and Misc Expense, and Feast9 works out the Profit "
-            "(Billed - all four expenses) next to the balance still pending.",
-            "A loss on any case is highlighted in amber so it can't be missed.",
-            "<b>Monthly Evaluation</b> rolls this up for a whole calendar month and adds clinic "
-            "overhead (rent, salaries, electricity, EMI, cleaning, other) that isn't tied to a "
-            "single case. A <b>Short Term / Long Term</b> switch additionally subtracts monthly "
-            "depreciation on clinic equipment in Long Term view.",
-            "<b>Capital Investments</b> is a simple asset register (equipment name, purchase "
-            "date, cost, useful life) that feeds that depreciation figure. Assets are never "
-            "edited once entered — a correction means deactivating the wrong entry and adding "
-            "a fresh one, so past months' figures are never silently rewritten.",
+            "Lists every case with what was billed, collected and still pending. Enter each "
+            "case's lab cost, consultant fee, consumables and other expenses, then <b>Save "
+            "Expenses</b>. Feast9 works out the profit; a loss is shown in amber.",
+            "<b>Monthly Evaluation</b> adds the clinic's running costs for a month (rent, "
+            "salaries, electricity, loan EMI, cleaning, other). Use <b>Clone this month's expenses into "
+            "future months</b> so you don't retype costs that don't change.",
+            "<b>Capital Investments</b> records equipment purchases; the <b>Long Term</b> view "
+            "spreads their cost over their useful life.",
         ]),
     ])
     story.append(PageBreak())
 
-    # ── 10. DPDP ──
-    story += section("10", "Privacy Requests", "", [
-        bullets([
-            "Any staff member can log a request from a patient's page — the four types are "
-            "<b>Access</b>, <b>Correction</b>, <b>Erasure</b>, and <b>Withdraw Consent</b>. "
-            "Every request gets a 90-day resolution deadline automatically.",
-            "A pending-requests count appears as a badge next to <b>Privacy Requests</b> in the "
-            "navigation bar for every signed-in user.",
+    # ── 11. Privacy Requests ──
+    story += section("11", "Privacy Requests", (
+        "Under India's Digital Personal Data Protection Act, 2023, a patient may ask to see "
+        "their data, correct it, have it erased, or withdraw consent. The clinic must respond "
+        "within 90 days, so every request must be recorded in Feast9 as soon as it is made."
+    ), [
+        [Paragraph("Recording a request", H2)],
+        role_pill("Receptionists, doctors and administrators."),
+        steps([
+            "Open the patient's page and click <b>+ New Privacy Request</b> (in Contact Details "
+            "&amp; Privacy Status).",
+            "Choose the type — <b>Access</b>, <b>Correction</b>, <b>Erasure</b> or <b>Withdraw "
+            "Consent</b> — write what the patient asked for, and save. The 90-day deadline is "
+            "set automatically.",
         ]),
-        role_pill("Resolving a request — Doctor, Administrator only."),
+        [Paragraph("Completing a request", H2)],
+        role_pill("Doctors and administrators."),
         bullets([
-            "<b>Access</b> — hand the patient a full export of their own data "
-            "(a ready-made PDF is generated for this).",
-            "<b>Correction</b> — make the actual correction through the normal patient-edit "
-            "form, then mark the request Completed.",
-            "<b>Erasure</b> — you must type the patient's name exactly as it's currently "
-            "recorded to confirm. This anonymises their personal details permanently but "
-            "keeps their clinical and financial history intact, exactly as the law requires.",
-            "<b>Withdraw Consent</b> — turns off communications consent for that patient.",
+            "<b>Access</b> — click <b>Download Patient Data (PDF)</b> on the request, give it "
+            "to them, then mark the request Completed.",
+            "<b>Correction</b> — fix the details with the patient's <b>Edit</b> form, then "
+            "mark it Completed.",
+            "<b>Withdraw Consent</b> — marking it Completed stops reminders to the patient.",
+            "<b>Erasure</b> — removes the patient's name and contact details for good (their "
+            "treatment and payment records are kept, as the law allows). You must type the "
+            "patient's exact name to confirm.",
+        ]),
+        [Paragraph(
+            "An Erasure <b>cannot be completed while the patient still owes money or has an "
+            "active case</b> — afterwards nobody could tell who owes it. Settle the balance and "
+            "close the cases first; the request page tells you what is outstanding.", NOTE)],
+    ])
+    story.append(PageBreak())
+
+    # ── 12. Settings ──
+    story += section("12", "Settings (administrators)", (
+        "Click <b>Settings</b> in the top menu. Each card opens one area."
+    ), [
+        role_pill("Administrators only."),
+        bullets([
+            "<b>Users</b> — add staff accounts and choose their role; deactivate someone who "
+            "leaves; <b>Set Password</b> for someone who forgot theirs; reset two-step sign-in "
+            "for a lost phone; unlock a locked account.",
+            "<b>Doctors</b> — add doctors with their qualifications and registration number "
+            "(these print on prescriptions) and a calendar colour. Feast9 suggests a colour "
+            "that differs from the other doctors' and warns if two look alike. Deactivating a "
+            "doctor keeps all their past records.",
+            "<b>Case Types</b> — the procedures offered on new cases. Renaming one updates "
+            "existing cases too.",
+            "<b>Clinic Details</b> — name, address, phone and email; these appear on every "
+            "printout.",
+            "<b>Clinic Logo</b>, <b>Login Screen</b> and <b>Theme</b> — the logo, sign-in page "
+            "wording and colours.",
+            "<b>Automatic Logout</b> — how many idle minutes before Feast9 signs people out.",
+            "<b>Sign-in Security</b> — make two-step sign-in compulsory for doctors and "
+            "administrators, or for everyone.",
+            "<b>Audit Log</b> — who opened or changed what, and every sign-in.",
         ]),
     ])
     story.append(PageBreak())
 
-    # ── 11. Settings ──
-    story += section("11", "Settings & Administration", "", [
-        role_pill("Administrator only, unless noted."),
+    # ── 13. Backup & Data ──
+    story += section("13", "Backup & Data (administrators)", (
+        "Open <b>Settings &gt; Backup &amp; Data</b>. Three tiles at the top show whether backups, "
+        "the off-site copy and the Excel copy are up to date."
+    ), [
+        role_pill("Administrators only."),
+        [Paragraph("Setting up backups (once)", H2)],
+        steps([
+            "Click <b>Set Up Backups</b>. Feast9 makes the first backup and shows a "
+            "<b>backup key</b>.",
+            "Copy the key and keep it somewhere safe <b>away from this computer</b> (for "
+            "example printed and locked away). Without it a backup can't be restored.",
+            "Under <b>Backup settings</b>, choose the daily time and, ideally, a <b>copy "
+            "folder</b> on a USB drive or another computer, so a copy survives if this PC fails.",
+        ]),
         bullets([
-            "<b>Users</b> — create staff accounts, assign a role, deactivate/reactivate an "
-            "account (the very last active Administrator can never be deactivated), and force-"
-            "reset a user's 2FA if they've lost their device.",
-            "<b>Doctors</b> and <b>Case Types</b> — add the doctors and treatment types your "
-            "clinic offers. Deactivating one just stops it being offered on new cases — it "
-            "never deletes or breaks existing records that reference it.",
-            "<b>Clinic Details</b> — name, address, phone, email — these appear on every "
-            "generated PDF and in the navigation bar.",
-            "<b>Clinic Logo &amp; Login Screen</b> — upload a logo/login image and customise "
-            "the heading and tagline shown on the sign-in page.",
-            "<b>Import Data</b> — bulk-load historic patients from an Excel spreadsheet using "
-            "the provided template. Every row still has to pass the same privacy-notice and "
-            "validation checks as manual registration, or it's skipped and reported — nothing "
-            "invalid is ever partially imported. This always creates new patients; it never "
-            "matches or updates existing ones.",
-            "<b>Backups</b> — a nightly encrypted backup runs automatically; from here an "
-            "Administrator can also trigger one on demand or download a past one. A warning "
-            "banner appears on the Dashboard if a backup ever fails or goes stale.",
-            "<b>Audit Log</b> — a complete, tamper-evident record of every sensitive action "
-            "taken in the system, with who did it and when.",
-            "<b>My Account</b> (every role) — change your own password, security question, "
-            "2FA, and Google account link.",
+            "Backups then run every day by themselves. <b>Back Up Now</b> makes one "
+            "immediately, for example before a big change.",
+            "The <b>Excel Copy</b> is a spreadsheet of everything, readable without Feast9 — "
+            "a \"Plan B\" if the computer is ever unavailable.",
+            "<b>Import from Excel</b> brings in patients from the old system using the "
+            "template provided.",
         ]),
     ])
     story.append(PageBreak())
 
-    # ── 12. Security ──
-    story += section("12", "Security Do's and Don'ts", "", [
+    # ── 14. Good habits ──
+    story += section("14", "Good habits", "", [
         [Paragraph("Do", H2)],
         bullets([
-            "Turn on Two-Factor Authentication.",
-            "Log out (or lock the workstation) whenever you step away from a shared front-desk "
-            "computer.",
-            "Store your 2FA recovery codes somewhere safe and private, separate from the device "
-            "itself.",
-            "Report a lost or stolen device to an Administrator immediately, so your account "
-            "can be secured.",
+            "Use two-step sign-in, and keep your recovery codes somewhere safe.",
+            "Click <b>Logout</b> whenever you leave a shared computer.",
+            "Record a privacy request on the day the patient asks.",
+            "Tell the administrator at once if your phone is lost or you think someone knows "
+            "your password.",
         ], style=ParagraphStyle("DoBullet", parent=BULLET, textColor=SUCCESS)),
         [Paragraph("Don't", H2)],
         bullets([
-            "Share your username, password, or 2FA codes with anyone — including colleagues.",
-            "Leave a patient record or the Reports/Financial pages open and unattended on a "
-            "shared screen.",
-            "Photograph or forward a 2FA QR code — it is the same as sharing your password.",
-            "Try to work around a \"403 / Access Denied\" screen — it means your role "
-            "genuinely doesn't include that action; ask an Administrator if you believe it's wrong.",
+            "Share your username, password or codes — not even with colleagues. Everything "
+            "you do is recorded under your name.",
+            "Leave a patient's record open on a screen patients can see.",
+            "Write passwords on notes stuck to the screen.",
         ], style=ParagraphStyle("DontBullet", parent=BULLET, textColor=DANGER)),
     ])
     story.append(PageBreak())
 
-    # ── 13. FAQ ──
-    story += section("13", "Troubleshooting & FAQ", "", [
-        [Paragraph("I can't see Reports/Analytics/Financial Assessment/Backups.", H3)],
-        [Paragraph(
-            "These are only available to Doctor and Administrator accounts. This is "
-            "enforced deliberately and is not something a Receptionist account can be given "
-            "access to individually — a role change would need to come from an Administrator.",
-            BODY)],
-        [Paragraph("A patient's follow-up reminder won't go away.", H3)],
-        [Paragraph(
-            "Either clear it directly from the case's Follow-up section, or book an "
-            "appointment using the \"Book Appointment\" link on that section — booking "
-            "clears the reminder automatically.", BODY)],
-        [Paragraph("I'm stuck on a \"Please confirm your password\" screen.", H3)],
-        [Paragraph(
-            "That's the step-up re-authentication check for a sensitive action (see §2). "
-            "Simply enter your password (and 2FA code, if enabled) again to continue.", BODY)],
-        [Paragraph("I lost my phone and can't get my 2FA codes.", H3)],
-        [Paragraph(
-            "Use a recovery code if you saved one. Otherwise, ask an Administrator to reset "
-            "your 2FA from the Users page — you'll set it up again from scratch.", BODY)],
-        [Paragraph("Can I edit a visit note, prescription, or payment I entered by mistake?", H3)],
-        [Paragraph(
-            "No — these are permanent, append-only clinical and financial records by design. "
-            "Add a new entry noting the correction instead. This keeps the record trustworthy.",
-            BODY)],
-        [Paragraph("Who do I contact for help?", H3)],
-        [Paragraph(
-            "Your clinic's Feast9 Administrator is your first point of contact for account "
-            "and access issues.", BODY)],
-    ])
+    # ── 15. Common questions ──
+    faq = [
+        ("I was signed out while working.",
+         "Feast9 signs you out after a period without activity, and always after 12 hours. "
+         "Sign in again; anything already saved is safe."),
+        ("It says my account is locked.",
+         "Too many wrong passwords. Wait 15 minutes, or ask the administrator to unlock it."),
+        ("Feast9 asks for my password again.",
+         "You are doing something sensitive and signed in more than 10 minutes ago. Type your "
+         "password (and code, if asked) to carry on."),
+        ("I can't find a patient.",
+         "Click <b>All patients</b> — the normal list only shows patients with an active case "
+         "or money owing — and check the spelling or try the mobile number."),
+        ("I made a mistake in a visit note, prescription or payment.",
+         "These can't be edited, to keep the record trustworthy. Add a new entry that "
+         "explains the correction."),
+        ("A follow-up won't leave the Dashboard.",
+         "Click <b>Done</b> once the patient has been contacted, or <b>Book Appointment</b>."),
+        ("I can't complete an Erasure request.",
+         "The patient still owes money or has an active case. The request page says which."),
+        ("Who do I ask for help?",
+         "Your clinic's Feast9 administrator."),
+    ]
+    blocks = []
+    for q, a in faq:
+        blocks.append([Paragraph(q, H3), Paragraph(a, BODY)])
+    story += section("15", "Common questions", "", blocks)
 
     doc.build(story, onFirstPage=manual_first_page, onLaterPages=manual_later_pages)
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# USER JOURNEY MAPS — one landscape page per role
+# ═════════════════════════════════════════════════════════════════════════
+
+# Each journey: (role, colour, who they are, their goal, stages). A stage is
+# (name, what they do, where in Feast9, what helps, watch-outs).
+JOURNEYS = [
+    ("Receptionist", TEAL,
+     "Runs the front desk: greets patients, registers them, keeps the diary full and chases "
+     "follow-ups. Never sees medical records or money figures.",
+     "Every patient is booked, reminded and followed up — and nobody slips through.",
+     [
+         ("Start the day",
+          "Signs in; checks today's list and follow-ups due.",
+          "Dashboard",
+          "Overdue (red) and due-soon (amber) follow-ups listed first; today's appointments "
+          "with their case.",
+          "Shared PC: must log out when stepping away."),
+         ("Patient arrives",
+          "Finds the patient, or registers a new one; gives the privacy notice.",
+          "Patients > Search / + New Patient",
+          "Search by name or mobile; privacy-notice tick enforced; 'Privacy notice pending' "
+          "list for older records.",
+          "New patient with no case only shows under 'All patients'."),
+         ("Book & remind",
+          "Books the visit or a repeating series; copies the reminder text.",
+          "Appointments > + New Appointment",
+          "Doctor-coloured calendar; repeat bookings; ready-made WhatsApp/SMS text if the "
+          "patient agreed to reminders.",
+          "No reminder text for patients who didn't agree to reminders."),
+         ("Follow-ups & no-shows",
+          "Calls patients whose follow-up is due; books them or marks Done; records no-shows.",
+          "Dashboard > Book Appointment / Done",
+          "A no-show automatically creates a next-day follow-up.",
+          "Doctor sets follow-up dates; front desk can't add them on a case."),
+         ("Lab work",
+          "Tracks jobs at the lab; updates status when work comes back.",
+          "Lab Work",
+          "'Before visit' badge when the patient is booked before the work is due back.",
+          "Can update, but adding/deleting lab work is the doctor's job."),
+         ("Privacy request",
+          "Records a patient's request about their data the same day.",
+          "Patient page > + New Privacy Request",
+          "90-day deadline set automatically; the menu shows how many are waiting.",
+          "Can't complete requests — passes them to a doctor or admin."),
+     ]),
+    ("Doctor", BRAND,
+     "The clinic's dentist: examines, plans and treats, records everything clinically, and "
+     "keeps an eye on the practice's finances.",
+     "Treat safely, keep a complete record, and get paid for the work done.",
+     [
+         ("Prepare",
+          "Signs in with two-step code; reviews today's patients and their alerts.",
+          "Dashboard > Patient page",
+          "Medical Alerts (allergies, conditions) first on the patient page; lab work due "
+          "before visit flagged.",
+          "Two-step sign-in may be compulsory for doctors."),
+         ("Plan the case",
+          "Opens a case: title, procedures, estimated cost.",
+          "Patient > + New Case",
+          "Searchable procedure list; cost history kept automatically.",
+          "Cost changes are recorded with a reason, never silently overwritten."),
+         ("Consent",
+          "Prints the one-page consent form; patient, doctor and witness sign; marks it recorded.",
+          "Case > Print Consent Form / Mark Consent Recorded",
+          "Form pre-filled from the case; red border until consent is recorded.",
+          "Consent is per case — a new case needs a new form."),
+         ("Treat & record",
+          "Charts teeth; writes the visit note; uploads X-rays.",
+          "Dental Chart; Case > Visit Notes, Attachments",
+          "Note marks today's appointment Completed; chart keeps full history.",
+          "Notes can't be edited — corrections are new notes."),
+         ("Prescribe",
+          "Writes a structured prescription by generic name and prints it.",
+          "Case > Prescriptions",
+          "Allergy check stops a clashing medicine until confirmed; printout carries "
+          "registration details.",
+          "The allergy check can miss a drug — still read the alert."),
+         ("Bill & follow up",
+          "Records payment; sets the next follow-up or books it; closes finished cases.",
+          "Case > Payment Log, Follow-up; Close Case",
+          "Balance updates live; follow-up appears on the Dashboard on its date.",
+          "An erasure request can't complete while money is owed."),
+         ("Review the practice",
+          "Checks revenue, pending payments and profitability.",
+          "Reports, Analytics, Financial Assessment",
+          "Quick period buttons, Excel export, year-on-year comparison.",
+          "Enter case expenses for profit figures to mean anything."),
+     ]),
+    ("Guest doctor", PURPLE,
+     "A visiting specialist who treats some of the clinic's patients on set days. Full clinical "
+     "access, but no money figures, no Settings and no privacy requests.",
+     "Pick up the patient's history quickly, treat, and hand over cleanly.",
+     [
+         ("Sign in",
+          "Signs in with own account and two-step code.",
+          "Sign-in page",
+          "Own account means every note is recorded under their name.",
+          "Never borrow a resident doctor's login."),
+         ("Today's patients",
+          "Sees the day's appointments and opens each patient.",
+          "Dashboard; Appointments",
+          "Appointments show which case each visit is for.",
+          "Balance tile shows 'Restricted' — by design."),
+         ("Catch up",
+          "Reads alerts, previous notes, chart and X-rays.",
+          "Patient page; Case; Dental Chart",
+          "Complete clinical history in one place.",
+          "Payments and costs are hidden."),
+         ("Treat & record",
+          "Adds visit notes ('Attended by' themselves), charts teeth, prescribes, uploads images.",
+          "Case sections; Dental Chart",
+          "Same tools as the resident doctor, including the allergy check.",
+          "Cannot delete clinical files."),
+         ("Hand over",
+          "Sets a follow-up, records lab work, writes a referral if needed.",
+          "Case > Follow-up, Lab Requisitions, Referral Notes",
+          "Front desk sees the follow-up on the Dashboard and the lab job on Lab Work.",
+          "A new case they open is created without a cost — the clinic adds it."),
+         ("Leave",
+          "Signs out.",
+          "Logout",
+          "Automatic logout after inactivity as a safety net.",
+          "Clinic deactivates the account when the visiting arrangement ends."),
+     ]),
+    ("Administrator", DANGER,
+     "Usually the senior doctor or practice manager: sets Feast9 up, manages staff access, "
+     "watches backups and compliance, and oversees the money.",
+     "A secure, well-run system the clinic can rely on — and evidence that it is.",
+     [
+         ("Set up",
+          "Completes Setup; enters clinic details, doctors, case types; sets sign-in rules.",
+          "Settings",
+          "Doctor colours suggested so the calendar stays readable.",
+          "Doctors' registration details are needed for valid prescriptions."),
+         ("Staff & access",
+          "Adds each person with the right role; handles leavers, lockouts, lost phones.",
+          "Settings > Users",
+          "Set Password, Unlock, Reset 2FA, Deactivate (ends sessions at once).",
+          "One account per person — never shared."),
+         ("Protect the data",
+          "Sets up backups once; stores the backup key off the PC; sets a copy folder.",
+          "Settings > Backup & Data",
+          "Daily automatic backups; tiles turn red if one fails or is stale.",
+          "Without the key, backups can't be restored."),
+         ("Daily check",
+          "Glances at the Dashboard and backup tiles.",
+          "Dashboard; Backup & Data",
+          "Warning banner on the Dashboard if backups need attention.",
+          "Ask the support firm to test a restore each quarter."),
+         ("Money",
+          "Reviews reports, enters case expenses and monthly overheads.",
+          "Reports; Financial Assessment; Monthly Evaluation",
+          "Clone overheads into future months; Excel exports.",
+          "Exports contain patient names — store them safely."),
+         ("Privacy & audit",
+          "Completes privacy requests; checks who opened or changed records.",
+          "Privacy Requests; Settings > Audit Log",
+          "Erasure blocked while money is owed or a case is active; access PDF ready-made.",
+          "90-day deadline for every request."),
+     ]),
+]
+
+
+def build_journey_maps(path):
+    page = landscape(letter)
+    doc = SimpleDocTemplate(
+        path, pagesize=page,
+        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        title="Feast9 User Journeys",
+    )
+    width = page[0] - inch
+    cell = ParagraphStyle("JCell", parent=BODY, fontSize=9.4, leading=12, spaceAfter=0)
+    stage_head = ParagraphStyle("JStage", parent=cell, fontName="Helvetica-Bold", textColor=WHITE,
+                                fontSize=10, leading=12.5)
+    row_head = ParagraphStyle("JRow", parent=cell, fontName="Helvetica-Bold", textColor=BRAND_DARK)
+    intro = ParagraphStyle("JIntro", parent=BODY, fontSize=9.5, leading=12.5)
+
+    story = [
+        Paragraph("Feast9 — User Journey Maps", ParagraphStyle(
+            "JTitle", parent=H1, fontSize=22, leading=26)),
+        Paragraph(f"Version dated {TODAY}", ParagraphStyle("JDate", parent=BODY, textColor=MUTED)),
+        Spacer(1, 10),
+        Paragraph(
+            "One page per role. Each page follows a typical working day from left to right. "
+            "For every stage it shows what the person does, where in Feast9 they do it, what "
+            "Feast9 does to help, and what to watch out for. Use it for training, for "
+            "explaining Feast9 to new staff, and for spotting where the workflow can improve.",
+            intro),
+        Spacer(1, 10),
+    ]
+    legend = [
+        ("Doing", "what the person does at this stage"),
+        ("In Feast9", "the page or button they use"),
+        ("Helps", "what Feast9 does for them"),
+        ("Watch out", "limits, risks and common mistakes"),
+    ]
+    t = Table([[Paragraph(f"<b>{a}</b>", BODY), Paragraph(b, BODY)] for a, b in legend],
+              colWidths=[1.3 * inch, 5 * inch], hAlign="LEFT")
+    t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+                           ("BACKGROUND", (0, 0), (0, -1), BRAND_LIGHT),
+                           ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    story += [t, Spacer(1, 12)]
+    roles = Table([[Paragraph(f'<font color="{c.hexval().replace("0x", "#")}"><b>{r}</b></font>', BODY),
+                    Paragraph(who, BODY)] for r, c, who, _goal, _stages in JOURNEYS],
+                  colWidths=[1.3 * inch, 8.7 * inch])
+    roles.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.5, BORDER),
+                               ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story += [roles, PageBreak()]
+
+    for role, colour, who, goal, stages in JOURNEYS:
+        story.append(Paragraph(role, ParagraphStyle("JRole", parent=H1, textColor=colour, fontSize=20,
+                                                    leading=24, spaceAfter=2)))
+        story.append(Paragraph(f"<b>Who:</b> {who}", intro))
+        story.append(Paragraph(f"<b>Goal:</b> {goal}", intro))
+        story.append(Spacer(1, 8))
+
+        label_w = 0.85 * inch
+        col_w = (width - label_w) / len(stages)
+        header = [Paragraph("", cell)] + [
+            Paragraph(f"{n}. {s[0]}", stage_head) for n, s in enumerate(stages, start=1)]
+        rows = [header]
+        for i, label in enumerate(("Doing", "In Feast9", "Helps", "Watch out"), start=1):
+            rows.append([Paragraph(label, row_head)] + [Paragraph(s[i], cell) for s in stages])
+        t = Table(rows, colWidths=[label_w] + [col_w] * len(stages))
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (1, 0), (-1, 0), colour),
+            ("BACKGROUND", (0, 1), (0, -1), BRAND_LIGHT),
+            ("BACKGROUND", (1, 3), (-1, 3), SUCCESS_BG),
+            ("BACKGROUND", (1, 4), (-1, 4), WARNING_BG),
+            ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+            ("LINEAFTER", (1, 0), (-2, 0), 1.5, WHITE),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+        ]))
+        story.append(t)
+        story.append(PageBreak())
+    story.pop()  # no blank page at the end
+
+    def footer(c, d):
+        c.saveState()
+        c.setFont("Helvetica", 7.5)
+        c.setFillColor(MUTED)
+        c.drawString(0.5 * inch, 0.3 * inch, "FEAST9 — USER JOURNEY MAPS")
+        c.drawRightString(page[0] - 0.5 * inch, 0.3 * inch, f"Page {d.page}")
+        c.restoreState()
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -929,10 +1268,13 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     manual_path = os.path.join(out_dir, "Feast9_User_Manual.pdf")
     qrc_path = os.path.join(out_dir, "Feast9_Quick_Reference_Card.pdf")
+    journeys_path = os.path.join(out_dir, "Feast9_User_Journeys.pdf")
     build_user_manual(manual_path)
     build_qrc(qrc_path)
+    build_journey_maps(journeys_path)
     print(f"Wrote {manual_path}")
     print(f"Wrote {qrc_path}")
+    print(f"Wrote {journeys_path}")
 
 
 if __name__ == "__main__":
