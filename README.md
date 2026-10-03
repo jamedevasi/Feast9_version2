@@ -159,5 +159,6 @@ proxy in front — this app itself doesn't handle HTTPS.
 
 - `CLAUDE.md` — architecture, conventions, and what's been built so far.
 - `feast9_v2_agents.md` — the authoritative product/feature spec.
+- `DEPLOYMENT.md` — production deployment & support manual (infrastructure, installation, HTTPS, upgrades, runbook).
 - `BACKUP.md` — automated off-server encrypted backups (not required for local use).
 - `THREAT_MODEL.md` — security assumptions and residual risks.
