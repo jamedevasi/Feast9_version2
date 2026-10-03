@@ -629,6 +629,10 @@ dd { margin: 0; }
   margin: 0 0 0.6rem;
 }
 .rx-med[hidden] { display: none; }
+.rx-gaps ul, .rx-allergy-check ul { margin: 0.35rem 0 0; padding-left: 1.25rem; }
+.rx-allergy-check p { margin: 0 0 0.35rem; }
+.rx-allergy-check li, .rx-allergy-check .hint { font-weight: 400; }
+.rx-allergy-check label.checkbox { margin: 0.5rem 0 0; color: var(--text); }
 .rx-med legend { font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 0 0.3rem; }
 .rx-med label { min-width: 0; }
 .rx-med label.rx-wide { grid-column: span 2; }

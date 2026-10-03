@@ -21,6 +21,18 @@ ALLERGY_DRUGS = [
     "Sulfa Drugs",
 ]
 
+# Medicine-name fragments that belong to each allergy above, matched case-insensitively
+# against a prescribed medicine's generic and brand name (app/allergy_check.py). Stems such
+# as "cillin" or "caine" cover the whole family. Latex isn't a medicine, so it has none.
+ALLERGY_DRUG_MATCHES = {
+    "Penicillin": ["penicillin", "cillin", "amoxiclav", "augmentin", "clavam"],
+    "Local Anesthetic": ["caine"],
+    "Aspirin / NSAIDs": ["aspirin", "acetylsalicylic", "profen", "fenac", "oxicam", "coxib", "naproxen",
+                         "ketorolac", "mefenamic", "nimesulide", "indomethacin", "etodolac"],
+    "Sulfa Drugs": ["sulfa", "sulpha", "trimoxazole", "septran", "bactrim"],
+    "Latex": [],
+}
+
 ATTACHMENT_TYPES = ["X-ray", "Clinical Photo", "Lab Report", "Other"]
 
 LAB_REQ_STATUSES = ["Sent", "Received", "Delayed"]

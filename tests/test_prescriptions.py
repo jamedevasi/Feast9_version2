@@ -182,3 +182,53 @@ def test_prescription_is_not_shown_on_patient_page(logged_in_client, patient_id)
     patient_resp = logged_in_client.get(f"/patients/{patient_id}")
     assert b"Prescription History" not in patient_resp.data
     assert b"AMOXICILLIN" not in patient_resp.data and b"Amoxicillin" not in patient_resp.data
+
+
+def test_medicine_matching_a_recorded_allergy_is_held_until_the_doctor_confirms(logged_in_client):
+    patient_id = register_patient(logged_in_client, name="Penicillin Allergic", allergies="Penicillin")
+    case_id, case_url, doctor_id = _case(logged_in_client, patient_id)
+
+    _post_rx(logged_in_client, case_id, case_url, doctor_id)  # Amoxicillin
+    assert db.list_prescriptions_for_case(case_id) == []
+    body = logged_in_client.get(case_url).data.decode()
+    assert "Possible allergy conflict" in body
+    assert "Medicine 1, Amoxicillin — recorded allergy: Penicillin" in body
+    assert 'name="allergy_checked" value="amoxicillin"' in body
+    assert 'value="Amoxicillin"' in body  # nothing typed is lost
+
+    _post_rx(logged_in_client, case_id, case_url, doctor_id, allergy_checked="amoxicillin")
+    assert len(db.list_prescriptions_for_case(case_id)) == 1
+    entry = next(e for e in db.list_audit_log() if e["action"] == "prescription_added")
+    assert "allergy_override=yes" in entry["after_summary"]
+    assert "Penicillin" not in entry["after_summary"]
+
+
+def test_allergy_confirmation_covers_only_the_medicines_it_was_shown_for(logged_in_client):
+    patient_id = register_patient(logged_in_client, name="Two Allergies", allergies="Penicillin")
+    db.update_patient(patient_id, {"allergies_json": '["Penicillin", "Aspirin / NSAIDs"]'})
+    case_id, case_url, doctor_id = _case(logged_in_client, patient_id)
+    _post_rx(
+        logged_in_client, case_id, case_url, doctor_id, allergy_checked="amoxicillin",
+        med_generic=["Amoxicillin", "Ibuprofen"], med_brand=["", ""], med_strength=["500 mg", "400 mg"],
+        med_dose=["1 capsule", "1 tablet"], med_frequency=["Three times a day", "Twice a day"],
+        med_route=["Oral", "Oral"], med_duration=["", ""], med_instructions=["", ""],
+    )
+    assert db.list_prescriptions_for_case(case_id) == []
+    assert "Medicine 2, Ibuprofen — recorded allergy: Aspirin / NSAIDs" in logged_in_client.get(case_url).data.decode()
+
+
+def test_no_allergy_check_when_nothing_conflicts(logged_in_client):
+    patient_id = register_patient(logged_in_client, name="Latex Only", allergies="Latex")
+    case_id, case_url, doctor_id = _case(logged_in_client, patient_id)
+    _post_rx(logged_in_client, case_id, case_url, doctor_id)
+    assert len(db.list_prescriptions_for_case(case_id)) == 1
+    entry = next(e for e in db.list_audit_log() if e["action"] == "prescription_added")
+    assert "allergy_override" not in entry["after_summary"]
+
+
+def test_missing_details_warning_shows_only_the_chosen_doctors(logged_in_client, patient_id):
+    case_id, case_url, doctor_id = _case(logged_in_client, patient_id)
+    other_id = db.add_doctor("Dr. Visiting", "#123456")
+    body = logged_in_client.get(case_url).data.decode()
+    assert f'<li data-rx-gap-doctor="{doctor_id}">Dr. Test Doctor' in body
+    assert f'<li data-rx-gap-doctor="{other_id}" hidden>Dr. Visiting' in body

@@ -12,9 +12,9 @@ def _case_for(client, patient_id, **overrides):
     return case_id, case_url, doctor_id
 
 
-def _add_prescription(client, case_id, case_url):
+def _add_prescription(client, case_id, case_url, **overrides):
     doctor_id = db.get_case(case_id)["doctor_id"]
-    data = rx_form_data(doctor_id, prescribed_date="2026-01-05")
+    data = rx_form_data(doctor_id, prescribed_date="2026-01-05", **overrides)
     data["csrf_token"] = get_csrf(client, case_url)
     client.post(f"/cases/{case_id}/prescriptions", data=data)
     return db.list_prescriptions_for_case(case_id)[0]["id"]
@@ -56,7 +56,8 @@ def test_prescription_pdf_includes_allergy_alert_when_present(logged_in_client):
     from tests.conftest import register_patient
     patient_id = register_patient(logged_in_client, name="Allergy Patient", allergies=["Penicillin"])
     case_id, case_url, _ = _case_for(logged_in_client, patient_id)
-    rx_id = _add_prescription(logged_in_client, case_id, case_url)
+    # Amoxicillin for a penicillin allergy: the doctor has to confirm it first.
+    rx_id = _add_prescription(logged_in_client, case_id, case_url, allergy_checked="amoxicillin")
     resp = logged_in_client.get(f"/cases/{case_id}/prescriptions/{rx_id}.pdf")
     _assert_pdf(resp)
 

@@ -39,11 +39,17 @@
   <form method="post" action="{{ url_for('cases.add_prescription', case_id=case.id) }}" class="rx-form" data-rx-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <h3>New Prescription</h3>
-    {% if rx_print_gaps %}
-    <p class="flash flash-warning">
+    {% if rx_clinic_gaps or rx_doctor_gaps %}
+    {# Only the chosen doctor's gaps show; prescription_form.js swaps them when the doctor changes. #}
+    <div class="flash flash-warning rx-gaps" data-rx-gaps{% if not (rx_clinic_gaps or rx_doctor_gaps.get(rx_form.doctor_id)) %} hidden{% endif %}>
       A printed prescription must show these, and they are not filled in yet:
-      {{ rx_print_gaps | join('; ') }}.
-    </p>
+      <ul>
+        {% for gap in rx_clinic_gaps %}<li>{{ gap }}</li>{% endfor %}
+        {% for doctor_id, gap in rx_doctor_gaps.items() %}
+        <li data-rx-gap-doctor="{{ doctor_id }}"{% if doctor_id != rx_form.doctor_id %} hidden{% endif %}>{{ gap }}</li>
+        {% endfor %}
+      </ul>
+    </div>
     {% endif %}
     <div class="rx-top">
       <label>Date<input type="date" name="prescribed_date" value="{{ rx_form.prescribed_date }}" max="{{ today }}"></label>
@@ -85,6 +91,18 @@
     <p><button type="button" class="button button-small button-outline" data-rx-add hidden>+ Add another medicine</button></p>
 
     <label>Advice (optional)<textarea name="advice" placeholder="Other instructions for the patient">{{ rx_form.advice }}</textarea></label>
+    {% if rx_form.allergy_conflicts %}
+    <div class="allergy-alert rx-allergy-check" id="rx-allergy-check">
+      <p>{{ icon('triangle-alert') }} Possible allergy conflict — this patient has a recorded allergy:</p>
+      <ul>
+        {% for number, name, allergy in rx_form.allergy_conflicts %}
+        <li>Medicine {{ number }}, {{ name }} — recorded allergy: {{ allergy }}</li>
+        {% endfor %}
+      </ul>
+      <p class="hint">Change the medicine, or confirm below to prescribe it anyway.</p>
+      <label class="checkbox"><input type="checkbox" name="allergy_checked" value="{{ rx_form.allergy_key }}"> I have checked the patient's allergy and want to prescribe this</label>
+    </div>
+    {% endif %}
     <button type="submit">Add Prescription</button>
   </form>
   <script src="{{ url_for('static', filename='prescription_form.js') }}"></script>

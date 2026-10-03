@@ -1597,10 +1597,11 @@ def list_visit_notes_for_patient(patient_id):
 # ── Prescriptions (append-only clinical record — no edit/delete) ───────────
 
 def add_prescription(case_id, patient_id, rx_details, prescribed_date, actor=None,
-                     diagnosis="", medications=None, advice="", doctor_id=None):
+                     diagnosis="", medications=None, advice="", doctor_id=None, allergy_override=False):
     """`medications` is a list of dicts (see case_routes._collect_prescription_form);
     `rx_details` is the plain-text rendering of the whole prescription. The audit row records
-    counts only — never the diagnosis or the medicines."""
+    counts only — never the diagnosis or the medicines — plus whether the doctor confirmed
+    prescribing despite a possible allergy conflict (never which allergy)."""
     medications = medications or []
     conn = get_db()
     conn.execute(
@@ -1615,6 +1616,7 @@ def add_prescription(case_id, patient_id, rx_details, prescribed_date, actor=Non
         after_summary=(
             f"prescription added ({len(medications)} medicines, {len(rx_details)} chars), "
             f"prescribed_date={prescribed_date}, doctor_id={doctor_id}"
+            + (", allergy_override=yes" if allergy_override else "")
         ),
     )
     conn.commit()

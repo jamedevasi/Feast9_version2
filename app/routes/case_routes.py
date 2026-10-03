@@ -5,7 +5,7 @@ import pathlib
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
 
 from app import config as app_config
-from app import db, pdf_reports
+from app import allergy_check, db, pdf_reports
 from app.auth import can_view_financial_data, clinical_access_required, current_actor, financial_access_required, login_required, logs_view
 from app.constants import (
     ATTACHMENT_TYPES, LAB_REQ_STATUSES, MAX_PRESCRIPTION_MEDICINES, PRESCRIPTION_FREQUENCIES,
@@ -155,7 +155,8 @@ def detail(case_id):
         prescriptions=prescriptions,
         rx_form=rx_form,
         rx_doctors=rx_doctors,
-        rx_print_gaps=_prescription_print_gaps(rx_doctors),
+        rx_clinic_gaps=_clinic_print_gaps(),
+        rx_doctor_gaps=_doctor_print_gaps(rx_doctors),
         rx_routes=PRESCRIPTION_ROUTES,
         rx_frequencies=PRESCRIPTION_FREQUENCIES,
         rx_max_medicines=MAX_PRESCRIPTION_MEDICINES,
@@ -339,29 +340,50 @@ def add_prescription(case_id):
         # Nothing typed is lost: the case page refills the form from this once.
         session["rx_draft"] = {"case_id": case_id, **{k: v for k, v in data.items() if k != "row_numbers"}}
         return redirect(url_for("cases.detail", case_id=case_id) + "#prescriptions")
+    # A medicine that may conflict with a recorded allergy is held back until the doctor
+    # confirms they've checked — and the confirmation covers exactly the medicines it was
+    # shown for, so adding another conflicting one asks again.
+    conflicts = allergy_check.conflicts(db.get_patient(case["patient_id"]), data["medications"],
+                                        data["row_numbers"])
+    allergy_key = _allergy_key(conflicts)
+    if conflicts and request.form.get("allergy_checked") != allergy_key:
+        flash("Check the patient's allergies before prescribing — see the warning on the form.", "warning")
+        session["rx_draft"] = {"case_id": case_id, **{k: v for k, v in data.items() if k != "row_numbers"},
+                               "allergy_conflicts": conflicts, "allergy_key": allergy_key}
+        return redirect(url_for("cases.detail", case_id=case_id) + "#prescriptions")
     session.pop("rx_draft", None)
     db.add_prescription(
         case_id, case["patient_id"],
         prescription_text(data["diagnosis"], data["medications"], data["advice"]),
         data["prescribed_date"], actor=current_actor(),
         diagnosis=data["diagnosis"], medications=data["medications"], advice=data["advice"],
-        doctor_id=data["doctor_id"],
+        doctor_id=data["doctor_id"], allergy_override=bool(conflicts),
     )
     flash("Prescription added.", "success")
     return redirect(url_for("cases.detail", case_id=case_id) + "#prescriptions")
 
 
-def _prescription_print_gaps(doctors):
-    """Plain-language list of what a printed prescription would be missing right now — the
-    clinic's contact details, or a doctor's qualifications / registration number."""
-    gaps = []
-    if not (db.get_setting("clinic_address", "") and db.get_setting("clinic_phone", "")):
-        gaps.append("the clinic's address and phone number (Settings, Clinic Details)")
+def _allergy_key(conflicts):
+    """Identifies the set of medicines an allergy confirmation was given for."""
+    return "|".join(sorted({name.lower() for _number, name, _label in conflicts}))
+
+
+def _clinic_print_gaps():
+    """What a printed prescription would lack from the clinic's own details right now."""
+    if db.get_setting("clinic_address", "") and db.get_setting("clinic_phone", ""):
+        return []
+    return ["the clinic's address and phone number (Settings, Clinic Details)"]
+
+
+def _doctor_print_gaps(doctors):
+    """{doctor id: what a prescription from that doctor would lack} — only doctors missing
+    their qualifications or registration number. The form shows the chosen doctor's only."""
+    gaps = {}
     for d in doctors:
         missing = [label for field, label in (("qualifications", "qualifications"),
                                               ("registration_number", "registration number")) if not d.get(field)]
         if missing:
-            gaps.append(f"{d['name']}'s {' and '.join(missing)} (Settings, Doctors)")
+            gaps[d["id"]] = f"{d['name']}'s {' and '.join(missing)} (Settings, Doctors)"
     return gaps
 
 

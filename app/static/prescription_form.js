@@ -28,6 +28,25 @@
       rows[i].setAttribute("hidden", "");
     }
   }
+  // The "not filled in yet" warning lists only the chosen prescribing doctor's missing details.
+  var gaps = form.querySelector("[data-rx-gaps]");
+  var prescriber = form.querySelector("select[name=prescriber_id]");
+  if (gaps && prescriber) {
+    prescriber.addEventListener("change", function () {
+      var items = gaps.querySelectorAll("li");
+      var shown = 0;
+      for (var j = 0; j < items.length; j++) {
+        var owner = items[j].getAttribute("data-rx-gap-doctor");
+        var show = owner === null || owner === prescriber.value;
+        items[j].hidden = !show;
+        if (show) {
+          shown += 1;
+        }
+      }
+      gaps.hidden = shown === 0;
+    });
+  }
+
   if (addButton && hiddenRows().length) {
     addButton.removeAttribute("hidden");
     addButton.addEventListener("click", function () {
